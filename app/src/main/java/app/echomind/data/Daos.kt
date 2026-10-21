@@ -79,6 +79,7 @@ interface UtteranceDao {
     @Query("SELECT * FROM utterances ORDER BY startAt DESC LIMIT :n") fun latest(n: Int): Flow<List<Utterance>>
     @Query("SELECT * FROM utterances WHERE id > :after ORDER BY id LIMIT :n") suspend fun after(after: Long, n: Int): List<Utterance>
     @Query("SELECT MAX(id) FROM utterances") suspend fun maxId(): Long?
+    @Query("UPDATE utterances SET searchText = :key WHERE id = :id") suspend fun setSearchText(id: Long, key: String)
     @Query("SELECT * FROM utterances WHERE startAt >= :from AND startAt < :to AND conversationId = :conversationId ORDER BY startAt") suspend fun around(conversationId: Long, from: Long, to: Long): List<Utterance>
 
     /** Full-text search over the original words and their transliterated form. */

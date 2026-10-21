@@ -137,7 +137,7 @@ fun WebSettingsScreen() {
             item {
                 SectionHeader("Search with")
                 listOf(
-                    Triple("duckduckgo", "DuckDuckGo", "No account or key; doesn't track searches."),
+                    Triple("duckduckgo", "DuckDuckGo", "No key, but it often blocks automated searches from apps."),
                     Triple("searxng", "Your own SearXNG", "Most private: your server asks the search engines for you."),
                     Triple("wikipedia", "Wikipedia only", "Facts and topics, nothing else."),
                     Triple("brave", "Brave Search", "Independent index; needs a free API key."),
@@ -165,7 +165,7 @@ fun WebSettingsScreen() {
             item {
                 SectionHeader("Depth")
                 SwitchRow("Read the top pages", "Better answers from the two best results, not just their snippets", s.webReadPages) { v -> set { it.copy(webReadPages = v) } }
-                SwitchRow("Name songs by themselves", "A few words of the lyrics are searched (needs Automatic)", s.songsAutoIdentify) { v -> set { it.copy(songsAutoIdentify = v) } }
+                Text("Songs are looked up by their own switch in Settings → Sounds, not by web search.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -204,8 +204,11 @@ fun SoundsSettingsScreen() {
         item {
             SectionHeader("Songs")
             SwitchRow("Keep songs", "When you sing or music plays, that part is kept as its own clip in Songs, with the words", s.songs) { v -> set { it.copy(songs = v) } }
-            SwitchRow("Name songs by themselves", "Looks up a few lyric words on the web (needs web search on Automatic)", s.songsAutoIdentify) { v -> set { it.copy(songsAutoIdentify = v) } }
-            SettingRow("Open Songs", null, onClick = { nav.go(app.echomind.ui.SongsRoute) })
+            if (s.songs) {
+                SwitchRow("Name songs by themselves", "Right after each song is transcribed", s.songsAutoIdentify) { v -> set { it.copy(songsAutoIdentify = v) } }
+                SwitchRow("Look songs up online", "Title, film, year, poster and listening links: a few lyric words and the title go to Apple's music catalogue and LRCLIB (open lyrics). Off = the phone's AI guesses offline.", s.songsOnline) { v -> set { it.copy(songsOnline = v) } }
+            }
+            SettingRow("Open Songs", "Posters, your singing, the original, links — and a scan of kept recordings", onClick = { nav.go(app.echomind.ui.SongsRoute) })
         }
         item {
             SectionHeader("What's going on around you")

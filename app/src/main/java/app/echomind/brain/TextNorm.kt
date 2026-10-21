@@ -35,10 +35,17 @@ object TextNorm {
             when {
                 cons != null -> {
                     sb.append(cons)
-                    // Inherent vowel unless a sign or virama follows, or at a word end.
-                    val nextIsSign = next != null && (signs.containsKey(next) || next == '़')
-                    val wordEnd = next == null || !(next in 'ऀ'..'ॿ')
-                    if (!nextIsSign && !wordEnd) sb.append('a')
+                    val after = if (next == '़') s.getOrNull(i + 2) else next
+                    val nasal = after == 'ं' || after == 'ँ' || after == 'ः'
+                    val nextIsSign = after != null && signs.containsKey(after) && !nasal
+                    val wordEnd = after == null || !(after in 'ऀ'..'ॿ')
+                    // Hindi drops the inherent "a" mid-word before a consonant that carries its own
+                    // vowel (रंगरेज → rangrez, अपने → apne), but never on a word's first letter (दरिया → dariya).
+                    val firstOfWord = i == 0 || s[i - 1] !in 'ऀ'..'ॿ'
+                    val nextCons = after?.let { consonants.containsKey(it) } == true
+                    val nextHasVowel = nextCons && s.getOrNull(s.indexOf(after, i + 1) + 1)?.let { signs.containsKey(it) && it != '्' && it != 'ं' && it != 'ँ' } == true
+                    val schwaDropped = !firstOfWord && nextHasVowel
+                    if (nasal || (!nextIsSign && !wordEnd && !schwaDropped)) sb.append('a')
                 }
                 vowels.containsKey(c) -> sb.append(vowels[c])
                 signs.containsKey(c) -> sb.append(signs[c])
@@ -56,6 +63,8 @@ object TextNorm {
     fun phonetic(word: String): String {
         var w = word.lowercase()
         w = w.replace("aa", "a").replace("ee", "i").replace("ii", "i").replace("oo", "u").replace("uu", "u")
+            // Hindi diphthongs as people actually spell them: mein / men, hai / he, aur / or.
+            .replace("ei", "e").replace("ai", "e").replace("au", "o").let { if (it.length > 1 && it.endsWith("h") && it[it.length - 2] in "aeiou") it.dropLast(1) else it }
             .replace("ph", "f").replace("w", "v").replace("z", "j").replace("q", "k").replace("ck", "k")
             .replace(Regex("([bcdfghjklmnprstvy])h"), "$1").replace(Regex("(.)\\1+"), "$1")
         return w

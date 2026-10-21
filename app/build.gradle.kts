@@ -28,6 +28,8 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Sideloaded personal build: signed with the debug key unless a release key is configured.
             signingConfig = signingConfigs.getByName("debug")
+            // -Pdiag=true: a debuggable build of the same app, to inspect data on the phone.
+            isDebuggable = project.findProperty("diag") == "true"
         }
         debug {
             applicationIdSuffix = ".debug"

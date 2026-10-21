@@ -151,8 +151,10 @@ data class Settings(
     // Sounds
     /** Keep songs you sing or that play near you, as their own clips. */
     val songs: Boolean = true,
-    /** Look up which song it was on the web by itself (only a few words of lyrics are sent). */
-    val songsAutoIdentify: Boolean = false,
+    /** Name new songs by themselves (on the phone first; online too when [songsOnline]). */
+    val songsAutoIdentify: Boolean = true,
+    /** Look songs up online: a few lyric words to search, the title to find the poster and links. Nothing else is sent. */
+    val songsOnline: Boolean = true,
     /** Note what's going on around you (traffic, kitchen, TV…) for an activity timeline. Uses more battery. */
     val ambient: Boolean = false,
     /** Days to keep the activity timeline. */
@@ -162,7 +164,7 @@ data class Settings(
     /** off | ask (show each search first) | auto */
     val webSearch: String = "ask",
     /** duckduckgo | wikipedia | searxng | brave | google */
-    val webProvider: String = "duckduckgo",
+    val webProvider: String = "wikipedia",
     /** Your own SearXNG instance (most private), e.g. https://search.example.com */
     val searxngUrl: String = "",
     val googleCx: String = "",

@@ -55,4 +55,49 @@ class PrivacySoundsTest {
         assertFalse(s("Whistling" to 0.80f, "Music" to 0.35f, "Piano" to 0.17f).songish())
         assertTrue(s("Music of Bollywood" to 0.7f, "Music" to 0.6f).songish())                      // a song playing
     }
+
+    /** Singing-family sums per 10 s slice, measured on the owner's real recordings of "O Rangrez" (22 Oct 2026). */
+    private fun run(vararg sums: Float) = sums.mapIndexed { i, v ->
+        Sounds.Slice(i * 10_000L, (i + 1) * 10_000L, if (v > 0) listOf("Male singing" to v) else listOf("Speech" to 0.7f, "Silence" to 0.2f))
+    }
+
+    @Test fun `real singing becomes one song each time`() {
+        // 10:23 PM — loud singing for ~90 s, then talk.
+        val a = Sounds.songSpans(run(.97f, .69f, .82f, .68f, .57f, .59f, .49f, .35f, .62f, .18f, 0f, 0f))
+        assertEquals(1, a.size); assertEquals(0L, a[0].first); assertTrue(a[0].second >= 90_000)
+        // 10:35 PM — a short line sung between silence.
+        val b = Sounds.songSpans(run(0f, 0f, 0f, 0f, .51f, .62f, 0f, 0f))
+        assertEquals(listOf(40_000L to 60_000L), b.map { it.first to it.second })
+        // 12:45 AM — sung softly: one strong slice carries the quieter ones before it.
+        val c = Sounds.songSpans(run(.22f, .31f, .60f, .04f, 0f, 0f, 0f))
+        assertEquals(listOf(0L to 30_000L), c.map { it.first to it.second })
+    }
+
+    @Test fun `talk with a hum is not a song`() {
+        assertTrue(Sounds.songSpans(run(0f, 0f, 0f)).isEmpty())
+        assertTrue(Sounds.songSpans(run(.26f, .2f, 0f)).isEmpty())      // speech + humming never starts a song
+        assertTrue(Sounds.songSpans(run(0f, .40f, 0f)).isEmpty())       // one weak 10 s blip is too short
+    }
+
+    @Test fun `heard Hindi lyrics match the song's romanised lyrics`() {
+        // What the phone transcribed on 21 Oct, and the start of the real lyrics (LRCLIB).
+        val heard = "ओ रंग रे तेरे। रंग दरिया में ओ रंगरेज तेरे रंग दरिया! अपने ही रंग में हो अपने ही अंग में खुद को रंग"
+        val orangrez = "Oh, rangrez, tere rang dariya mein. Doobna hai bas tera ban ke. Apne hi rang mein mujhko rang de"
+        val other = "Tujhe kitna chahne lage hum, itna kisi ko chaha na ho"
+        assertTrue(Sounds.lyricOverlap(heard, orangrez) > 0.4f)
+        assertTrue(Sounds.lyricOverlap(heard, other) < 0.15f)
+        // A song that shares only filler words ("mein", "tere", "rang") must not win.
+        val filler = "Rang mein tere, tere rang mein, kinna sona tera rang ve, sohna sohna mukhda"
+        assertTrue(Sounds.lyricOverlap(heard, filler) < 0.3f)
+        assertTrue(Sounds.lyricOverlap(heard, orangrez) > Sounds.lyricOverlap(heard, filler) + 0.3f)
+        assertTrue(Sounds.titleInLyrics("O Rangrez", heard) >= 0.5f)
+        assertTrue(Sounds.titlePhrases("apne hi rang mein apne hi rang mein khud ko rang de").first().contains("rang"))
+    }
+
+    /** Overlaps measured against real LRCLIB lyrics for the owner's two recordings. */
+    @Test fun `the closest lyrics win only when clearly closest`() {
+        fun m(t: String, o: Float) = Sounds.SongMatch(t, "", "", null, null, null, null, overlap = o)
+        assertEquals("O Rangrez", Sounds.pickSong(listOf(m("Rangrez", 0.08f), m("O Rangrez", 0.29f), m("Rangrez (Krsna)", 0.07f), m("Kinna Sona", 0.02f)))?.title)
+        assertNull(Sounds.pickSong(listOf(m("Kinna Sona", 0.30f), m("Deewana Kar Raha Hai", 0.24f), m("O Rangrez", 0.19f))))
+    }
 }

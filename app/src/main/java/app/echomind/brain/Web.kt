@@ -66,11 +66,12 @@ class Web(private val cloud: Cloud, private val settings: SettingsStore, private
 
     fun answer(allowed: List<String>?) { _approval.value?.reply?.complete(allowed) }
 
-    suspend fun search(query: String, n: Int = 5): List<Result> = withContext(Dispatchers.IO) {
+    /** [forSongs]: allowed by the songs' own "look up online" switch rather than the web-search mode. */
+    suspend fun search(query: String, n: Int = 5, forSongs: Boolean = false): List<Result> = withContext(Dispatchers.IO) {
         val q = scrub(query) ?: return@withContext emptyList()
         val s = settings.value
         runCatching {
-            cloud.sendPublic(providerLabel(), q.length.toLong(), "Search: $q") {
+            cloud.sendPublic(providerLabel(), q.length.toLong(), "Search: $q", allowed = if (forSongs) s.songsOnline else s.webSearch != "off") {
                 when (s.webProvider) {
                     "wikipedia" -> wikipedia(q, n)
                     "searxng" -> searxng(s.searxngUrl, q, n)
@@ -113,13 +114,23 @@ class Web(private val cloud: Cloud, private val settings: SettingsStore, private
 
     // ── providers ──
 
+    /** A plain HTTPS GET for public data (song catalogue, artwork). */
+    fun fetch(url: String, appAgent: Boolean = false): String? = get(url, if (appAgent) mapOf("User-Agent" to APP_UA) else emptyMap())
+
+    fun fetchBytes(url: String): ByteArray? {
+        val req = Request.Builder().url(url).header("User-Agent", UA).build()
+        return cloud.http.newCall(req).execute().use { r -> if (r.isSuccessful) r.body.bytes() else null }
+    }
+
     private fun get(url: String, headers: Map<String, String> = emptyMap()): String? {
-        val req = Request.Builder().url(url).header("User-Agent", UA).header("Accept-Language", "en-IN,en;q=0.8").apply { headers.forEach { (k, v) -> header(k, v) } }.build()
+        val req = Request.Builder().url(url).header("User-Agent", headers["User-Agent"] ?: UA).header("Accept-Language", "en-IN,en;q=0.8").apply { headers.forEach { (k, v) -> header(k, v) } }.build()
         return cloud.http.newCall(req).execute().use { r -> if (r.isSuccessful) r.body.string() else throw IllegalStateException("HTTP ${r.code}") }
     }
 
     private fun duckduckgo(q: String, n: Int): List<Result> {
         val html = get("https://html.duckduckgo.com/html/?q=" + java.net.URLEncoder.encode(q, "UTF-8")) ?: return emptyList()
+        // DuckDuckGo answers automated searches with a check page; EchoMind never tries to get past it.
+        if ("anomaly" in html && "result__a" !in html) throw IllegalStateException("DuckDuckGo blocked this automated search — choose Wikipedia, your SearXNG or Brave in Settings → Web search")
         val blocks = html.split("class=\"result__body\"").drop(1)
         return blocks.mapNotNull { b ->
             val link = Regex("class=\"result__a\" href=\"([^\"]+)\"[^>]*>(.*?)</a>", RegexOption.DOT_MATCHES_ALL).find(b) ?: return@mapNotNull null
@@ -165,6 +176,8 @@ class Web(private val cloud: Cloud, private val settings: SettingsStore, private
 
     companion object {
         private const val TAG = "EchoWeb"
+        /** For open APIs that ask apps to say who they are (LRCLIB, Apple's catalogue). */
+        const val APP_UA = "EchoMind/1.0 (personal Android app)"
         private const val UA = "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Mobile Safari/537.36"
 
         /** Pure, so it is unit-tested: drops known names, emails, phone and account numbers, and long digit runs. */

@@ -45,8 +45,8 @@ class Cloud(private val egress: EgressDao, private val settings: SettingsStore) 
      * names and numbers), so it is allowed by its own switch rather than the cloud
      * mode — but it is still shown and logged like everything else that goes out.
      */
-    suspend fun <T> sendPublic(provider: String, bytes: Long, what: String, block: suspend () -> T): T {
-        if (settings.value.webSearch == "off") throw Blocked("Web search is off")
+    suspend fun <T> sendPublic(provider: String, bytes: Long, what: String, allowed: Boolean = settings.value.webSearch != "off", block: suspend () -> T): T {
+        if (!allowed) throw Blocked("Web search is off")
         return track("Web search", provider, bytes, what, block)
     }
 

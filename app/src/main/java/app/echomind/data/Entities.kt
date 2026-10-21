@@ -326,6 +326,16 @@ data class SoundRow(
     val mine: Boolean = false,
     val favourite: Boolean = false,
     val createdAt: Long,
+    /** Film or album, year, a poster saved on the phone, links to listen, a 30 s preview. */
+    @ColumnInfo(defaultValue = "NULL") val album: String? = null,
+    @ColumnInfo(defaultValue = "NULL") val year: Int? = null,
+    @ColumnInfo(defaultValue = "NULL") val artPath: String? = null,
+    @ColumnInfo(defaultValue = "'{}'") val links: String = "{}",
+    @ColumnInfo(defaultValue = "NULL") val previewUrl: String? = null,
+    /** When it was last looked up (so a song that can't be named isn't retried forever). */
+    @ColumnInfo(defaultValue = "NULL") val lookupAt: Long? = null,
+    /** 0–1: how sure the name is. */
+    @ColumnInfo(defaultValue = "0") val nameConfidence: Float = 0f,
 )
 
 /** One check-in: the assistant's questions, your answers, and what changed because of them. */

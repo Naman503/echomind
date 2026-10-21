@@ -130,7 +130,7 @@ class Graph(val app: Application) {
     val stats = Stats(db)
     val checkIns = CheckIns(app, db, ai, settings, tasks, memory, voicePrints, journal, notifier)
     val plans = Plans(db, ai, settings, memory) { agenda }
-    val sounds = Sounds(db, settings, models, recordings, voice, ai) { web }
+    val sounds = Sounds(app, db, settings, models, recordings, voice, ai, { web }, cloud)
     val agenda = Agenda(app, db, settings, people, notifier)
     val organizer = Organizer(db, ai, settings)
     val actions = Actions(db, ai, settings, tasks, notes, memory, people, agenda, { organizer }) { plans }
@@ -148,6 +148,7 @@ class App : Application() {
             runCatching { g.recordings.sweep() }
             g.reminders.scheduleDaily(s.morningBriefAt, s.eveningRecapAt)
             g.checkIns.schedule()
+            reindexSearch(g)
             logExitReasons()
         }
         app.echomind.surfaces.WidgetUpdater.start(this, g.scope)
@@ -155,6 +156,19 @@ class App : Application() {
             "watchdog", ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<WatchdogWorker>(15, TimeUnit.MINUTES).setConstraints(Constraints.NONE).build(),
         )
+    }
+
+    /** Search keys follow the transliteration: when it improves, older lines are re-keyed once. */
+    private suspend fun reindexSearch(g: Graph) {
+        if (g.db.memory().kv("searchKeys") == SEARCH_KEYS) return
+        var after = 0L
+        while (true) {
+            val batch = g.db.utterances().after(after, 500)
+            if (batch.isEmpty()) break
+            batch.forEach { g.db.utterances().setSearchText(it.id, app.echomind.brain.TextNorm.searchable(it.text)) }
+            after = batch.last().id
+        }
+        g.db.memory().putKv(app.echomind.data.Kv("searchKeys", SEARCH_KEYS, System.currentTimeMillis()))
     }
 
     /** Why Android last killed us — the main tool for diagnosing vivo's background killer. */
@@ -166,6 +180,7 @@ class App : Application() {
     }
 
     companion object {
+        private const val SEARCH_KEYS = "2"
         lateinit var graph: Graph
             private set
     }
