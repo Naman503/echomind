@@ -135,12 +135,12 @@ fun TodayScreen() {
                 IconButton(onClick = { nav.go(SettingsRoute) }) { Icon(Icons.Rounded.Settings, "Settings") }
             }
         }
-        item(key = "quick") { QuickActions() }
-        item(key = "listen") { ListeningCard() }
-        item(key = "glance") { DayGlance() }
-        item(key = "setup") { SetupHealth() }
-        item(key = "work") { WorkCard() }
-        item(key = "foryou") { ForYou() }
+        // One column: a card with nothing to show adds no gap.
+        item(key = "top") {
+            Column(verticalArrangement = Arrangement.spacedBy(Sp.m)) {
+                QuickActions(); ListeningCard(); app.echomind.ui.screens.StatusCard(); DayGlance(); SetupHealth(); WorkCard(); ForYou()
+            }
+        }
         if (suggested > 0) item(key = "review") {
             EchoCard(onClick = { nav.tab(TasksRoute) }, color = MaterialTheme.colorScheme.primaryContainer) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

@@ -135,6 +135,7 @@ fun AppRoot(pending: MutableState<String?>) {
         pending.value = null
         when (r) {
             "ask" -> nav.tab(AskRoute())
+            "ask:voice" -> nav.go(AskRoute(voice = true))
             "tasks" -> nav.tab(TasksRoute)
             "reminders" -> { nav.tab(TasksRoute); nav.go(RemindersRoute) }
             "journal" -> { nav.tab(LibraryRoute); nav.go(JournalRoute) }
@@ -144,6 +145,7 @@ fun AppRoot(pending: MutableState<String?>) {
             "notes" -> { nav.tab(LibraryRoute); nav.go(NotesRoute) }
             "songs" -> { nav.tab(LibraryRoute); nav.go(SongsRoute) }
             "checkin" -> { nav.tab(TodayRoute); nav.go(CheckInRoute()) }
+            "health" -> { nav.tab(TodayRoute); nav.go(HealthRoute) }
             "checkins" -> { nav.tab(TodayRoute); nav.go(CheckInsRoute) }
             "note:new" -> { nav.tab(LibraryRoute); nav.go(NotesRoute); nav.go(NewNoteRoute()) }
             "settings" -> { nav.tab(TodayRoute); nav.go(SettingsRoute) }
@@ -192,7 +194,7 @@ fun AppRoot(pending: MutableState<String?>) {
                         entry<NewEventRoute> { app.echomind.ui.screens.EventScreen(null, it.day) }
                         entry<CirclesRoute> { app.echomind.ui.screens.CirclesScreen() }
                         entry<OrganizeRoute> { app.echomind.ui.screens.OrganizeScreen() }
-                        entry<AskRoute>(metadata = TabSwitch) { AskScreen(it.threadId, it.question) }
+                        entry<AskRoute>(metadata = TabSwitch) { AskScreen(it.threadId, it.question, it.voice) }
                         entry<TasksRoute>(metadata = TabSwitch) { TasksScreen() }
                         entry<LibraryRoute>(metadata = TabSwitch) { LibraryScreen() }
                         entry<ConversationRoute> { ConversationScreen(it.id, it.lineId) }
@@ -225,6 +227,7 @@ fun AppRoot(pending: MutableState<String?>) {
                         entry<CheckInRoute> { app.echomind.ui.screens.CheckInScreen(it.slot) }
                         entry<CheckInsRoute> { app.echomind.ui.screens.CheckInsScreen() }
                         entry<DeveloperRoute> { app.echomind.ui.screens.DeveloperScreen() }
+                        entry<HealthRoute> { app.echomind.ui.screens.HealthScreen() }
                         entry<DashboardRoute> { app.echomind.ui.screens.DashboardScreen() }
                         entry<PlanRoute> { app.echomind.ui.screens.PlanScreen() }
                         entry<SongsRoute> { app.echomind.ui.screens.SongsScreen() }

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.QuestionAnswer
 import androidx.compose.material.icons.rounded.Folder
@@ -171,7 +172,8 @@ fun SettingsScreen() {
         item { SettingRow("Voice & reading", "Voices, speed, earphones vs speaker, nudges", Icons.Rounded.RecordVoiceOver, onClick = { nav.go(app.echomind.ui.ReadingRoute) }) }
         item { SettingRow("Notifications", "Morning brief, evening recap, suggestions", Icons.Rounded.Notifications, onClick = { nav.go(NotificationsRoute) }) }
         item { SectionHeader("Phone & data") }
-        item { SettingRow("Battery, heat & background", "How hard the phone may work · vivo setup", Icons.Rounded.BatteryChargingFull, onClick = { nav.go(PowerRoute) }) }
+        item { SettingRow("Phone health & limits", "Temperature, what's running, every limit that pauses work", Icons.Rounded.Thermostat, onClick = { nav.go(app.echomind.ui.HealthRoute) }) }
+        item { SettingRow("Background & battery", "Keep running in the background · vivo setup", Icons.Rounded.BatteryChargingFull, onClick = { nav.go(PowerRoute) }) }
         item { SettingRow("Processing", "Queue, progress and what's running", Icons.Rounded.Timer, onClick = { nav.go(ProcessingRoute) }) }
         item { SettingRow("Data ledger", "Everything that left the phone", Icons.Rounded.Shield, onClick = { nav.go(LedgerRoute) }) }
         item { SettingRow("Your data", "Storage, export, delete", Icons.Rounded.Storage, onClick = { nav.go(DataRoute) }) }
@@ -511,6 +513,7 @@ fun SessionsScreen() {
 /** How hard the phone may work, and the vivo / Funtouch settings that keep EchoMind alive. */
 @Composable
 fun PowerScreen() {
+    val nav = LocalNav.current
     val g = App.graph
     val ctx = LocalContext.current
     val s by g.settings.flow.collectAsStateWithLifecycle()
@@ -531,16 +534,8 @@ fun PowerScreen() {
         }
         item {
             SectionHeader("Work limits")
-            var u by remember { mutableFloatStateOf(s.utilization.toFloat()) }
-            Text("Use up to ${u.toInt()}% of the time for transcription and AI (on battery)", style = MaterialTheme.typography.bodyMedium)
-            Slider(u, { u = it }, valueRange = 10f..100f, steps = 8, onValueChangeFinished = { update { it.copy(utilization = u.toInt()) } })
-            var t by remember { mutableFloatStateOf(s.maxBatteryTempC.toFloat()) }
-            Text("Pause work above ${t.toInt()} °C battery temperature", style = MaterialTheme.typography.bodyMedium)
-            Slider(t, { t = it }, valueRange = 34f..45f, steps = 10, onValueChangeFinished = { update { it.copy(maxBatteryTempC = t.toInt()) } })
-            var b by remember { mutableFloatStateOf(s.minBatteryPct.toFloat()) }
-            Text("Only listen (no processing) below ${b.toInt()}% battery", style = MaterialTheme.typography.bodyMedium)
-            Slider(b, { b = it }, valueRange = 5f..50f, steps = 8, onValueChangeFinished = { update { it.copy(minBatteryPct = b.toInt()) } })
-            SwitchRow("Process only while charging", "Listening still runs all day", s.onlyWhileCharging) { v -> update { it.copy(onlyWhileCharging = v) } }
+            SettingRow("Phone health & limits", "Max ${s.maxBatteryTempC}°C · Android heat level ${s.thermalPauseAt} · battery ≥ ${s.minBatteryPct}% · ${s.utilization}% working time — every limit, with danger levels",
+                Icons.Rounded.Thermostat, onClick = { nav.go(app.echomind.ui.HealthRoute) })
         }
         item {
             SectionHeader("Keep running in the background")

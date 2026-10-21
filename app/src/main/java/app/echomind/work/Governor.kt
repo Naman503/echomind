@@ -13,23 +13,29 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Decides when the phone may work on transcription and AI, so EchoMind never
- * makes it hot, slow or flat while it is in someone's pocket.
+ * makes it hot, slow or flat while it is in someone's pocket. Every limit is
+ * the owner's to set (Settings → Phone health); listening itself never stops.
  *
- *  - **Duty cycle.** At utilisation u%, every W ms of work is followed by
- *    W·(100−u)/u ms of rest.
- *  - **Sustained load.** After 20 minutes of near-continuous work, a 5-minute
- *    break regardless of temperature (skin heat builds slowly).
- *  - **Heat.** Android's thermal status and headroom forecast, plus battery
- *    temperature, pause work before the system has to throttle.
- *  - **Battery.** Below the floor and not charging, only capture runs.
- *  - **Charging** lifts the duty cycle to at least 80% and allows more threads.
+ *  - **Duty cycle.** At utilisation u%, every W ms of work is followed by W·(100−u)/u ms of rest.
+ *  - **Sustained load.** After N minutes of near-continuous work, a break (skin heat builds slowly).
+ *  - **Heat.** Battery temperature, Android's thermal status and its headroom forecast,
+ *    with a cool-down margin so work doesn't flap on and off at the limit.
+ *  - **Battery.** Below the floor and not charging; optionally Battery Saver.
+ *  - **You.** A pause you set, or "ignore limits for a while" (Android's own emergency level always stops work).
  */
 class Governor(private val context: Context, private val settings: SettingsStore) {
-    data class Power(val charging: Boolean, val percent: Int, val tempC: Float, val thermal: Int, val headroom: Float?)
-    data class State(val allowed: Boolean, val reason: String, val power: Power, val restUntil: Long = 0)
+    data class Power(val charging: Boolean, val percent: Int, val tempC: Float, val thermal: Int, val headroom: Float?, val saver: Boolean = false)
+    data class State(val allowed: Boolean, val reason: String, val power: Power, val restUntil: Long = 0, val rule: String? = null)
+    /** One reading for the temperature chart. */
+    data class Sample(val at: Long, val tempC: Float, val headroom: Float?, val thermal: Int, val working: Boolean)
 
     private val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-    private val _state = MutableStateFlow(State(true, "", read()))
+    private val _history = MutableStateFlow<List<Sample>>(emptyList())
+    /** The last 3 hours, one sample a minute. */
+    val history: StateFlow<List<Sample>> = _history.asStateFlow()
+
+    // The first reading isn't recorded: the state it would log doesn't exist yet.
+    private val _state = MutableStateFlow(State(true, "", read(record = false)))
     val state: StateFlow<State> = _state.asStateFlow()
 
     private var busySince = 0L
@@ -37,8 +43,10 @@ class Governor(private val context: Context, private val settings: SettingsStore
     private var lastHeadroomAt = 0L
     private var lastHeadroom: Float? = null
     @Volatile private var hot = false
+    /** "Ignore the limits" until this time (not saved: it ends with the app). */
+    @Volatile var ignoreLimitsUntil = 0L
 
-    fun read(): Power {
+    fun read(record: Boolean = true): Power {
         val b = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val level = b?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scale = b?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
@@ -51,28 +59,46 @@ class Governor(private val context: Context, private val settings: SettingsStore
             lastHeadroomAt = now
             lastHeadroom = pm.getThermalHeadroom(30).takeIf { !it.isNaN() && it > 0f }
         }
-        return Power(charging, if (level >= 0) level * 100 / scale else -1, temp, pm.currentThermalStatus, lastHeadroom)
+        val p = Power(charging, if (level >= 0) level * 100 / scale else -1, temp, pm.currentThermalStatus, lastHeadroom, pm.isPowerSaveMode)
+        if (record) record(p)
+        return p
     }
 
-    /** Threads for speech/AI runtimes: more when plugged in and cool. */
+    private fun record(p: Power) {
+        val now = System.currentTimeMillis()
+        val h = _history.value
+        if (h.isNotEmpty() && now - h.last().at < 60_000) return
+        _history.value = (h + Sample(now, p.tempC, p.headroom, p.thermal, _state.value.allowed)).filter { now - it.at < 3 * 3_600_000L }
+    }
+
+    /** Threads for speech/AI runtimes, as set for battery and charging (fewer when warm). */
     fun threads(): Int {
         val p = _state.value.power
-        return if (p.charging && p.thermal <= PowerManager.THERMAL_STATUS_LIGHT) 4 else 2
+        val s = settings.value
+        return (if (p.charging && p.thermal <= PowerManager.THERMAL_STATUS_LIGHT) s.threadsCharging else s.threadsBattery).coerceIn(1, 8)
     }
 
-    /** Why work may not run right now, or null if it may. */
-    private fun blocker(p: Power): String? {
+    /** Why work may not run right now (and which rule), or null if it may. */
+    private fun blocker(p: Power): Pair<String, String>? {
         val s = settings.value
-        if (s.onlyWhileCharging && !p.charging) return "Waiting for the charger (your setting)"
-        if (!p.charging && p.percent in 0 until s.minBatteryPct) return "Battery below ${s.minBatteryPct}% — only listening"
-        if (p.thermal >= PowerManager.THERMAL_STATUS_SEVERE) return "Phone is hot — cooling down"
+        val now = System.currentTimeMillis()
+        // Android's own emergency levels always stop work: past this the system shuts things down itself.
+        if (p.thermal >= PowerManager.THERMAL_STATUS_EMERGENCY) return "Phone is overheating — Android's emergency level" to "android"
+        if (now < ignoreLimitsUntil) return null
+        if (s.processingPausedUntil > now) return (if (s.processingPausedUntil == Long.MAX_VALUE) "Paused by you" else "Paused by you until ${app.echomind.ai.Prompts.time(s.processingPausedUntil)}") to "pause"
+        if (s.onlyWhileCharging && !p.charging) return "Waiting for the charger (your setting)" to "charging"
+        if (s.pauseOnBatterySaver && p.saver && !p.charging) return "Battery Saver is on" to "saver"
+        if (!p.charging && p.percent in 0 until s.minBatteryPct) return "Battery below ${s.minBatteryPct}% — only listening" to "battery"
         // Hysteresis: once hot, wait until clearly cooler before resuming.
-        val tempLimit = s.maxBatteryTempC.toFloat() - if (hot) 2f else 0f
-        val headroomLimit = if (hot) 0.7f else 0.85f
-        val tooHot = p.tempC >= tempLimit || (p.headroom != null && p.headroom >= headroomLimit) || p.thermal >= PowerManager.THERMAL_STATUS_MODERATE
-        hot = tooHot
-        if (tooHot) return "Letting the phone cool (${p.tempC.toInt()}°C)"
-        return null
+        val margin = if (hot) s.coolDownC.toFloat() else 0f
+        val reason = when {
+            p.tempC >= s.maxBatteryTempC - margin -> "Letting the phone cool: battery ${"%.1f".format(p.tempC)}°C (limit ${s.maxBatteryTempC}°C)" to "temp"
+            p.thermal >= s.thermalPauseAt.coerceIn(1, 5) -> "Letting the phone cool: Android reports it ${thermalName(p.thermal)}" to "thermal"
+            p.headroom != null && s.headroomLimit <= 1.2f && p.headroom >= s.headroomLimit - (if (hot) 0.12f else 0f) -> "Letting the phone cool: heat forecast ${(p.headroom * 100).toInt()}% (limit ${(s.headroomLimit * 100).toInt()}%)" to "headroom"
+            else -> null
+        }
+        hot = reason != null
+        return reason
     }
 
     /** Suspends until work is allowed; returns immediately when it is. */
@@ -80,23 +106,25 @@ class Governor(private val context: Context, private val settings: SettingsStore
         while (true) {
             val p = read()
             val now = System.currentTimeMillis()
+            val s = settings.value
             val block = blocker(p)
             if (block != null) {
                 busySince = 0
-                _state.value = State(false, block, p)
+                _state.value = State(false, block.first, p, rule = block.second)
                 delay(30_000)
                 continue
             }
             // Sustained-load break.
-            if (busySince > 0 && now - busySince > SUSTAINED_MS) {
+            if (s.breakAfterMin > 0 && busySince > 0 && now - busySince > s.breakAfterMin * 60_000L && now >= ignoreLimitsUntil) {
                 busySince = 0
-                _state.value = State(false, "Short break after 20 minutes of work", p, now + BREAK_MS)
-                delay(BREAK_MS)
+                val breakMs = s.breakMin.coerceIn(1, 30) * 60_000L
+                _state.value = State(false, "Short break after ${s.breakAfterMin} minutes of work", p, now + breakMs, rule = "break")
+                delay(breakMs)
                 continue
             }
             val rest = _state.value.restUntil
-            if (rest > now) {
-                _state.value = _state.value.copy(allowed = false, reason = "Pacing to keep the phone cool", power = p)
+            if (rest > now && now >= ignoreLimitsUntil) {
+                _state.value = _state.value.copy(allowed = false, reason = "Pacing to keep the phone cool", power = p, rule = "pace")
                 delay(rest - now)
                 continue
             }
@@ -109,7 +137,8 @@ class Governor(private val context: Context, private val settings: SettingsStore
     /** Call after a unit of work; schedules the rest that keeps utilisation at the user's level. */
     fun workDone(workMs: Long) {
         val p = _state.value.power
-        val u = if (p.charging) maxOf(80, settings.value.utilization) else settings.value.utilization.coerceIn(10, 100)
+        val s = settings.value
+        val u = (if (p.charging) maxOf(s.chargingUtilization, s.utilization) else s.utilization).coerceIn(10, 100)
         val rest = workMs * (100 - u) / u
         lastWorkEnd = System.currentTimeMillis()
         _state.value = _state.value.copy(restUntil = lastWorkEnd + rest)
@@ -117,11 +146,11 @@ class Governor(private val context: Context, private val settings: SettingsStore
 
     fun refresh() {
         val p = read()
-        _state.value = _state.value.copy(power = p, allowed = blocker(p) == null, reason = blocker(p) ?: "")
+        val b = blocker(p)
+        _state.value = _state.value.copy(power = p, allowed = b == null, reason = b?.first ?: "", rule = b?.second)
     }
 
     companion object {
-        const val SUSTAINED_MS = 20 * 60_000L
-        const val BREAK_MS = 5 * 60_000L
+        fun thermalName(t: Int) = when (t) { 0 -> "cool"; 1 -> "slightly warm"; 2 -> "warm"; 3 -> "hot"; 4 -> "very hot"; 5 -> "overheating"; else -> "shutting down" }
     }
 }

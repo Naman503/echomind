@@ -100,6 +100,24 @@ data class Settings(
     val onlyWhileCharging: Boolean = false,
     val maxBatteryTempC: Int = 40,
     val minBatteryPct: Int = 20,
+    /** After pausing for heat, resume only once this many °C below the limit. */
+    val coolDownC: Int = 2,
+    /** Android's own heat level that pauses work: 1 light · 2 moderate · 3 severe · 4 critical. */
+    val thermalPauseAt: Int = 2,
+    /** Android's heat forecast (1.0 = it starts slowing the phone); pause at this level. Above 1.2 = ignore. */
+    val headroomLimit: Float = 0.85f,
+    /** A break after this many minutes of near-continuous work (0 = never), lasting [breakMin]. */
+    val breakAfterMin: Int = 20,
+    val breakMin: Int = 5,
+    /** How much of the time it may work while charging. */
+    val chargingUtilization: Int = 80,
+    /** CPU threads for speech and AI, on battery and while charging. */
+    val threadsBattery: Int = 2,
+    val threadsCharging: Int = 4,
+    /** Pause transcription and AI while Battery Saver is on. */
+    val pauseOnBatterySaver: Boolean = false,
+    /** You paused processing until this time (listening continues). */
+    val processingPausedUntil: Long = 0,
 
     // Reading aloud
     /** open (Kokoro / Piper on the phone) | system (Android's voices) */

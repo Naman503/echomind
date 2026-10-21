@@ -1,10 +1,13 @@
 <resources>
+    <string name="widget_listen_description">Listening, what\'s processing, phone heat — with controls</string>
+    <string name="widget_mic_description">One tap to start or pause listening</string>
+    <string name="widget_echo_description">Today\'s tasks to tick off, and quick add</string>
+    <string name="widget_agenda_description">Next events and reminders</string>
+    <string name="widget_notes_description">Recent, pinned or one folder</string>
+    <string name="widget_day_description">Focus, next event, tasks, talk, temperature</string>
+    <string name="widget_ask_description">Ask anything you\'ve said — by text or voice</string>
+    <string name="widget_quick_description">Your choice of shortcuts</string>
     <string name="app_name">EchoMind</string>
-    <string name="widget_description">Today: next reminder and tasks to tick off</string>
-    <string name="widget_listen_description">Listening: status, time today, start or pause</string>
-    <string name="widget_quick_description">Quick actions: ask, task, note, brief, check-in</string>
-    <string name="widget_notes_description">Your notes, pinned first</string>
-    <string name="widget_day_description">Today: focus, next event, tasks left</string>
     <string name="shortcut_ask">Ask</string>
     <string name="shortcut_listen">Start listening</string>
     <string name="shortcut_note">New note</string>

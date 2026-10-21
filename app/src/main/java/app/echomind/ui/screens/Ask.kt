@@ -80,7 +80,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun AskScreen(initialThread: Long?, initialQuestion: String?) {
+fun AskScreen(initialThread: Long?, initialQuestion: String?, startVoice: Boolean = false) {
     val g = App.graph
     val nav = LocalNav.current
     val scope = rememberCoroutineScope()
@@ -129,6 +129,7 @@ fun AskScreen(initialThread: Long?, initialQuestion: String?) {
     }
     val voice = app.echomind.ui.components.rememberVoiceInput(onPartial = { input = it }, onFinal = { heard -> input = ""; send(heard, spoken = true) })
     LaunchedEffect(initialQuestion) { if (!initialQuestion.isNullOrBlank()) send(initialQuestion) }
+    LaunchedEffect(startVoice) { if (startVoice) voice.start() }
     LaunchedEffect(messages.size, draft) { if (messages.isNotEmpty() || draft != null) list.animateScrollToItem(maxOf(0, messages.size + 1)) }
 
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).windowInsetsPadding(WindowInsets.ime)) {

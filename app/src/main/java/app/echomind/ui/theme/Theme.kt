@@ -46,7 +46,7 @@ private val DarkSemantic = Semantic(Color(0xFFFF8A80), Color(0xFF5FD4C4), Color(
 
 val LocalSemantic = staticCompositionLocalOf { LightSemantic }
 
-private val Light = lightColorScheme(
+internal val Light = lightColorScheme(
     primary = Color(0xFF3D4A9E), onPrimary = Color.White,
     primaryContainer = Color(0xFFDEE0FF), onPrimaryContainer = Color(0xFF0E1A5C),
     secondary = Color(0xFF5B5D72), onSecondary = Color.White,
@@ -61,7 +61,7 @@ private val Light = lightColorScheme(
     error = Color(0xFFBA1A1A), errorContainer = Color(0xFFFFDAD6),
 )
 
-private val Dark = darkColorScheme(
+internal val Dark = darkColorScheme(
     primary = Color(0xFFBAC3FF), onPrimary = Color(0xFF1D2A6E),
     primaryContainer = Color(0xFF354185), onPrimaryContainer = Color(0xFFDEE0FF),
     secondary = Color(0xFFC4C5DD), secondaryContainer = Color(0xFF434559), onSecondaryContainer = Color(0xFFE0E1F9),

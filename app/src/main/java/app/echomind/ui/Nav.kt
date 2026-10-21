@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable data object TodayRoute : Route
 @Serializable data object TimelineRoute : Route
-@Serializable data class AskRoute(val threadId: Long? = null, val question: String? = null) : Route
+@Serializable data class AskRoute(val threadId: Long? = null, val question: String? = null, val voice: Boolean = false) : Route
 @Serializable data object TasksRoute : Route
 @Serializable data object LibraryRoute : Route
 
@@ -47,6 +47,8 @@ import kotlinx.serialization.Serializable
 @Serializable data class CheckInRoute(val slot: String? = null) : Route
 @Serializable data object CheckInsRoute : Route
 @Serializable data object DeveloperRoute : Route
+@Serializable data object HealthRoute : Route
+@Serializable data class WidgetSetupRoute(val kind: String = "") : Route
 @Serializable data object DashboardRoute : Route
 @Serializable data object PlanRoute : Route
 @Serializable data object SongsRoute : Route

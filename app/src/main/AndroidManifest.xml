@@ -138,24 +138,29 @@
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
-
-        <receiver android:name=".surfaces.EchoWidgetReceiver" android:exported="false" android:label="EchoMind">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data android:name="android.appwidget.provider" android:resource="@xml/echo_widget_info" />
-        </receiver>
-        <receiver android:name=".surfaces.ListenWidgetReceiver" android:exported="false" android:label="EchoMind · Listening">
+        <receiver android:name=".surfaces.ListenWidgetReceiver" android:exported="false" android:label="EchoMind · Status">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/listen_widget_info" />
         </receiver>
-        <receiver android:name=".surfaces.QuickWidgetReceiver" android:exported="false" android:label="EchoMind · Quick actions">
+        <receiver android:name=".surfaces.MicWidgetReceiver" android:exported="false" android:label="EchoMind · Mic">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
-            <meta-data android:name="android.appwidget.provider" android:resource="@xml/quick_widget_info" />
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/mic_widget_info" />
+        </receiver>
+        <receiver android:name=".surfaces.EchoWidgetReceiver" android:exported="false" android:label="EchoMind · Tasks">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/echo_widget_info" />
+        </receiver>
+        <receiver android:name=".surfaces.AgendaWidgetReceiver" android:exported="false" android:label="EchoMind · Coming up">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/agenda_widget_info" />
         </receiver>
         <receiver android:name=".surfaces.NotesWidgetReceiver" android:exported="false" android:label="EchoMind · Notes">
             <intent-filter>
@@ -163,11 +168,28 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/notes_widget_info" />
         </receiver>
-        <receiver android:name=".surfaces.DayWidgetReceiver" android:exported="false" android:label="EchoMind · Your day">
+        <receiver android:name=".surfaces.DayWidgetReceiver" android:exported="false" android:label="EchoMind · Today">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/day_widget_info" />
         </receiver>
+        <receiver android:name=".surfaces.AskWidgetReceiver" android:exported="false" android:label="EchoMind · Ask">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/ask_widget_info" />
+        </receiver>
+        <receiver android:name=".surfaces.QuickWidgetReceiver" android:exported="false" android:label="EchoMind · Quick actions">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/quick_widget_info" />
+        </receiver>
+        <activity android:name=".surfaces.WidgetConfigActivity" android:exported="true" android:theme="@style/Theme.EchoMind" android:excludeFromRecents="true" android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>
