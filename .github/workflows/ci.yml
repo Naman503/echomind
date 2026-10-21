@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Unit tests + debug and release builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Test and build
+        # No signing secrets here, so the release build uses the debug key (never published).
+        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease --console=plain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EchoMind-apk
+          path: app/build/outputs/apk/release/*.apk
