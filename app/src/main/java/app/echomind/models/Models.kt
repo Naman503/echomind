@@ -82,21 +82,57 @@ object ModelCatalog {
             // v1.0, not v1.1: only v1.0 contains the Hindi voices.
             "$SHERPA/tts-models/kokoro-int8-multi-lang-v1_0.tar.bz2", 132_303_094,
             "The most natural open-source voices: warm English and Hindi readers.", archive = true, recommended = true),
-        ModelSpec("piper-en-lessac", "Piper Lessac (English, light)", ModelSpec.Kind.VOICE,
-            "$SHERPA/tts-models/vits-piper-en_US-lessac-medium-int8.tar.bz2", 20_969_179,
-            "Small and very fast English voice.", archive = true),
-        ModelSpec("piper-hi-priyamvada", "Piper Priyamvada (Hindi, light)", ModelSpec.Kind.VOICE,
-            "$SHERPA/tts-models/vits-piper-hi_IN-priyamvada-medium-int8.tar.bz2", 21_097_319,
-            "Small, fast Hindi voice (female). Licence: personal, non-commercial use.", archive = true),
-        ModelSpec("piper-hi-rohan", "Piper Rohan (Hindi, light)", ModelSpec.Kind.VOICE,
-            "$SHERPA/tts-models/vits-piper-hi_IN-rohan-medium-int8.tar.bz2", 21_064_499,
-            "Small, fast Hindi voice (male). Licence: personal, non-commercial use.", archive = true),
+        ModelSpec("supertonic-3", "Supertonic 3 voices (English + Hindi)", ModelSpec.Kind.VOICE,
+            "$SHERPA/tts-models/sherpa-onnx-supertonic-3-tts-int8-2026-05-11.tar.bz2", 128_774_318,
+            "Very natural and fast: 10 voices (5 female, 5 male) that read both English and Hindi. OpenRAIL-M licence.", archive = true),
+        ModelSpec("kitten-nano", "Kitten voices (English, tiny)", ModelSpec.Kind.VOICE,
+            "$SHERPA/tts-models/kitten-nano-en-v0_8-int8.tar.bz2", 31_220_690,
+            "8 expressive English voices in a tiny, quick model. Apache 2.0.", archive = true),
+    ) + VoicePacks.piper.map { (id, file, bytes, label) ->
+        ModelSpec(id, label, ModelSpec.Kind.VOICE, "$SHERPA/tts-models/$file", bytes, "Piper voice: small (~21 MB) and very fast.", archive = true)
+    } + listOf(
         ModelSpec("voice-id", "Voice ID (who is speaking)", ModelSpec.Kind.SPEAKER,
             "$SHERPA/speaker-recongition-models/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx", 26_485_263,
             "Tells your voice apart from others, so notes know what you said.", recommended = true),
     )
 
     fun get(id: String) = all.firstOrNull { it.id == id }
+}
+
+/** Piper voice packs (int8, from sherpa-onnx's releases): id, file, size, label. */
+object VoicePacks {
+    data class Pack(val id: String, val file: String, val bytes: Long, val label: String)
+    val piper = listOf(
+        Pack("piper-en-lessac", "vits-piper-en_US-lessac-medium-int8.tar.bz2", 20_969_179, "Piper Lessac (US English)"),
+        Pack("piper-en-lessac-high", "vits-piper-en_US-lessac-high-int8.tar.bz2", 35_022_847, "Piper Lessac HQ (US English)"),
+        Pack("piper-en-amy", "vits-piper-en_US-amy-medium-int8.tar.bz2", 21_028_122, "Piper Amy (US English)"),
+        Pack("piper-en-kristin", "vits-piper-en_US-kristin-medium-int8.tar.bz2", 20_882_061, "Piper Kristin (US English)"),
+        Pack("piper-en-hfc-female", "vits-piper-en_US-hfc_female-medium-int8.tar.bz2", 21_021_379, "Piper HFC female (US English)"),
+        Pack("piper-en-ljspeech", "vits-piper-en_US-ljspeech-high-int8.tar.bz2", 33_886_472, "Piper LJSpeech HQ (US English)"),
+        Pack("piper-en-kathleen", "vits-piper-en_US-kathleen-low-int8.tar.bz2", 21_289_266, "Piper Kathleen (US English)"),
+        Pack("piper-en-ryan", "vits-piper-en_US-ryan-high-int8.tar.bz2", 34_473_341, "Piper Ryan HQ (US English)"),
+        Pack("piper-en-joe", "vits-piper-en_US-joe-medium-int8.tar.bz2", 21_230_019, "Piper Joe (US English)"),
+        Pack("piper-en-john", "vits-piper-en_US-john-medium-int8.tar.bz2", 20_800_096, "Piper John (US English)"),
+        Pack("piper-en-bryce", "vits-piper-en_US-bryce-medium-int8.tar.bz2", 20_910_568, "Piper Bryce (US English)"),
+        Pack("piper-en-norman", "vits-piper-en_US-norman-medium-int8.tar.bz2", 20_987_233, "Piper Norman (US English)"),
+        Pack("piper-en-hfc-male", "vits-piper-en_US-hfc_male-medium-int8.tar.bz2", 20_984_819, "Piper HFC male (US English)"),
+        Pack("piper-en-sam", "vits-piper-en_US-sam-medium-int8.tar.bz2", 20_874_946, "Piper Sam (US English)"),
+        Pack("piper-en-kusal", "vits-piper-en_US-kusal-medium-int8.tar.bz2", 21_044_470, "Piper Kusal (English)"),
+        Pack("piper-en-reza", "vits-piper-en_US-reza_ibrahim-medium-int8.tar.bz2", 21_139_277, "Piper Reza (English)"),
+        Pack("piper-en-l2arctic", "vits-piper-en_US-l2arctic-medium-int8.tar.bz2", 23_273_574, "Piper L2-ARCTIC (Indian English voices)"),
+        Pack("piper-en-arctic", "vits-piper-en_US-arctic-medium-int8.tar.bz2", 23_320_524, "Piper CMU ARCTIC (Indian + US English voices)"),
+        Pack("piper-gb-cori", "vits-piper-en_GB-cori-high-int8.tar.bz2", 35_038_210, "Piper Cori HQ (British English)"),
+        Pack("piper-gb-jenny", "vits-piper-en_GB-jenny_dioco-medium-int8.tar.bz2", 20_950_036, "Piper Jenny (British English)"),
+        Pack("piper-gb-alba", "vits-piper-en_GB-alba-medium-int8.tar.bz2", 21_104_326, "Piper Alba (Scottish English)"),
+        Pack("piper-gb-southern-female", "vits-piper-en_GB-southern_english_female-medium-int8.tar.bz2", 23_714_066, "Piper Southern English female"),
+        Pack("piper-gb-alan", "vits-piper-en_GB-alan-medium-int8.tar.bz2", 21_103_831, "Piper Alan (British English)"),
+        Pack("piper-gb-northern-male", "vits-piper-en_GB-northern_english_male-medium-int8.tar.bz2", 21_100_291, "Piper Northern English male"),
+        Pack("piper-gb-southern-male", "vits-piper-en_GB-southern_english_male-medium-int8.tar.bz2", 23_601_346, "Piper Southern English male"),
+        Pack("piper-gb-semaine", "vits-piper-en_GB-semaine-medium-int8.tar.bz2", 23_227_810, "Piper Semaine (4 British voices)"),
+        Pack("piper-hi-priyamvada", "vits-piper-hi_IN-priyamvada-medium-int8.tar.bz2", 21_097_319, "Piper Priyamvada (Hindi)"),
+        Pack("piper-hi-rohan", "vits-piper-hi_IN-rohan-medium-int8.tar.bz2", 21_064_499, "Piper Rohan (Hindi)"),
+        Pack("piper-hi-pratham", "vits-piper-hi_IN-pratham-medium-int8.tar.bz2", 20_987_965, "Piper Pratham (Hindi)"),
+    )
 }
 
 /**

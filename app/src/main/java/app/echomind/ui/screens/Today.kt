@@ -27,6 +27,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Alarm
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.AddTask
@@ -147,6 +151,7 @@ fun TodayScreen() {
                 }
             }
         }
+        item(key = "todaytasks") { TodayTasks() }
         if (nextEvents.isNotEmpty()) {
             item(key = "ev_h") { SectionHeader("Next on your calendar", action = "Calendar", onAction = { nav.tab(app.echomind.ui.CalendarRoute) }) }
             items(nextEvents, key = { "ev${it.id}_${it.deviceId}_${it.startAt}" }) { e ->
@@ -496,3 +501,46 @@ fun ConversationRow(c: Conversation, onClick: () -> Unit) {
         }
     }
 }
+
+/** Overdue and today's tasks, tickable from home; plus a one-line add. */
+@Composable
+private fun TodayTasks() {
+    val g = App.graph
+    val nav = LocalNav.current
+    val scope = rememberCoroutineScope()
+    val open by remember { g.db.tasks().observeOpen() }.collectAsStateWithLifecycle(emptyList())
+    val start = remember { java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() }
+    val end = start + 86_400_000L
+    val due = open.filter { (it.dueAt != null && it.dueAt < end) || (it.dueAt == null && it.createdAt >= start) }
+        .sortedWith(compareBy({ it.dueAt == null }, { it.priority }, { it.dueAt }))
+    var adding by remember { mutableStateOf("") }
+    Column {
+        SectionHeader("Today's tasks${if (due.isNotEmpty()) " · ${due.size}" else ""}", action = "All tasks", onAction = { nav.tab(TasksRoute) })
+        EchoCard(padding = PaddingValues(start = 4.dp, end = Sp.m, top = 4.dp, bottom = Sp.s)) {
+            if (due.isEmpty()) Text("Nothing due today.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(Sp.m))
+            due.take(7).forEach { t ->
+                Row(Modifier.fillMaxWidth().clickable { nav.go(app.echomind.ui.TaskRoute(t.id)) }, verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { scope.launch { g.tasks.complete(t) } }) { Icon(Icons.Rounded.RadioButtonUnchecked, "Mark done", tint = MaterialTheme.colorScheme.outline) }
+                    Column(Modifier.weight(1f)) {
+                        Text(t.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        val overdue = t.dueAt != null && t.dueAt < start
+                        val at = t.remindAt ?: t.dueAt
+                        val timed = at != null && java.time.Instant.ofEpochMilli(at).atZone(java.time.ZoneId.systemDefault()).toLocalTime().let { !(it.hour == 9 && it.minute == 0) || t.remindAt != null }
+                        if (overdue || timed) Text(if (overdue) "Overdue · ${Fmt.day(t.dueAt!!)}" else Fmt.time(at!!), style = MaterialTheme.typography.labelSmall,
+                            color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            if (due.size > 7) Text("+${due.size - 7} more", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable { nav.tab(TasksRoute) }.padding(start = Sp.m, top = 4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = Sp.m, top = 4.dp)) {
+                androidx.compose.material3.OutlinedTextField(adding, { adding = it }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Add for today…") },
+                    shape = MaterialTheme.shapes.extraLarge)
+                IconButton(enabled = adding.isNotBlank(), onClick = { val t = adding.trim(); adding = ""; scope.launch { g.tasks.addQuick(t, toToday = true) } }) {
+                    Icon(Icons.Rounded.Add, "Add task")
+                }
+            }
+        }
+    }
+}
+

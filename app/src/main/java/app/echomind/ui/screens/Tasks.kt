@@ -386,9 +386,11 @@ fun TasksScreen() {
                         val overdue = filtered.filter { it.dueAt != null && it.dueAt < todayStart }.sortedBy { it.dueAt }
                         val today = filtered.filter { it.dueAt != null && it.dueAt in todayStart until endToday }.sortedWith(compareBy({ it.priority }, { it.dueAt }))
                         item(key = "progress") { TodayProgress(doneToday.count { it.parentId == null }, overdue.size + today.size) }
-                        if (overdue.isEmpty() && today.isEmpty()) item { EmptyState("Nothing due today", "Add something below, or swipe a task left to plan it for today.") }
+                        if (overdue.isEmpty() && today.isEmpty() && filtered.none { it.dueAt == null && it.createdAt >= todayStart }) item { EmptyState("Nothing due today", "Add something below, or swipe a task left to plan it for today.") }
                         section("Overdue", overdue)
                         section("Today", today)
+                        // Anything new without a date (e.g. with "new tasks go to Today" turned off) still shows up here.
+                        section("New · no date yet", filtered.filter { it.dueAt == null && it.createdAt >= todayStart }.sortedByDescending { it.createdAt })
                     }
                     View.UPCOMING -> {
                         val days = (0..13).map { LocalDate.now().plusDays(it.toLong()) }

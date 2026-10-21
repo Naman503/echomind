@@ -64,6 +64,8 @@ class PlaybackService : Service() {
             ACTION_TOGGLE -> speaker.toggle()
             ACTION_NEXT -> speaker.next()
             ACTION_STOP -> { speaker.stop(); stopSelf() }
+            ACTION_SPEAKER_OK -> speaker.confirmPending()
+            ACTION_SPEAKER_NO -> speaker.dismissPending()
         }
         try {
             startForeground(ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
@@ -114,6 +116,8 @@ class PlaybackService : Service() {
         const val ACTION_STOP = "app.echomind.READ_STOP"
         const val ACTION_SPEAK = "app.echomind.READ_SPEAK"
         const val ACTION_BRIEF = "app.echomind.READ_BRIEF"
+        const val ACTION_SPEAKER_OK = "app.echomind.READ_SPEAKER_OK"
+        const val ACTION_SPEAKER_NO = "app.echomind.READ_SPEAKER_NO"
         const val EXTRA_TITLE = "title"
         const val EXTRA_TEXT = "text"
 

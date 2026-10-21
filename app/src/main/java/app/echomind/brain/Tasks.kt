@@ -142,10 +142,14 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
         save(t.copy(dueAt = newDue, remindAt = remind, dueText = null))
     }
 
-    /** Adds a task typed in quick-add syntax; creates the list if it is new. */
-    suspend fun addQuick(text: String, defaultProjectId: Long? = null): Long? {
+    /**
+     * Adds a task typed in quick-add syntax; creates the list if it is new. A task you type
+     * without a date lands on Today (unless you turned that off), so it never disappears.
+     */
+    suspend fun addQuick(text: String, defaultProjectId: Long? = null, toToday: Boolean = settings.value.undatedToToday): Long? {
         if (text.isBlank()) return null
-        val p = QuickAdd.parse(text)
+        val parsed = QuickAdd.parse(text)
+        val p = if (parsed.due == null && toToday) parsed.copy(due = When.Resolved(todayNoTime(), false)) else parsed
         val now = System.currentTimeMillis()
         val projectId = p.list?.let { name ->
             db.projects().byName(name)?.id ?: db.projects().insert(app.echomind.data.Project(name = name.replaceFirstChar { it.uppercase() }, color = (name.hashCode() and 0x7fffffff) % 8 + 1, createdAt = now))
@@ -160,6 +164,9 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
         if (row.remindAt != null) reminders.schedule(row.copy(id = id))
         return id
     }
+
+    /** Today at the "no time" hour, the convention for a date without a time. */
+    fun todayNoTime(): Long = java.time.LocalDate.now().atTime(When.DEFAULT_HOUR, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
 
     suspend fun reopen(t: TaskRow) = db.tasks().update(t.copy(status = "open", completedAt = null, updatedAt = System.currentTimeMillis()))
 

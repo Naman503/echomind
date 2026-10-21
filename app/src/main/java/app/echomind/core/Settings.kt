@@ -75,6 +75,8 @@ data class Settings(
     val session: AiSession = AiSession(),
     /** Suggested tasks the AI is very sure of (yours, with a time) go straight to the to-do list. */
     val autoAcceptConfident: Boolean = false,
+    /** Tasks you type without a date go on Today's list. */
+    val undatedToToday: Boolean = true,
     val semanticSearch: Boolean = true,
 
     // Schedules (minutes of the day)
@@ -100,6 +102,16 @@ data class Settings(
     val readSpeed: Float = 1.25f,
     /** Speak Ask answers automatically. */
     val autoReadAnswers: Boolean = false,
+    /** Silence between sentences, ms. */
+    val readPauseMs: Int = 80,
+    /** Extra loudness for quiet earbuds, dB (0–12). */
+    val readBoostDb: Int = 0,
+    /** Pitch for phone voices (open voices keep their natural pitch). */
+    val readPitch: Float = 1f,
+    /** Other audio while reading: auto (duck short, pause long) | duck | pause */
+    val readFocus: String = "auto",
+    /** With no earphones connected: ask | allow (just use the speaker) | never (don't read aloud). */
+    val speakerPolicy: String = "ask",
 
     // Proactive nudges
     val nudges: Boolean = true,

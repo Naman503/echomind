@@ -114,6 +114,7 @@ object Recorder {
             var audioSource = source
             if (bluetooth && Build.VERSION.SDK_INT >= 31) {
                 usedCommunicationDevice = audio.setCommunicationDevice(dev!!)
+                routeDevice = dev
                 audioSource = MediaRecorder.AudioSource.VOICE_COMMUNICATION
             }
             val minBuf = AudioRecord.getMinBufferSize(Wav.SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
@@ -175,7 +176,33 @@ object Recorder {
         publish()
     }
 
+    /**
+     * While EchoMind speaks, a Bluetooth headset recording through the call route (SCO)
+     * would keep the earbuds in call mode, and Android then plays speech on the phone
+     * speaker. The mic is muted during speech anyway, so the call route is handed back
+     * for that time and taken again afterwards.
+     */
+    fun yieldCallRoute(yieldIt: Boolean) {
+        if (Build.VERSION.SDK_INT < 31) return
+        val audio = am ?: return
+        synchronized(lock) {
+            if (yieldIt && usedCommunicationDevice) {
+                try { audio.clearCommunicationDevice() } catch (_: Exception) {}
+                yielded = true
+            } else if (!yieldIt && yielded) {
+                yielded = false
+                val dev = routeDevice ?: return
+                if (running) runCatching { audio.setCommunicationDevice(dev) }
+            }
+        }
+    }
+
+    private var yielded = false
+    private var routeDevice: android.media.AudioDeviceInfo? = null
+
     private fun releaseRoute() {
+        yielded = false
+        routeDevice = null
         if (usedCommunicationDevice && Build.VERSION.SDK_INT >= 31) {
             try { am?.clearCommunicationDevice() } catch (_: Exception) {}
         }

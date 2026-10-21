@@ -37,6 +37,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -209,12 +213,42 @@ fun AppRoot(pending: MutableState<String?>) {
                         entry<VoiceRoute> { VoiceScreen() }
                         entry<ReadingRoute> { app.echomind.ui.screens.ReadingScreen() }
                         entry<RecordingsRoute> { app.echomind.ui.screens.RecordingsScreen() }
+                        entry<VoicesRoute> { app.echomind.ui.screens.VoicesScreen(it.lang) }
                     },
                 )
             }
             CloudBanner()
+            SpeakerQuestion()
         }
     }
+}
+
+/** "No earphones — play on the phone speaker?" before anything is read aloud there. */
+@Composable
+private fun SpeakerQuestion() {
+    val g = App.graph
+    val pending by g.speaker.pending.collectAsStateWithLifecycle()
+    val notice by g.speaker.notice.collectAsStateWithLifecycle()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(notice) { notice?.let { android.widget.Toast.makeText(ctx, it, android.widget.Toast.LENGTH_SHORT).show(); g.speaker.clearNotice() } }
+    val p = pending ?: return
+    var always by remember(p) { mutableStateOf(false) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { g.speaker.dismissPending() },
+        icon = { Icon(Icons.AutoMirrored.Rounded.VolumeUp, null) },
+        title = { Text("No earphones connected") },
+        text = {
+            androidx.compose.foundation.layout.Column {
+                Text("Read “${p.title}” out loud on the phone speaker? People nearby will hear it.")
+                androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                    androidx.compose.material3.Checkbox(always, { always = it })
+                    Text("Don't ask again (change in Settings → Voice)", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { g.speaker.confirmPending(always) }) { Text("Play on speaker") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = { g.speaker.dismissPending() }) { Text("Not now") } },
+    )
 }
 
 @Composable

@@ -186,6 +186,25 @@ class Notifier(private val context: Context) {
             .build())
     }
 
+    /** "No earphones — play on the speaker?" when the app isn't open. */
+    fun speakerPrompt(title: String) {
+        if (!can()) return
+        fun act(action: String, code: Int) = PendingIntent.getForegroundService(context, code,
+            Intent(context, app.echomind.tts.PlaybackService::class.java).setAction(action), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        nm.notify(SPEAKER_ID, NotificationCompat.Builder(context, NUDGES)
+            .setSmallIcon(R.drawable.ic_stat_idle)
+            .setContentTitle("No earphones connected")
+            .setContentText("Read “$title” on the phone speaker?")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setTimeoutAfter(5 * 60_000L)
+            .addAction(0, "Play on speaker", act(app.echomind.tts.PlaybackService.ACTION_SPEAKER_OK, 951))
+            .addAction(0, "Dismiss", act(app.echomind.tts.PlaybackService.ACTION_SPEAKER_NO, 952))
+            .build())
+    }
+
+    fun cancelSpeakerPrompt() = nm.cancel(SPEAKER_ID)
+
     fun cancelNudge(id: Long) = nm.cancel(NUDGE_BASE + (id % 1000).toInt())
 
     fun brief(title: String, lines: List<String>) {
@@ -253,6 +272,7 @@ class Notifier(private val context: Context) {
         const val NUDGES = "nudges"
         const val NUDGE_BASE = 4600
         const val EVENT_BASE = 5600
+        const val SPEAKER_ID = 4950
         const val CAPTURE_ID = 4107
         const val SUGGESTIONS_ID = 4200
         const val BRIEF_ID = 4201

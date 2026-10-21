@@ -48,8 +48,14 @@ class MainActivity : ComponentActivity() {
         handle(intent)
     }
 
+    override fun onPause() {
+        super.onPause()
+        App.graph.speaker.uiVisible = false
+    }
+
     override fun onResume() {
         super.onResume()
+        App.graph.speaker.uiVisible = true
         // Opening the app is a good moment to catch up: recover, import calls, wake the pipeline.
         val g = App.graph
         lifecycleScope.launch {

@@ -409,7 +409,7 @@ fun NoteScreen(id: Long?, template: String? = null) {
                         val open = n.body.lines().filter { it.trimStart().startsWith("- [ ]") }.map { it.trim().removePrefix("- [ ]").trim() }.filter { it.isNotEmpty() }
                         if (open.isNotEmpty()) DropdownMenuItem(text = { Text("Make ${open.size} task${if (open.size == 1) "" else "s"} from checklist") }, onClick = {
                             menu = false
-                            scope.launch { open.forEach { g.tasks.addQuick(it) }; snackbar.showSnackbar("${open.size} tasks added to your list") }
+                            scope.launch { open.forEach { g.tasks.addQuick(it, toToday = false) }; snackbar.showSnackbar("${open.size} tasks added to your list") }
                         })
                         DropdownMenuItem(text = { Text("Share") }, onClick = {
                             menu = false

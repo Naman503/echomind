@@ -73,13 +73,51 @@ class Speaker(
     @Volatile private var paused = false
     private var focus: AudioFocusRequest? = null
     private var system: TextToSpeech? = null
+    private var systemPkg: String? = null
+    private var boost: android.media.audiofx.LoudnessEnhancer? = null
     private var systemReady = CompletableDeferred<Boolean>()
 
-    private data class Chunk(val item: Int, val text: String, val samples: FloatArray?, val rate: Int, val lang: String)
+    /** A read waiting for your OK because no earphones are connected. */
+    data class Pending(val title: String, val items: List<String>, val startIndex: Int)
 
-    fun speak(title: String, items: List<String>, startIndex: Int = 0) {
+    private val _pending = MutableStateFlow<Pending?>(null)
+    val pending: StateFlow<Pending?> = _pending.asStateFlow()
+
+    /** Set by the app's screen while it is visible: the speaker question is asked there, else as a notification. */
+    @Volatile var uiVisible = false
+
+    private val _notice = MutableStateFlow<String?>(null)
+    /** One-line messages for the screen, e.g. "Not read aloud: no earphones". */
+    val notice: StateFlow<String?> = _notice.asStateFlow()
+    fun clearNotice() { _notice.value = null }
+
+    private data class Chunk(val item: Int, val text: String, val samples: FloatArray?, val rate: Int, val lang: String, val systemVoice: String? = null)
+
+    /** One sentence in an open-source voice, at the model's share of the speed. */
+    private fun synth(engine: com.k2fsa.sherpa.onnx.OfflineTts, voice: VoiceSpec, text: String, speed: Float, lang: String): com.k2fsa.sherpa.onnx.GeneratedAudio {
+        val sid = voice.sid.coerceIn(0, maxOf(0, engine.numSpeakers() - 1))
+        return when (voice.engine) {
+            // Kokoro and Supertonic must be told the language per call, or Hindi is read with English rules.
+            "kokoro" -> engine.generateWithConfig(text, com.k2fsa.sherpa.onnx.GenerationConfig(speed = speed, sid = sid, extra = mapOf("lang" to (if (lang == "hi") "hi" else "en-us"))))
+            "supertonic" -> engine.generateWithConfig(text, com.k2fsa.sherpa.onnx.GenerationConfig(speed = speed, sid = sid, extra = mapOf("lang" to (if (lang == "hi") "hi" else "en"))))
+            else -> engine.generate(text, sid = sid, speed = speed)
+        }
+    }
+
+    fun speak(title: String, items: List<String>, startIndex: Int = 0, onSpeaker: Boolean = false) {
         val clean = items.map { Speakable.clean(it) }.filter { it.isNotBlank() }
         if (clean.isEmpty()) return
+        // No earphones: ask first (or don't read at all), as chosen in settings.
+        if (!onSpeaker && previewVoice == null && !headphonesConnected()) {
+            when (settings.value.speakerPolicy) {
+                "never" -> { _notice.value = "Not read aloud — no earphones connected"; return }
+                "ask" -> {
+                    _pending.value = Pending(title, clean, startIndex)
+                    if (!uiVisible) app.echomind.App.graph.notifier.speakerPrompt(title)
+                    return
+                }
+            }
+        }
         val speed = settings.value.readSpeed
         _state.value = State(true, false, title, clean, startIndex.coerceIn(0, clean.lastIndex), speed = speed)
         restart(startIndex.coerceIn(0, clean.lastIndex))
@@ -87,6 +125,20 @@ class Speaker(
     }
 
     fun speak(title: String, text: String) = speak(title, listOf(text))
+
+    /** "Play on the speaker" from the question; [always] stops asking from now on. */
+    fun confirmPending(always: Boolean = false) {
+        val p = _pending.value ?: return
+        _pending.value = null
+        app.echomind.App.graph.notifier.cancelSpeakerPrompt()
+        if (always) scope.launch { settings.update { it.copy(speakerPolicy = "allow") } }
+        speak(p.title, p.items, p.startIndex, onSpeaker = true)
+    }
+
+    fun dismissPending() {
+        _pending.value = null
+        app.echomind.App.graph.notifier.cancelSpeakerPrompt()
+    }
 
     fun pause() {
         paused = true
@@ -134,6 +186,7 @@ class Speaker(
             _state.update { it.copy(index = from, paused = false) }
             requestFocus()
             Recorder.assistantSpeaking = true
+            Recorder.yieldCallRoute(true)
             try {
                 play(from)
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -149,6 +202,7 @@ class Speaker(
     private fun finish() {
         previewVoice = null
         Recorder.assistantSpeaking = false
+        Recorder.yieldCallRoute(false)
         track?.let { runCatching { it.pause(); it.flush() } }
         system?.stop()
         abandonFocus()
@@ -162,11 +216,11 @@ class Speaker(
         val s = settings.value
         val items = _state.value.items
         val pv = previewVoice?.let { VoiceCatalog.get(it) }
-        val en = pv?.takeIf { it.lang == "en" } ?: VoiceCatalog.get(s.voiceEnglish)
-        val hi = pv?.takeIf { it.lang == "hi" } ?: VoiceCatalog.get(s.voiceHindi)
-        val canOpen = (en != null && models.isInstalled(en.pack)) || (hi != null && models.isInstalled(hi.pack))
-        if (!canOpen || s.readEngine == "system") { playSystem(from); return@coroutineScope }
-        _state.update { it.copy(engine = "open") }
+        val en = pv?.takeIf { it.reads("en") } ?: VoiceCatalog.get(s.voiceEnglish)
+        val hi = pv?.takeIf { it.reads("hi") } ?: VoiceCatalog.get(s.voiceHindi)
+        fun usable(v: VoiceSpec?) = v != null && (v.engine == "system" || models.isInstalled(v.pack))
+        if (s.readEngine == "system" || (!usable(en) && !usable(hi))) { playSystem(from); return@coroutineScope }
+        _state.update { it.copy(engine = listOfNotNull(en, hi).joinToString(" + ") { VoiceCatalog.engineName(it.engine) }) }
 
         val queue = Channel<Chunk>(capacity = 2)
         launch {
@@ -174,17 +228,14 @@ class Speaker(
                 for (sentence in Speakable.sentences(items[i])) {
                     ensureActive()
                     val lang = Speakable.language(sentence)
-                    val voice = (if (lang == "hi") hi else en)?.takeIf { models.isInstalled(it.pack) } ?: (if (lang == "hi") en else hi)?.takeIf { models.isInstalled(it.pack) }
+                    // The voice for this sentence's language; a voice that reads both (Supertonic) can stand in.
+                    val voice = listOf(if (lang == "hi") hi else en, if (lang == "hi") en else hi).firstOrNull { usable(it) && it!!.reads(lang) }
+                        ?: (if (lang == "hi") hi else en)?.takeIf { usable(it) } ?: (if (lang == "hi") en else hi)?.takeIf { usable(it) }
+                    if (voice?.engine == "system") { queue.send(Chunk(i, sentence, null, 0, lang, voice.id)); continue }
                     val engine = voice?.let { tts.get(it.pack) }
                     if (voice == null || engine == null) { queue.send(Chunk(i, sentence, null, 0, lang)); continue }
-                    val speed = _state.value.speed
-                    val modelSpeed = minOf(speed, NATURAL_SPEED)
-                    val sid = voice.sid.coerceIn(0, maxOf(0, engine.numSpeakers() - 1))
-                    // Kokoro must be told the language per call, or espeak reads Hindi with English rules.
-                    val audio = runCatching {
-                        if (voice.engine == "kokoro") engine.generateWithConfig(sentence, com.k2fsa.sherpa.onnx.GenerationConfig(speed = modelSpeed, sid = sid, extra = mapOf("lang" to (if (lang == "hi") "hi" else "en-us"))))
-                        else engine.generate(sentence, sid = sid, speed = modelSpeed)
-                    }.getOrNull()
+                    val modelSpeed = minOf(_state.value.speed, NATURAL_SPEED)
+                    val audio = runCatching { synth(engine, voice, sentence, modelSpeed, lang) }.getOrNull()
                     queue.send(Chunk(i, sentence, audio?.samples, audio?.sampleRate ?: 0, lang))
                 }
             }
@@ -193,7 +244,7 @@ class Speaker(
         for (chunk in queue) {
             ensureActive()
             _state.update { it.copy(index = chunk.item, sentence = chunk.text) }
-            if (chunk.samples == null || chunk.samples.isEmpty()) { speakOneSystem(chunk.text, chunk.lang); continue }
+            if (chunk.samples == null || chunk.samples.isEmpty()) { speakOneSystem(chunk.text, chunk.lang, chunk.systemVoice); continue }
             val t = trackFor(chunk.rate)
             applyStretch(_state.value.speed)
             var off = 0
@@ -205,8 +256,9 @@ class Speaker(
                 t.write(chunk.samples, off, n, AudioTrack.WRITE_BLOCKING)
                 off += n
             }
-            // A short breath between sentences.
-            t.write(FloatArray(chunk.rate / 12), 0, chunk.rate / 12, AudioTrack.WRITE_BLOCKING)
+            // A breath between sentences (length set in settings).
+            val gap = (chunk.rate * settings.value.readPauseMs / 1000).coerceAtLeast(0)
+            if (gap > 0) t.write(FloatArray(gap), 0, gap, AudioTrack.WRITE_BLOCKING)
         }
         // Let the last sentence play out.
         track?.let { t ->
@@ -226,6 +278,12 @@ class Speaker(
             .setBufferSizeInBytes(maxOf(AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT) * MAX_SPEED.toInt(), rate * 4))
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
+        // Earphones first, explicitly: some phones keep speech on the speaker after a call-route change.
+        headphoneOutput()?.let { runCatching { t.setPreferredDevice(it) } }
+        boost?.release()
+        boost = settings.value.readBoostDb.takeIf { it > 0 }?.let { db ->
+            runCatching { android.media.audiofx.LoudnessEnhancer(t.audioSessionId).apply { setTargetGain(db * 100); enabled = true } }.getOrNull()
+        }
         t.play()
         track = t
         trackRate = rate
@@ -246,12 +304,16 @@ class Speaker(
 
     // ── Android's built-in voices, the fallback ──
 
-    private suspend fun ensureSystem(): TextToSpeech? {
-        system?.let { if (systemReady.await()) return it }
+    /** The phone's TTS, from a given engine app (Google, Samsung, …) or the default one. */
+    private suspend fun ensureSystem(pkg: String? = null): TextToSpeech? {
+        system?.let { if (systemPkg == pkg && systemReady.await()) return it }
+        system?.shutdown()
         val ready = CompletableDeferred<Boolean>()
         systemReady = ready
-        val engine = withContext(Dispatchers.Main) { TextToSpeech(context) { status -> ready.complete(status == TextToSpeech.SUCCESS) } }
+        val listener = TextToSpeech.OnInitListener { status -> ready.complete(status == TextToSpeech.SUCCESS) }
+        val engine = withContext(Dispatchers.Main) { if (pkg != null) TextToSpeech(context, listener, pkg) else TextToSpeech(context, listener) }
         system = engine
+        systemPkg = pkg
         return if (ready.await()) engine else null
     }
 
@@ -262,15 +324,21 @@ class Speaker(
             for (sentence in Speakable.sentences(items[i])) {
                 while (paused) { delay(100) }
                 _state.update { it.copy(index = i, sentence = sentence) }
-                speakOneSystem(sentence, Speakable.language(sentence))
+                val lang = Speakable.language(sentence)
+                speakOneSystem(sentence, lang, (if (lang == "hi") settings.value.voiceHindi else settings.value.voiceEnglish).takeIf { it.startsWith("sys:") })
             }
         }
     }
 
-    private suspend fun speakOneSystem(text: String, lang: String) {
-        val engine = ensureSystem() ?: return
-        engine.language = if (lang == "hi") Locale("hi", "IN") else Locale("en", "IN")
+    private suspend fun speakOneSystem(text: String, lang: String, voiceId: String? = null) {
+        val parts = voiceId?.split(':', limit = 3)
+        val engine = ensureSystem(parts?.getOrNull(1)) ?: return
+        val voice = parts?.getOrNull(2)?.let { name -> runCatching { engine.voices?.firstOrNull { it.name == name } }.getOrNull() }
+        if (voice != null) engine.voice = voice else engine.language = if (lang == "hi") Locale("hi", "IN") else Locale("en", "IN")
         engine.setSpeechRate(_state.value.speed.coerceAtMost(6f))
+        engine.setPitch(settings.value.readPitch)
+        // Plays in the earphones when connected, like everything else read aloud.
+        engine.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
         val done = CompletableDeferred<Unit>()
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {}
@@ -294,7 +362,8 @@ class Speaker(
     private fun requestFocus() {
         // Short announcements duck other audio; longer reads pause it, so music doesn't play under speech.
         val long = _state.value.items.sumOf { it.length } > 280
-        val req = AudioFocusRequest.Builder(if (long) AudioManager.AUDIOFOCUS_GAIN_TRANSIENT else AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+        val pauseOthers = when (settings.value.readFocus) { "duck" -> false; "pause" -> true; else -> long }
+        val req = AudioFocusRequest.Builder(if (pauseOthers) AudioManager.AUDIOFOCUS_GAIN_TRANSIENT else AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
             .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
             .setOnAudioFocusChangeListener(focusListener)
             .build()
@@ -310,12 +379,13 @@ class Speaker(
      */
     suspend fun measure(voiceId: String): Double? = withContext(Dispatchers.Default) {
         val v = VoiceCatalog.get(voiceId) ?: return@withContext null
+        if (v.engine == "system") return@withContext null
         val engine = tts.get(v.pack) ?: return@withContext null
-        val text = if (v.lang == "hi") "नमस्ते, आज आपके तीन काम बाकी हैं और शाम पाँच बजे एक मीटिंग है।" else "Good morning. You have three tasks today, and a meeting with Priya at five in the evening."
-        engine.generate("Warm up.", v.sid, 1f)
+        val lang = if (v.reads("en")) "en" else "hi"
+        val text = if (lang == "hi") "नमस्ते, आज आपके तीन काम बाकी हैं और शाम पाँच बजे एक मीटिंग है।" else "Good morning. You have three tasks today, and a meeting with Priya at five in the evening."
+        synth(engine, v, "Warm up.", 1f, lang)
         val t0 = System.nanoTime()
-        val audio = if (v.engine == "kokoro") engine.generateWithConfig(text, com.k2fsa.sherpa.onnx.GenerationConfig(speed = 1f, sid = v.sid, extra = mapOf("lang" to (if (v.lang == "hi") "hi" else "en-us"))))
-        else engine.generate(text, v.sid, 1f)
+        val audio = synth(engine, v, text, 1f, lang)
         val secs = (System.nanoTime() - t0) / 1e9
         (audio.samples.size.toDouble() / audio.sampleRate) / secs.coerceAtLeast(0.01)
     }
@@ -324,15 +394,24 @@ class Speaker(
     fun preview(voiceId: String) {
         val v = VoiceCatalog.get(voiceId) ?: return
         previewVoice = voiceId
-        speak("Voice preview", if (v.lang == "hi") "नमस्ते! मैं आपकी याददाश्त हूँ। आज के काम पढ़कर सुनाऊँ?" else "Hi! I'm your second brain. Want me to read today's tasks?")
+        val hi = "नमस्ते! मैं आपकी याददाश्त हूँ। आज के काम पढ़कर सुनाऊँ?"
+        val en = "Hi! I'm your second brain. Want me to read today's tasks?"
+        speak("Voice preview", if (v.reads("en") && v.reads("hi")) listOf(en, hi) else listOf(if (v.lang == "hi") hi else en))
     }
 
     /** A voice being previewed, used instead of the chosen one for that language until reading ends. */
     @Volatile private var previewVoice: String? = null
 
-    fun headphonesConnected(): Boolean = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
-        it.type in setOf(android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-            android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET, android.media.AudioDeviceInfo.TYPE_BLE_HEADSET, android.media.AudioDeviceInfo.TYPE_USB_HEADSET)
+    fun headphonesConnected(): Boolean = headphoneOutput() != null
+
+    /** The connected earphones/headphones to play on, best first (Bluetooth media, LE audio, wired, USB). */
+    fun headphoneOutput(): android.media.AudioDeviceInfo? {
+        val order = listOf(android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, android.media.AudioDeviceInfo.TYPE_BLE_HEADSET, android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+            android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET, android.media.AudioDeviceInfo.TYPE_USB_HEADSET, android.media.AudioDeviceInfo.TYPE_HEARING_AID)
+        val outs = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        return order.firstNotNullOfOrNull { type -> outs.firstOrNull { it.type == type } }
+            // Earbuds connected for calls only still count: we play there through the call route.
+            ?: outs.firstOrNull { it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO && Recorder.isRunning() }
     }
 
     companion object {
