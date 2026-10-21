@@ -1,0 +1,13 @@
+<resources>
+    <style name="Theme.EchoMind" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+    <style name="Theme.EchoMind.Invisible" parent="android:Theme.Translucent.NoTitleBar">
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
+    <color name="bg">#FBF8F4</color>
+    <color name="brand">#3D4A9E</color>
+</resources>

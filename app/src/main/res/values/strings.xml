@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">EchoMind</string>
+    <string name="widget_description">Listening status and your next reminder</string>
+    <string name="shortcut_ask">Ask</string>
+    <string name="shortcut_listen">Start listening</string>
+    <string name="shortcut_note">New note</string>
+</resources>

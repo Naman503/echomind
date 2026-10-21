@@ -1,0 +1,217 @@
+package app.echomind.data
+
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Transaction
+import androidx.room.Update
+import androidx.room.Upsert
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface AudioDao {
+    @Insert suspend fun insert(item: AudioItem): Long
+    @Update suspend fun update(item: AudioItem)
+    @Query("SELECT * FROM audio WHERE id = :id") suspend fun get(id: Long): AudioItem?
+
+    /** Oldest first, so conversations are built in the order life happened. */
+    @Query("SELECT * FROM audio WHERE state IN ('pending','working') AND attempts < 6 AND retryAt <= :now ORDER BY startedAt LIMIT 1")
+    suspend fun next(now: Long = System.currentTimeMillis()): AudioItem?
+
+    @Query("SELECT COUNT(*) FROM audio WHERE state IN ('pending','working') AND attempts < 6 AND retryAt <= :now")
+    suspend fun dueCount(now: Long = System.currentTimeMillis()): Int
+
+    @Query("SELECT COUNT(*) FROM audio WHERE state IN ('pending','working') AND attempts < 6")
+    fun pendingCount(): Flow<Int>
+
+    @Query("SELECT COALESCE(SUM(durationMs - progressMs), 0) FROM audio WHERE state IN ('pending','working') AND attempts < 6")
+    fun pendingMs(): Flow<Long>
+
+    @Query("SELECT MIN(startedAt) FROM audio WHERE state IN ('pending','working') AND attempts < 6")
+    suspend fun oldestPendingStart(): Long?
+
+    @Query("SELECT MIN(startedAt) FROM audio WHERE source = 'mic' AND state IN ('pending','working') AND attempts < 6")
+    suspend fun oldestPendingMicStart(): Long?
+
+    @Query("UPDATE audio SET progressMs = :ms WHERE id = :id") suspend fun setProgress(id: Long, ms: Long)
+    @Query("UPDATE audio SET state = 'pending' WHERE state = 'working'") suspend fun resetWorking()
+    @Query("SELECT EXISTS(SELECT 1 FROM audio WHERE mediaId = :mediaId)") suspend fun hasMedia(mediaId: Long): Boolean
+    @Query("SELECT EXISTS(SELECT 1 FROM audio WHERE path = :path)") suspend fun hasPath(path: String): Boolean
+    @Query("SELECT path FROM audio WHERE state IN ('pending','working')") suspend fun livePaths(): List<String>
+    @Query("SELECT * FROM audio WHERE state = 'done' AND endedAt < :before AND path != ''") suspend fun doneBefore(before: Long): List<AudioItem>
+    @Query("DELETE FROM audio WHERE state IN ('done','skipped') AND endedAt < :before") suspend fun pruneDone(before: Long)
+    @Query("SELECT * FROM audio WHERE state = 'failed' ORDER BY startedAt DESC LIMIT 50") fun failed(): Flow<List<AudioItem>>
+    @Query("UPDATE audio SET state = 'pending', attempts = 0, retryAt = 0, error = NULL WHERE state = 'failed'") suspend fun retryFailed()
+    @Query("SELECT * FROM audio WHERE startedAt < :to AND endedAt > :from") suspend fun overlapping(from: Long, to: Long): List<AudioItem>
+    @Delete suspend fun delete(item: AudioItem)
+}
+
+@Dao
+interface GapDao {
+    @Insert suspend fun insert(gap: Gap): Long
+    @Query("SELECT * FROM gaps WHERE endAt > :from AND startAt < :to ORDER BY startAt") fun inRange(from: Long, to: Long): Flow<List<Gap>>
+    @Query("SELECT * FROM gaps WHERE endAt > :from AND startAt < :to ORDER BY startAt") suspend fun inRangeOnce(from: Long, to: Long): List<Gap>
+}
+
+data class SpeakerCount(val speaker: String?, val n: Int)
+
+@Dao
+interface UtteranceDao {
+    @Insert suspend fun insertAll(items: List<Utterance>): List<Long>
+    @Insert suspend fun insert(item: Utterance): Long
+    @Update suspend fun update(item: Utterance)
+    @Query("SELECT * FROM utterances WHERE id = :id") suspend fun get(id: Long): Utterance?
+    @Query("SELECT * FROM utterances WHERE id IN (:ids) ORDER BY startAt") suspend fun byIds(ids: List<Long>): List<Utterance>
+    @Query("SELECT * FROM utterances WHERE conversationId = :id ORDER BY startAt") suspend fun forConversation(id: Long): List<Utterance>
+    @Query("SELECT * FROM utterances WHERE conversationId = :id ORDER BY startAt") fun observeConversation(id: Long): Flow<List<Utterance>>
+    @Query("SELECT * FROM utterances WHERE conversationId IS NULL ORDER BY startAt LIMIT 2000") suspend fun unassigned(): List<Utterance>
+    @Query("UPDATE utterances SET conversationId = :conversationId WHERE id IN (:ids)") suspend fun assign(ids: List<Long>, conversationId: Long)
+    @Query("SELECT * FROM utterances WHERE startAt >= :from AND startAt < :to ORDER BY startAt") suspend fun range(from: Long, to: Long): List<Utterance>
+    @Query("SELECT * FROM utterances ORDER BY startAt DESC LIMIT :n") fun latest(n: Int): Flow<List<Utterance>>
+    @Query("SELECT * FROM utterances WHERE id > :after ORDER BY id LIMIT :n") suspend fun after(after: Long, n: Int): List<Utterance>
+    @Query("SELECT MAX(id) FROM utterances") suspend fun maxId(): Long?
+    @Query("SELECT * FROM utterances WHERE startAt >= :from AND startAt < :to AND conversationId = :conversationId ORDER BY startAt") suspend fun around(conversationId: Long, from: Long, to: Long): List<Utterance>
+
+    /** Full-text search over the original words and their transliterated form. */
+    @Query(
+        """SELECT u.* FROM utterances u JOIN utterances_fts f ON u.id = f.rowid
+           WHERE utterances_fts MATCH :query AND u.startAt >= :from AND u.startAt < :to
+           ORDER BY u.startAt DESC LIMIT :limit""",
+    )
+    suspend fun search(query: String, from: Long = 0, to: Long = Long.MAX_VALUE, limit: Int = 60): List<Utterance>
+
+    @Query("SELECT speaker, COUNT(*) AS n FROM utterances WHERE conversationId = :id GROUP BY speaker") suspend fun speakers(id: Long): List<SpeakerCount>
+    @Query("UPDATE utterances SET speaker = :name WHERE conversationId = :conversationId AND speaker = :from") suspend fun renameSpeaker(conversationId: Long, from: String, name: String)
+    @Query("DELETE FROM utterances WHERE startAt >= :from") suspend fun deleteSince(from: Long): Int
+    @Query("DELETE FROM utterances WHERE conversationId = :id") suspend fun deleteForConversation(id: Long)
+    @Query("SELECT COUNT(*) FROM utterances") fun count(): Flow<Int>
+}
+
+@Dao
+interface ConversationDao {
+    @Insert suspend fun insert(c: Conversation): Long
+    @Update suspend fun update(c: Conversation)
+    @Query("SELECT * FROM conversations WHERE id = :id") suspend fun get(id: Long): Conversation?
+    @Query("SELECT * FROM conversations WHERE id = :id") fun observe(id: Long): Flow<Conversation?>
+    @Query("SELECT * FROM conversations WHERE id IN (:ids)") suspend fun byIds(ids: List<Long>): List<Conversation>
+    @Query("SELECT * FROM conversations WHERE startAt >= :from AND startAt < :to ORDER BY startAt DESC") fun inRange(from: Long, to: Long): Flow<List<Conversation>>
+    @Query("SELECT * FROM conversations WHERE startAt >= :from AND startAt < :to AND ignored = 0 ORDER BY startAt") suspend fun inRangeOnce(from: Long, to: Long): List<Conversation>
+    @Query("SELECT * FROM conversations ORDER BY startAt DESC LIMIT :n") fun recent(n: Int): Flow<List<Conversation>>
+
+    /** The mic conversation still collecting lines, if any. */
+    @Query("SELECT * FROM conversations WHERE state = 'open' AND source = :source ORDER BY endAt DESC LIMIT 1") suspend fun openFor(source: String): Conversation?
+    @Query("SELECT * FROM conversations WHERE state = 'open'") suspend fun allOpen(): List<Conversation>
+    @Query("SELECT * FROM conversations WHERE state IN ('ready','working') AND ignored = 0 AND attempts < 3 ORDER BY startAt LIMIT :n") suspend fun ready(n: Int): List<Conversation>
+    @Query("SELECT COUNT(*) FROM conversations WHERE state IN ('ready','working') AND ignored = 0 AND attempts < 3") fun readyCount(): Flow<Int>
+    @Query("SELECT COALESCE(SUM(words), 0) FROM conversations WHERE state IN ('ready','working') AND ignored = 0 AND attempts < 3") suspend fun readyWords(): Int
+    @Query("UPDATE conversations SET state = 'ready' WHERE state = 'working'") suspend fun resetWorking()
+    @Query("SELECT * FROM conversations WHERE state = 'done' AND ignored = 0 AND startAt >= :from AND startAt < :to ORDER BY startAt DESC LIMIT :n")
+    suspend fun doneBefore(from: Long, to: Long, n: Int): List<Conversation>
+    @Query("DELETE FROM conversations WHERE id = :id") suspend fun delete(id: Long)
+}
+
+@Dao
+interface MemoryDao {
+    @Insert suspend fun insertEntity(e: EntityRow): Long
+    @Update suspend fun updateEntity(e: EntityRow)
+    @Query("SELECT * FROM entities WHERE id = :id") suspend fun entity(id: Long): EntityRow?
+    @Query("SELECT * FROM entities WHERE id = :id") fun observeEntity(id: Long): Flow<EntityRow?>
+    @Query("SELECT * FROM entities ORDER BY pinned DESC, importance DESC, lastSeenAt DESC") fun observeEntities(): Flow<List<EntityRow>>
+    @Query("SELECT * FROM entities") suspend fun allEntities(): List<EntityRow>
+    @Query("SELECT * FROM entities WHERE kind = 'person' ORDER BY lastSeenAt DESC LIMIT :n") suspend fun recentPeople(n: Int): List<EntityRow>
+    @Query("DELETE FROM entities WHERE id = :id") suspend fun deleteEntity(id: Long)
+
+    @Insert suspend fun insertFact(f: Fact): Long
+    @Update suspend fun updateFact(f: Fact)
+    @Query("SELECT * FROM facts WHERE id = :id") suspend fun fact(id: Long): Fact?
+    @Query("SELECT * FROM facts WHERE status = 'active' ORDER BY pinned DESC, importance DESC, updatedAt DESC") fun observeActiveFacts(): Flow<List<Fact>>
+    @Query("SELECT * FROM facts WHERE status = 'active'") suspend fun activeFacts(): List<Fact>
+    @Query("SELECT * FROM facts WHERE entityId = :entityId ORDER BY status = 'active' DESC, updatedAt DESC") fun observeFactsFor(entityId: Long): Flow<List<Fact>>
+    @Query("SELECT * FROM facts WHERE status != 'active' ORDER BY updatedAt DESC LIMIT 40") fun observeFormerFacts(): Flow<List<Fact>>
+    @Query("SELECT * FROM facts WHERE id IN (:ids)") suspend fun factsByIds(ids: List<Long>): List<Fact>
+    @Query("DELETE FROM facts WHERE id = :id") suspend fun deleteFact(id: Long)
+
+    @Query("SELECT value FROM kv WHERE `key` = :key") suspend fun kv(key: String): String?
+    @Query("SELECT value FROM kv WHERE `key` = :key") fun observeKv(key: String): Flow<String?>
+    @Upsert suspend fun putKv(kv: Kv)
+}
+
+@Dao
+interface NoteDao {
+    @Insert suspend fun insert(n: Note): Long
+    @Update suspend fun update(n: Note)
+    @Query("SELECT * FROM notes WHERE id = :id") suspend fun get(id: Long): Note?
+    @Query("SELECT * FROM notes WHERE id = :id") fun observe(id: Long): Flow<Note?>
+    @Query("SELECT * FROM notes ORDER BY pinned DESC, updatedAt DESC") fun observeAll(): Flow<List<Note>>
+    @Query("SELECT * FROM notes") suspend fun all(): List<Note>
+    @Query("SELECT n.* FROM notes n JOIN notes_fts f ON n.id = f.rowid WHERE notes_fts MATCH :query LIMIT :limit") suspend fun search(query: String, limit: Int = 20): List<Note>
+    @Query("DELETE FROM notes WHERE id = :id") suspend fun delete(id: Long)
+
+    @Insert suspend fun insertRevision(r: NoteRevision): Long
+    @Query("SELECT * FROM note_revisions WHERE noteId = :noteId ORDER BY version DESC") fun observeRevisions(noteId: Long): Flow<List<NoteRevision>>
+    @Query("SELECT * FROM note_revisions WHERE conversationId = :conversationId") suspend fun revisionsFrom(conversationId: Long): List<NoteRevision>
+}
+
+@Dao
+interface TaskDao {
+    @Insert suspend fun insert(t: TaskRow): Long
+    @Update suspend fun update(t: TaskRow)
+    @Query("SELECT * FROM tasks WHERE id = :id") suspend fun get(id: Long): TaskRow?
+    @Query("SELECT * FROM tasks WHERE status = :status ORDER BY CASE WHEN dueAt IS NULL THEN 1 ELSE 0 END, dueAt, createdAt DESC") fun observeByStatus(status: String): Flow<List<TaskRow>>
+    @Query("SELECT * FROM tasks WHERE status = 'done' ORDER BY completedAt DESC LIMIT 100") fun observeDone(): Flow<List<TaskRow>>
+    @Query("SELECT * FROM tasks WHERE status IN ('open','suggested')") suspend fun live(): List<TaskRow>
+    @Query("SELECT * FROM tasks WHERE status = 'open' AND remindAt IS NOT NULL AND remindAt > :now ORDER BY remindAt") suspend fun upcomingReminders(now: Long): List<TaskRow>
+    @Query("SELECT * FROM tasks WHERE status = 'open' AND remindAt IS NOT NULL AND remindAt > :now ORDER BY remindAt LIMIT :n") fun observeUpcoming(now: Long, n: Int): Flow<List<TaskRow>>
+    @Query("SELECT COUNT(*) FROM tasks WHERE status = 'suggested'") fun suggestedCount(): Flow<Int>
+    @Query("SELECT * FROM tasks WHERE conversationId = :id") fun observeForConversation(id: Long): Flow<List<TaskRow>>
+    @Query("SELECT * FROM tasks WHERE createdAt >= :from AND createdAt < :to") suspend fun createdIn(from: Long, to: Long): List<TaskRow>
+    @Query("SELECT * FROM tasks WHERE completedAt >= :from AND completedAt < :to") suspend fun completedIn(from: Long, to: Long): List<TaskRow>
+    @Query("UPDATE tasks SET status = 'dismissed', dismissReason = 'expired', updatedAt = :now WHERE status = 'suggested' AND createdAt < :before")
+    suspend fun expireSuggestions(before: Long, now: Long): Int
+    @Query("DELETE FROM tasks WHERE id = :id") suspend fun delete(id: Long)
+}
+
+@Dao
+interface DayDao {
+    @Upsert suspend fun upsert(d: DayEntry)
+    @Query("SELECT * FROM days WHERE day = :day") suspend fun get(day: String): DayEntry?
+    @Query("SELECT * FROM days WHERE day = :day") fun observe(day: String): Flow<DayEntry?>
+    @Query("SELECT * FROM days ORDER BY day DESC LIMIT :n") fun observeRecent(n: Int): Flow<List<DayEntry>>
+    @Query("SELECT * FROM days WHERE day >= :from ORDER BY day") suspend fun since(from: String): List<DayEntry>
+}
+
+@Dao
+interface ChatDao {
+    @Insert suspend fun insertThread(t: ChatThread): Long
+    @Update suspend fun updateThread(t: ChatThread)
+    @Query("SELECT * FROM chat_threads ORDER BY updatedAt DESC") fun observeThreads(): Flow<List<ChatThread>>
+    @Query("SELECT * FROM chat_threads WHERE id = :id") suspend fun thread(id: Long): ChatThread?
+    @Insert suspend fun insertMessage(m: ChatMessage): Long
+    @Update suspend fun updateMessage(m: ChatMessage)
+    @Query("SELECT * FROM chat_messages WHERE threadId = :threadId ORDER BY createdAt") fun observeMessages(threadId: Long): Flow<List<ChatMessage>>
+    @Query("SELECT * FROM chat_messages WHERE threadId = :threadId ORDER BY createdAt") suspend fun messages(threadId: Long): List<ChatMessage>
+    @Query("DELETE FROM chat_threads WHERE id = :id") suspend fun deleteThread(id: Long)
+    @Query("DELETE FROM chat_messages WHERE threadId = :id") suspend fun deleteMessages(id: Long)
+}
+
+@Dao
+interface VectorDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun put(v: VectorRow)
+    @Query("SELECT * FROM vectors WHERE kind = :kind") suspend fun all(kind: String): List<VectorRow>
+    @Query("SELECT * FROM vectors WHERE kind = :kind AND ownerId IN (:ids)") suspend fun forOwners(kind: String, ids: List<Long>): List<VectorRow>
+    @Query("SELECT EXISTS(SELECT 1 FROM vectors WHERE kind = :kind AND ownerId = :ownerId)") suspend fun has(kind: String, ownerId: Long): Boolean
+    @Query("DELETE FROM vectors WHERE kind = :kind AND ownerId = :ownerId") suspend fun delete(kind: String, ownerId: Long)
+    @Query("DELETE FROM vectors WHERE model != :model") suspend fun deleteOtherModels(model: String)
+    @Query("SELECT COUNT(*) FROM vectors") fun count(): Flow<Int>
+}
+
+@Dao
+interface EgressDao {
+    @Insert suspend fun insert(e: Egress): Long
+    @Query("SELECT * FROM egress ORDER BY at DESC LIMIT 300") fun observeRecent(): Flow<List<Egress>>
+    @Query("SELECT COUNT(*) FROM egress WHERE at >= :from") fun countSince(from: Long): Flow<Int>
+    @Query("SELECT COALESCE(SUM(bytes), 0) FROM egress WHERE at >= :from") fun bytesSince(from: Long): Flow<Long>
+    @Query("DELETE FROM egress") suspend fun clear()
+}
