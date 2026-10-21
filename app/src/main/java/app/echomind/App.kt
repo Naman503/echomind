@@ -60,12 +60,16 @@ class Graph(val app: Application) {
     val notifier = Notifier(app)
     val reminders = ReminderAlarms(app)
 
-    val androidSpeech = AndroidSpeech(app)
+    private val feedSpeed = { when (settings.value.speechSpeed) { "accurate" -> 1.0; "fast" -> 3.0; else -> 1.5 } }
+    private val singleLanguage = { settings.value.languageMode == "single" }
+    val androidSpeech = AndroidSpeech(app, speed = feedSpeed, singleLanguage = singleLanguage)
     val speechPacks = SpeechPacks(androidSpeech, scope)
     val sherpa = SherpaSpeech(models, { settings.value.sherpaModel }, { governor.threads() })
     val voice = VoiceId(app, models)
     private val speechEngines = mapOf(
         "android" to androidSpeech,
+        // Server-side: real time is the natural pace for it.
+        "google_online" to AndroidSpeech(app, online = true, speed = { 1.0 }, singleLanguage = singleLanguage),
         "sherpa" to sherpa,
         "sarvam" to SarvamSpeech(cloud, secrets) { Feature.TRANSCRIBE },
         "elevenlabs" to ElevenLabsSpeech(cloud, secrets) { Feature.TRANSCRIBE },

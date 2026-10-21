@@ -19,6 +19,8 @@ data class SpeechRequest(
     /** BCP-47, most likely first (e.g. en-IN, hi-IN). */
     val languages: List<String>,
     val isCall: Boolean = false,
+    /** Names and words to favour (people, projects), for recognisers that support biasing. */
+    val hints: List<String> = emptyList(),
 )
 
 interface SpeechEngine {

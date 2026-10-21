@@ -21,7 +21,8 @@ object SpeechFinder {
     private const val FRAME_MS = 30
     private const val FRAME_SAMPLES = Wav.SAMPLE_RATE * FRAME_MS / 1000
     private const val MIN_GAP_MS = 700
-    private const val PAD_MS = 250
+    // Generous padding: recognisers need a little silence on both sides to place word boundaries.
+    private const val PAD_MS = 400
     private const val MIN_SPEECH_MS = 240
     /** A pause this long starts a new piece even if the current one has room. */
     private const val SPLIT_GAP_MS = 2_500

@@ -162,7 +162,7 @@ class CaptureService : Service() {
             return
         }
         if (!Recorder.isRunning()) {
-            val ok = Recorder.start(this, g.capture.windowsDir, s.windowMinutes * 60_000L, s.inputDeviceId)
+            val ok = Recorder.start(this, g.capture.windowsDir, s.windowMinutes * 60_000L, s.inputDeviceId, boost = s.boostQuietSpeech)
             if (!ok) {
                 g.notifier.attention("Microphone unavailable", "EchoMind couldn't open the microphone. Another app may be using it, or the permission was removed.", "settings")
                 publish(CaptureController.Mode.OFF)

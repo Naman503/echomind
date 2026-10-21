@@ -168,25 +168,36 @@ fun CloudBanner() {
     }
 }
 
-/** Live input level, as calm bars. Only subscribes while on screen. */
+/**
+ * Live input level as calm bars. The newest level enters on the right and
+ * scrolls left. The bars are drawn from a frame counter read inside the draw
+ * phase, so each new level redraws only this canvas — no recomposition, and
+ * nothing at all while the meter is off screen.
+ */
 @Composable
 fun LevelMeter(modifier: Modifier = Modifier, active: Boolean, color: Color = LocalSemantic.current.recording) {
-    val level by Recorder.level.collectAsStateWithLifecycle()
-    val history = remember { FloatArray(24) }
-    if (active) {
-        System.arraycopy(history, 1, history, 0, history.size - 1)
-        history[history.size - 1] = level
+    val history = remember { FloatArray(28) }
+    val frame = remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    androidx.compose.runtime.LaunchedEffect(active) {
+        if (!active) { history.fill(0f); frame.intValue++; return@LaunchedEffect }
+        Recorder.level.collect { v ->
+            System.arraycopy(history, 1, history, 0, history.size - 1)
+            // Expand the useful middle of the range so normal speech fills the bar.
+            history[history.size - 1] = ((v - 0.25f) / 0.55f).coerceIn(0f, 1f)
+            frame.intValue++
+        }
     }
     val idle = MaterialTheme.colorScheme.outlineVariant
-    Canvas(modifier.height(28.dp)) {
+    Canvas(modifier.height(32.dp)) {
+        @Suppress("UNUSED_VARIABLE") val f = frame.intValue // subscribe the draw phase to new levels
         val n = history.size
         val gap = 3.dp.toPx()
         val w = (size.width - gap * (n - 1)) / n
         for (i in 0 until n) {
-            val v = if (active) history[i] else 0.06f
-            val h = max(3.dp.toPx(), size.height * v)
+            val v = if (active) history[i] else 0f
+            val h = max(4.dp.toPx(), size.height * (0.08f + 0.92f * v))
             drawRoundRect(
-                color = if (active) color.copy(alpha = 0.35f + 0.65f * v) else idle,
+                color = if (active && v > 0.02f) color.copy(alpha = 0.35f + 0.65f * v) else idle,
                 topLeft = Offset(i * (w + gap), (size.height - h) / 2),
                 size = Size(w, h),
                 cornerRadius = CornerRadius(w / 2),

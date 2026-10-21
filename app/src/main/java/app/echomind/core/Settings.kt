@@ -43,6 +43,12 @@ data class Settings(
 
     // Speech
     val speechLanguages: List<String> = listOf("en-IN", "hi-IN"),
+    /** accurate (1×) | balanced (1.5×) | fast (3×): how fast audio is fed to Google's recogniser. */
+    val speechSpeed: String = "balanced",
+    /** switch = detect and switch between the chosen languages; single = only the first one (most accurate). */
+    val languageMode: String = "switch",
+    /** Automatic gain control on the microphone, so quiet or distant speech is heard. */
+    val boostQuietSpeech: Boolean = true,
     /** Which open model the on-device "sherpa" engine uses. */
     val sherpaModel: String = "whisper-small",
     /** Enrolled "me" voice is used to label lines (needs the speaker pack). */

@@ -96,7 +96,9 @@ object Recorder {
      * @return false if the microphone could not be opened.
      */
     @SuppressLint("MissingPermission")
-    fun start(context: Context, dir: File, windowMs: Long, deviceId: Int, source: Int = MediaRecorder.AudioSource.VOICE_RECOGNITION): Boolean {
+    private var agc: android.media.audiofx.AutomaticGainControl? = null
+
+    fun start(context: Context, dir: File, windowMs: Long, deviceId: Int, source: Int = MediaRecorder.AudioSource.VOICE_RECOGNITION, boost: Boolean = true): Boolean {
         synchronized(lock) {
             if (running) return true
             dir.mkdirs()
@@ -126,6 +128,12 @@ object Recorder {
                 return false
             }
             if (dev != null) record.setPreferredDevice(dev)
+            // The recognition source is deliberately unprocessed; for a phone on a desk or in a
+            // pocket, gain control lifts distant and quiet speech to a level recognisers handle well.
+            agc?.release(); agc = null
+            if (boost && android.media.audiofx.AutomaticGainControl.isAvailable()) {
+                agc = runCatching { android.media.audiofx.AutomaticGainControl.create(record.audioSessionId)?.apply { enabled = true } }.getOrNull()
+            }
             device = dev?.let { AudioInputs.label(it) } ?: "Phone microphone"
             sessionId = record.audioSessionId
 
@@ -160,6 +168,7 @@ object Recorder {
         try { t.join(3_000) } catch (_: InterruptedException) {}
         thread = null
         releaseRoute()
+        agc?.release(); agc = null
         _level.value = 0f
         publish()
     }

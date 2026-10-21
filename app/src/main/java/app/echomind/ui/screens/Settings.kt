@@ -407,6 +407,26 @@ fun RecordingScreen() {
             }
         }
         item {
+            SectionHeader("Recognition quality")
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                listOf("accurate" to "Most accurate", "balanced" to "Balanced", "fast" to "Fastest").forEachIndexed { i, (k, l) ->
+                    SegmentedButton(s.speechSpeed == k, { update { it.copy(speechSpeed = k) } }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
+                }
+            }
+            Text(when (s.speechSpeed) {
+                "accurate" -> "Audio is fed to Google's recogniser at normal speed — closest to voice typing. Takes as long as the speech itself."
+                "fast" -> "3× speed: catches up quickly but Google's offline model misses more words."
+                else -> "1.5× speed: nearly full accuracy, catches up twice as fast as real time."
+            }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(Sp.s))
+            SwitchRow("Use only my first language", "More accurate when you mostly speak one language (Hindi mode still understands Hinglish). Off = switch automatically.", s.languageMode == "single") { v ->
+                update { it.copy(languageMode = if (v) "single" else "switch") }
+            }
+            SwitchRow("Boost quiet speech", "Gain control for a phone on the table or in a pocket", s.boostQuietSpeech) { v -> update { it.copy(boostQuietSpeech = v) } }
+            Text("Still not as good as voice typing? Voice typing uses Google's online model when you have internet. You can choose “Google online (like Gboard)” for speech in Privacy & providers — the audio then goes to Google. Speaking to the phone from further away also lowers accuracy.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        item {
             SectionHeader("Recording")
             var win by remember { mutableFloatStateOf(s.windowMinutes.toFloat()) }
             Text("Recording chunk: ${win.toInt()} min (shorter = notes sooner)", style = MaterialTheme.typography.bodyMedium)

@@ -21,6 +21,8 @@ object Providers {
         // Speech
         ProviderInfo("android", "Google on-device", Feature.Kind.SPEECH, true, "Only this phone",
             "Android's offline speech recogniser (the engine behind voice typing). Light and fast; Hindi + English packs."),
+        ProviderInfo("google_online", "Google online (like Gboard)", Feature.Kind.SPEECH, false, "Google",
+            "The same server recogniser Gboard voice typing uses when online — usually the most accurate Google option. Speech audio goes to Google."),
         ProviderInfo("sherpa", "Whisper / Parakeet on-device", Feature.Kind.SPEECH, true, "Only this phone",
             "Open models run by EchoMind itself (download once). Also labels who spoke when the voice pack is installed."),
         ProviderInfo("sarvam", "Sarvam AI", Feature.Kind.SPEECH, false, "Sarvam AI (servers in India)",

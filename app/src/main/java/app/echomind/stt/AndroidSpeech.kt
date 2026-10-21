@@ -32,24 +32,35 @@ import kotlin.coroutines.resume
  * transcription and a failed piece can simply be retried. Proven on the
  * iQOO Z7 Pro: feeding faster than ~3× real time makes the service drop words.
  */
-class AndroidSpeech(private val context: Context) : SpeechEngine {
-    override val id = "android"
+class AndroidSpeech(
+    private val context: Context,
+    /** Use Google's server recogniser (what Gboard uses online) instead of the offline one. */
+    private val online: Boolean = false,
+    private val speed: () -> Double = { SPEED },
+    private val singleLanguage: () -> Boolean = { false },
+) : SpeechEngine {
+    override val id = if (online) "google_online" else "android"
     override val maxPieceMs = 60_000L
 
     private val main = Handler(Looper.getMainLooper())
 
-    fun available(): Boolean = SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+    fun available(): Boolean = if (online) SpeechRecognizer.isRecognitionAvailable(context) else SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
 
-    private fun intentFor(languages: List<String>): Intent =
+    private fun create(): SpeechRecognizer = if (online) SpeechRecognizer.createSpeechRecognizer(context) else SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+
+    private fun intentFor(languages: List<String>, hints: List<String> = emptyList()): Intent =
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, languages.firstOrNull() ?: "en-IN")
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, !online)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            // Names it would otherwise mishear ("Priya", "Eazeebox").
+            if (hints.isNotEmpty()) putStringArrayListExtra(RecognizerIntent.EXTRA_BIASING_STRINGS, ArrayList(hints.take(100)))
             if (Build.VERSION.SDK_INT >= 34) {
                 putExtra(RecognizerIntent.EXTRA_REQUEST_WORD_TIMING, true)
                 putExtra(RecognizerIntent.EXTRA_ENABLE_FORMATTING, RecognizerIntent.FORMATTING_OPTIMIZE_QUALITY)
-                if (languages.size > 1) {
+                // Switching costs accuracy; with one language the model never second-guesses itself.
+                if (languages.size > 1 && !singleLanguage()) {
                     putExtra(RecognizerIntent.EXTRA_ENABLE_LANGUAGE_DETECTION, true)
                     putStringArrayListExtra(RecognizerIntent.EXTRA_LANGUAGE_DETECTION_ALLOWED_LANGUAGES, ArrayList(languages))
                     putExtra(RecognizerIntent.EXTRA_ENABLE_LANGUAGE_SWITCH, RecognizerIntent.LANGUAGE_SWITCH_BALANCED)
@@ -145,9 +156,10 @@ class AndroidSpeech(private val context: Context) : SpeechEngine {
 
     override suspend fun transcribe(req: SpeechRequest): List<SpokenLine> {
         if (!available()) throw SpeechException("unavailable", "On-device speech recognition is not available on this phone", retryable = false)
-        if (installed == null) runCatching { support(req.languages) }
+        if (!online && installed == null) runCatching { support(req.languages) }
         // Only ask for languages the phone can actually recognise offline.
-        val usable = installed?.let { inst -> req.languages.filter { l -> inst.any { it.equals(l, true) } } }.orEmpty().ifEmpty { req.languages }
+        val usable = (if (online) req.languages else installed?.let { inst -> req.languages.filter { l -> inst.any { it.equals(l, true) } } }.orEmpty().ifEmpty { req.languages })
+            .let { if (singleLanguage()) it.take(1) else it }
         val result = suspendCancellableCoroutine { cont ->
             run(req.copy(languages = usable)) { r -> if (cont.isActive) cont.resume(r) }
         }
@@ -167,7 +179,7 @@ class AndroidSpeech(private val context: Context) : SpeechEngine {
         var finished = false
 
         main.post {
-            val recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+            val recognizer = create()
             var timeout: Runnable? = null
 
             fun complete(result: Result<List<SpokenLine>>) {
@@ -231,7 +243,7 @@ class AndroidSpeech(private val context: Context) : SpeechEngine {
                 }
             })
 
-            val intent = intentFor(req.languages).apply {
+            val intent = intentFor(req.languages, req.hints).apply {
                 putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, readEnd)
                 putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1)
                 putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
@@ -239,7 +251,8 @@ class AndroidSpeech(private val context: Context) : SpeechEngine {
                 putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION, RecognizerIntent.EXTRA_AUDIO_SOURCE)
             }
             timeout = Runnable { complete(Result.failure(SpeechException("timeout", "recogniser did not finish in time"))) }
-            main.postDelayed(timeout!!, (pieceMs / SPEED).toLong() + pieceMs + 30_000)
+            val feed = speed()
+            main.postDelayed(timeout!!, (pieceMs / feed).toLong() + pieceMs + 30_000)
             try {
                 recognizer.startListening(intent)
             } catch (e: Exception) {
@@ -266,7 +279,7 @@ class AndroidSpeech(private val context: Context) : SpeechEngine {
                                 left -= n
                                 sentMs += n / Wav.BYTES_PER_MS.toDouble()
                                 fedMs.set(sentMs.toLong())
-                                val dueMs = sentMs / SPEED
+                                val dueMs = sentMs / feed
                                 val elapsedMs = (System.nanoTime() - began) / 1e6
                                 if (dueMs > elapsedMs) Thread.sleep((dueMs - elapsedMs).toLong())
                             }

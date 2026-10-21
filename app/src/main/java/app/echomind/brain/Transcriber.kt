@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
+import kotlinx.serialization.builtins.serializer
 
 /**
  * Works through recorded audio: finds the speech, transcribes it piece by
@@ -79,6 +80,18 @@ class Transcriber(
         return id to (engines[id] ?: android)
     }
 
+    private var hintCache: Pair<Long, List<String>> = 0L to emptyList()
+
+    /** Names of people, projects and places it knows, so the recogniser spells them right. Refreshed every 10 minutes. */
+    private suspend fun hints(): List<String> {
+        val now = System.currentTimeMillis()
+        if (now - hintCache.first < 10 * 60_000L) return hintCache.second
+        val names = db.memory().allEntities().sortedByDescending { it.mentions }.take(80).flatMap { e ->
+            listOf(e.name) + runCatching { app.echomind.util.Js.json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(String.serializer()), e.aliases) }.getOrDefault(emptyList<String>())
+        } + listOfNotNull(settings.value.userName.takeIf { it.isNotBlank() })
+        return names.map { it.trim() }.filter { it.length in 2..40 }.distinct().take(100).also { hintCache = now to it }
+    }
+
     private fun localFallback(primary: String): SpeechEngine? = when {
         primary != "android" && android.available() -> android
         primary != "sherpa" && sherpa.installedModel() != null -> sherpa
@@ -101,11 +114,12 @@ class Transcriber(
             return true
         }
         val langs = settings.value.speechLanguages.ifEmpty { listOf("en-IN") }
+        val hints = hints()
         var lastText: String? = null
         for ((i, piece) in pieces.withIndex()) {
             governor.awaitTurn()
             _status.value = _status.value.copy(active = true, source = item.source, contact = item.contact, engine = engineId, piece = i + 1, pieces = pieces.size, audioStartedAt = item.startedAt)
-            val req = SpeechRequest(file, piece.startMs, piece.endMs, langs, isCall = item.source == "call")
+            val req = SpeechRequest(file, piece.startMs, piece.endMs, langs, isCall = item.source == "call", hints = hints)
             val began = System.currentTimeMillis()
             val lines: List<SpokenLine> = try {
                 engine.transcribe(req)
