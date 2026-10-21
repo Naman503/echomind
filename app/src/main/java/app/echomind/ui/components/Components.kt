@@ -42,6 +42,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -199,8 +200,9 @@ fun SettingRow(
     title: String,
     subtitle: String? = null,
     icon: ImageVector? = null,
-    onClick: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
+    // Last, so a trailing lambda is always the tap action, never content run on every redraw.
+    onClick: (() -> Unit)? = null,
 ) {
     Row(
         Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
@@ -222,7 +224,7 @@ fun SettingRow(
 
 @Composable
 fun SwitchRow(title: String, subtitle: String? = null, checked: Boolean, icon: ImageVector? = null, onChange: (Boolean) -> Unit) {
-    SettingRow(title, subtitle, icon, onClick = { onChange(!checked) }) { Switch(checked = checked, onCheckedChange = onChange) }
+    SettingRow(title, subtitle, icon, trailing = { Switch(checked = checked, onCheckedChange = onChange) }, onClick = { onChange(!checked) })
 }
 
 @Composable
@@ -255,4 +257,16 @@ fun Tile(title: String, value: String, modifier: Modifier = Modifier, hint: Stri
             hint?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline) }
         }
     }
+}
+
+/**
+ * A counter that ticks every time the screen comes back to the foreground, so
+ * values Android changes behind our back (permissions, battery exemption,
+ * settings pages) are re-read instead of shown stale.
+ */
+@Composable
+fun rememberResumeTick(): Int {
+    var tick by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { tick++ }
+    return tick
 }

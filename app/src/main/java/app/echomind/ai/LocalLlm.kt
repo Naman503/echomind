@@ -167,6 +167,35 @@ class LocalLlm(
         }
     }.flowOn(Dispatchers.Default)
 
+    data class Bench(val model: String, val backend: String, val loadMs: Long, val firstTokenMs: Long, val chunksPerSec: Double)
+
+    /** Loads the model fresh and times a short answer, so CPU and GPU can be compared on this phone. */
+    suspend fun benchmark(): Bench = withContext(Dispatchers.Default) {
+        lock.withLock {
+            idleJob?.cancel()
+            engine?.close(); engine = null; loadedKey = null
+            try {
+                val t0 = System.currentTimeMillis()
+                val e = engine()
+                val loadMs = System.currentTimeMillis() - t0
+                val c = e.createConversation(ConversationConfig(samplerConfig = SamplerConfig(topK = 40, topP = 0.95, temperature = 0.3), maxOutputToken = 120))
+                var first = 0L
+                var chunks = 0
+                val t1 = System.currentTimeMillis()
+                c.use {
+                    it.sendMessageAsync(Contents.of("In three short sentences, say what a good morning routine looks like.")).collect {
+                        if (first == 0L) first = System.currentTimeMillis() - t1
+                        chunks++
+                    }
+                }
+                val genMs = (System.currentTimeMillis() - t1 - first).coerceAtLeast(1)
+                Bench(installedModel() ?: "", if (backend() == "gpu") "GPU" else "CPU × ${threads()}", loadMs, first, chunks * 1000.0 / genMs)
+            } finally {
+                scheduleRelease()
+            }
+        }
+    }
+
     companion object {
         private const val TAG = "EchoLocalLlm"
         const val IDLE_RELEASE_MS = 3 * 60_000L

@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
         val g = App.graph
         lifecycleScope.launch {
             runCatching { g.capture.recoverOrphans() }
+            g.models.refresh()
             g.brain.importCalls()
             g.governor.refresh()
             g.brain.poke()

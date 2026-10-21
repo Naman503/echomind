@@ -140,26 +140,26 @@ fun SettingsScreen() {
             }
             Spacer(Modifier.height(Sp.s))
         }
-        item { SettingRow("Privacy & AI providers", "Who does transcription, notes, memory, Ask", Icons.Rounded.Shield) { nav.go(ProvidersRoute) } }
-        item { SettingRow("On-device models", "Download speech, AI and search models", Icons.Rounded.Download) { nav.go(ModelsRoute) } }
-        item { SettingRow("Listening", "Microphone, languages, quiet hours, audio", Icons.Rounded.Mic) { nav.go(RecordingRoute) } }
-        item { SettingRow("Your voice", "So notes know what you said", Icons.Rounded.RecordVoiceOver) { nav.go(VoiceRoute) } }
-        item { SettingRow("Phone calls", if (s.importCalls) "Importing call recordings" else "Off", Icons.Rounded.Call) { nav.go(CallsRoute) } }
-        item { SettingRow("AI sessions", "When the AI reads your day: ${s.session.mode.name.lowercase()}", Icons.Rounded.AutoAwesome) { nav.go(SessionsRoute) } }
-        item { SettingRow("Battery, heat & background", "How hard the phone may work · vivo setup", Icons.Rounded.BatteryChargingFull) { nav.go(PowerRoute) } }
-        item { SettingRow("Notifications", "Morning brief, evening recap, suggestions", Icons.Rounded.Notifications) { nav.go(NotificationsRoute) } }
-        item { SettingRow("Processing", "Queue, progress and what's running", Icons.Rounded.Timer) { nav.go(ProcessingRoute) } }
-        item { SettingRow("Data ledger", "Everything that left the phone", Icons.Rounded.Shield) { nav.go(LedgerRoute) } }
-        item { SettingRow("Your data", "Storage, export, delete", Icons.Rounded.Storage) { nav.go(DataRoute) } }
+        item { SettingRow("Privacy & AI providers", "Who does transcription, notes, memory, Ask", Icons.Rounded.Shield, onClick = { nav.go(ProvidersRoute) }) }
+        item { SettingRow("On-device models", "Download speech, AI and search models", Icons.Rounded.Download, onClick = { nav.go(ModelsRoute) }) }
+        item { SettingRow("Listening", "Microphone, languages, quiet hours, audio", Icons.Rounded.Mic, onClick = { nav.go(RecordingRoute) }) }
+        item { SettingRow("Your voice", "So notes know what you said", Icons.Rounded.RecordVoiceOver, onClick = { nav.go(VoiceRoute) }) }
+        item { SettingRow("Phone calls", if (s.importCalls) "Importing call recordings" else "Off", Icons.Rounded.Call, onClick = { nav.go(CallsRoute) }) }
+        item { SettingRow("AI sessions", "When the AI reads your day: ${s.session.mode.name.lowercase()}", Icons.Rounded.AutoAwesome, onClick = { nav.go(SessionsRoute) }) }
+        item { SettingRow("Battery, heat & background", "How hard the phone may work · vivo setup", Icons.Rounded.BatteryChargingFull, onClick = { nav.go(PowerRoute) }) }
+        item { SettingRow("Notifications", "Morning brief, evening recap, suggestions", Icons.Rounded.Notifications, onClick = { nav.go(NotificationsRoute) }) }
+        item { SettingRow("Processing", "Queue, progress and what's running", Icons.Rounded.Timer, onClick = { nav.go(ProcessingRoute) }) }
+        item { SettingRow("Data ledger", "Everything that left the phone", Icons.Rounded.Shield, onClick = { nav.go(LedgerRoute) }) }
+        item { SettingRow("Your data", "Storage, export, delete", Icons.Rounded.Storage, onClick = { nav.go(DataRoute) }) }
         item {
             SectionHeader("Look")
-            SettingRow("Theme", null, Icons.Rounded.Palette) {
+            SettingRow("Theme", null, Icons.Rounded.Palette, trailing = {
                 SingleChoiceSegmentedButtonRow {
                     listOf("system" to "Auto", "light" to "Light", "dark" to "Dark").forEachIndexed { i, (k, l) ->
                         SegmentedButton(s.theme == k, { update { it.copy(theme = k) } }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
                     }
                 }
-            }
+            })
             SwitchRow("Wallpaper colours", "Use your wallpaper's colours (privacy colours never change)", s.dynamicColor) { v -> update { it.copy(dynamicColor = v) } }
         }
         item {
@@ -310,7 +310,7 @@ fun ModelsScreen() {
                     if (st.downloading || st.extracting) {
                         Spacer(Modifier.height(Sp.s))
                         LinearProgressIndicator(progress = { st.progress }, modifier = Modifier.fillMaxWidth())
-                        Text(if (st.extracting) "Unpacking…" else "${(st.progress * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
+                        Text(if (st.extracting) "Unpacking…" else downloadLine(st, m.bytes), style = MaterialTheme.typography.labelSmall)
                     }
                     st.error?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error) }
                     if (st.installed && kind == ModelSpec.Kind.LLM) {
@@ -336,6 +336,20 @@ fun ModelsScreen() {
                 }
             }
             Text("CPU is the safe default. GPU can be faster on some phones; if notes fail, switch back.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            var bench by remember { mutableStateOf<String?>(null) }
+            var running by remember { mutableStateOf(false) }
+            val scope = rememberCoroutineScope()
+            OutlinedButton(enabled = !running && g.localLlm.installedModel() != null, onClick = {
+                running = true; bench = "Loading the model…"
+                scope.launch {
+                    bench = runCatching { g.localLlm.benchmark() }.fold(
+                        { b -> "${b.backend}: loaded in ${"%.1f".format(b.loadMs / 1000.0)} s · first word after ${"%.1f".format(b.firstTokenMs / 1000.0)} s · ${"%.1f".format(b.chunksPerSec)} words/s" },
+                        { e -> "Test failed: ${e.message?.take(160)}" + if (s.localBackend == "gpu") " — GPU may not be supported here; switch to CPU." else "" },
+                    )
+                    running = false
+                }
+            }) { Text(if (running) "Testing…" else "Test speed") }
+            bench?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         }
     }
 }
@@ -508,7 +522,8 @@ fun PowerScreen() {
     val s by g.settings.flow.collectAsStateWithLifecycle()
     val gov by g.governor.state.collectAsStateWithLifecycle()
     var tick by remember { mutableStateOf(0) }
-    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { tick++; g.governor.refresh() }
+    val resumeTick = app.echomind.ui.components.rememberResumeTick()
+    LaunchedEffect(resumeTick) { g.governor.refresh() }
     SettingsPage("Battery, heat & background") {
         item {
             SectionHeader("Right now")
@@ -535,7 +550,7 @@ fun PowerScreen() {
         }
         item {
             SectionHeader("Keep running in the background")
-            @Suppress("UNUSED_VARIABLE") val t2 = tick
+            @Suppress("UNUSED_VARIABLE") val t2 = tick + resumeTick
             SettingRow("Battery optimisation", if (ignoringBattery(ctx)) "Off for EchoMind ✓" else "On — Android may stop EchoMind", onClick = { requestBattery(ctx) })
             Text("On vivo / iQOO (Funtouch OS) also:", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = Sp.m))
             Step("1. High background power consumption", "Settings → Battery → Background power consumption management → EchoMind → Allow") {
@@ -750,3 +765,12 @@ fun ProcessingScreen() {
 }
 
 @Suppress("unused") private suspend fun ensureLoaded() = App.graph.db.audio().pendingCount().first()
+
+/** "42% · 8.1 MB/s · about 3 min left" */
+fun downloadLine(st: app.echomind.models.ModelManager.State, bytes: Long): String {
+    val pct = (st.progress * 100).toInt()
+    if (st.error != null && st.downloading) return "$pct% · ${st.error}"
+    if (st.speed <= 0) return "$pct% · connecting…"
+    val left = ((1 - st.progress) * bytes / st.speed).toLong() * 1000
+    return "$pct% · ${Fmt.bytes(st.speed)}/s · about ${Fmt.duration(left.coerceAtLeast(1_000))} left"
+}

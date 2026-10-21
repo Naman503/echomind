@@ -322,9 +322,9 @@ private fun SetupHealth() {
     val keys by g.secrets.present.collectAsStateWithLifecycle()
     val models by g.models.states.collectAsStateWithLifecycle()
     var tick by remember { mutableIntStateOf(0) }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { tick++ }
+    val resumeTick = app.echomind.ui.components.rememberResumeTick()
     var missingLangs by remember { mutableStateOf<List<String>>(emptyList()) }
-    LaunchedEffect(s.speechLanguages, tick) {
+    LaunchedEffect(s.speechLanguages, tick, resumeTick) {
         if (s.provider(Feature.TRANSCRIBE) == "android" && g.androidSpeech.available()) {
             val sup = g.androidSpeech.support(s.speechLanguages)
             missingLangs = if (sup.available && sup.installed.isNotEmpty() || sup.supported.isNotEmpty()) s.speechLanguages.filter { l -> sup.installed.none { it.equals(l, true) } && sup.pending.none { it.equals(l, true) } } else emptyList()
@@ -332,7 +332,7 @@ private fun SetupHealth() {
     }
     val perms = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { tick++ }
 
-    @Suppress("UNUSED_VARIABLE") val t = tick + keys.size + models.size
+    @Suppress("UNUSED_VARIABLE") val t = tick + resumeTick + keys.size + models.size
     val issues = buildList {
         if (ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
             add(Triple("Microphone permission needed", "EchoMind can't hear anything without it.", "Allow") to { perms.launch(arrayOf(Manifest.permission.RECORD_AUDIO)) })

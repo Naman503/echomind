@@ -82,6 +82,7 @@ fun Onboarding() {
     val models by g.models.states.collectAsStateWithLifecycle()
     var tick by remember { mutableIntStateOf(0) }
     val perms = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { tick++ }
+    val resumeTick = app.echomind.ui.components.rememberResumeTick()
 
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).windowInsetsPadding(WindowInsets.navigationBars).padding(Sp.xl)) {
         LinearProgressIndicator(progress = { (step + 1) / 5f }, modifier = Modifier.fillMaxWidth())
@@ -130,7 +131,10 @@ fun Onboarding() {
                                 Column(Modifier.weight(1f)) {
                                     Text("${m.label} · ${Fmt.bytes(m.bytes)}", style = MaterialTheme.typography.bodyLarge)
                                     Text(m.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    if (st?.downloading == true) LinearProgressIndicator(progress = { st.progress }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+                                    if (st?.downloading == true) {
+                                        LinearProgressIndicator(progress = { st.progress }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+                                        Text(downloadLine(st, m.bytes), style = MaterialTheme.typography.labelSmall)
+                                    }
                                 }
                                 when {
                                     st?.installed == true -> Icon(Icons.Rounded.CheckCircle, "Installed", tint = LocalSemantic.current.positive)
@@ -142,15 +146,19 @@ fun Onboarding() {
                         Text("Speech-to-text uses Google's offline recogniser already on your phone — no download needed.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     3 -> {
-                        @Suppress("UNUSED_VARIABLE") val t = tick
+                        // Re-read on every return from a system dialog or settings page.
+                        @Suppress("UNUSED_VARIABLE") val t = tick + resumeTick
+                        val mic = ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                        val notif = ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                        val battery = ignoringBattery(ctx)
                         Text("Permissions", style = MaterialTheme.typography.headlineSmall)
-                        Perm("Microphone", "To hear your day. While listening, a notification always shows it.", ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
-                        Perm("Notifications", "For reminders, the morning brief and the listening status.", ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
-                        Button(onClick = { perms.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)) }) { Text("Allow") }
+                        Perm("Microphone", "To hear your day. While listening, a notification always shows it.", mic)
+                        Perm("Notifications", "For reminders, the morning brief and the listening status.", notif)
+                        if (!mic || !notif) Button(onClick = { perms.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)) }) { Text("Allow") }
                         Spacer(Modifier.height(Sp.s))
                         Text("Keep it running", style = MaterialTheme.typography.titleMedium)
-                        Perm("Battery optimisation off", "So Android doesn't stop EchoMind with the screen off.", ignoringBattery(ctx))
-                        TextButton(onClick = { requestBattery(ctx) }) { Text("Turn off battery optimisation") }
+                        Perm("Battery optimisation off", "So Android doesn't stop EchoMind with the screen off.", battery)
+                        if (!battery) TextButton(onClick = { requestBattery(ctx) }) { Text("Turn off battery optimisation") }
                         if (android.os.Build.MANUFACTURER.lowercase() in setOf("vivo", "iqoo")) {
                             Text("On vivo phones, also allow \"High background power consumption\" and Autostart for EchoMind — Settings → Battery & background in EchoMind shows you where.",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -212,7 +220,8 @@ private fun Choice(selected: Boolean, icon: ImageVector, title: String, body: St
 @Composable
 private fun Perm(title: String, why: String, granted: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = granted, onCheckedChange = null)
+        if (granted) Icon(Icons.Rounded.CheckCircle, "Done", tint = LocalSemantic.current.positive, modifier = Modifier.padding(12.dp).size(24.dp))
+        else Checkbox(checked = false, onCheckedChange = null, modifier = Modifier.padding(horizontal = 0.dp))
         Column { Text(title, style = MaterialTheme.typography.bodyLarge); Text(why, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }

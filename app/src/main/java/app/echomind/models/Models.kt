@@ -2,17 +2,24 @@ package app.echomind.models
 
 import android.app.DownloadManager
 import android.content.Context
-import android.net.Uri
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingWorkPolicy
+import androidx.work.ForegroundInfo
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import androidx.work.workDataOf
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
@@ -80,8 +87,9 @@ object ModelCatalog {
 }
 
 /**
- * Downloads with Android's DownloadManager (resumable, survives the app being
- * killed, shows its own progress), then unpacks archives.
+ * Installs models: a resumable parallel download ([Downloader]) run as a
+ * WorkManager job, so it keeps going when the app is closed and picks up
+ * where it stopped after a restart, then unpacks archives.
  */
 class ModelManager(private val context: Context, private val scope: CoroutineScope) {
     data class State(
@@ -90,24 +98,42 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
         val extracting: Boolean = false,
         val progress: Float = 0f,
         val error: String? = null,
+        /** Bytes per second while downloading. */
+        val speed: Long = 0,
     )
 
-    private val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
     private val prefs = context.getSharedPreferences("models", Context.MODE_PRIVATE)
     val root: File = File(context.getExternalFilesDir(null) ?: context.filesDir, "models").apply { mkdirs() }
 
-    private val _states = MutableStateFlow(ModelCatalog.all.associate { it.id to State(installed = isInstalled(it)) })
+    private val _states = MutableStateFlow(ModelCatalog.all.associate { spec ->
+        val active = prefs.getBoolean("dl:${spec.id}", false)
+        val installed = isInstalled(spec)
+        spec.id to State(installed = installed, downloading = active && !installed, progress = if (active) Downloader.savedProgress(part(spec)) ?: 0f else 0f)
+    })
     val states: StateFlow<Map<String, State>> = _states.asStateFlow()
-    private var poller: Job? = null
 
     init {
-        if (ModelCatalog.all.any { prefs.contains(it.id) }) startPolling()
+        scope.launch(Dispatchers.IO) { migrateFromDownloadManager() }
+    }
+
+    /** Earlier builds used DownloadManager (one slow connection): cancel those and restart with the fast downloader. */
+    private fun migrateFromDownloadManager() {
+        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        for (spec in ModelCatalog.all) {
+            val old = prefs.getLong(spec.id, -1L)
+            if (old < 0) continue
+            runCatching { dm.remove(old) }
+            prefs.edit().remove(spec.id).apply()
+            File(root, "${spec.fileName}.part").delete()
+            if (!isInstalled(spec)) download(spec.id)
+        }
     }
 
     fun state(id: String) = _states.value[id] ?: State()
     fun isInstalled(id: String) = ModelCatalog.get(id)?.let { isInstalled(it) } ?: false
 
     private fun target(spec: ModelSpec) = if (spec.archive) File(root, spec.id) else File(root, spec.fileName)
+    internal fun part(spec: ModelSpec) = File(root, "${spec.fileName}.download")
     private fun isInstalled(spec: ModelSpec): Boolean {
         val t = target(spec)
         return if (spec.archive) File(t, ".complete").exists() else t.exists() && t.length() > 100_000
@@ -121,26 +147,23 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
 
     fun download(id: String) {
         val spec = ModelCatalog.get(id) ?: return
-        if (isInstalled(spec) || prefs.contains(id)) return
-        val tmp = File(root, "${spec.fileName}.part")
-        tmp.delete()
-        val request = DownloadManager.Request(Uri.parse(spec.url))
-            .setTitle("EchoMind · ${spec.label}")
-            .setDescription("On-device model, downloaded once")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-            .setAllowedOverMetered(true)
-            .setDestinationUri(Uri.fromFile(tmp))
-        val downloadId = dm.enqueue(request)
-        prefs.edit().putLong(id, downloadId).apply()
-        set(id) { it.copy(downloading = true, progress = 0f, error = null) }
-        startPolling()
+        if (isInstalled(spec)) return
+        prefs.edit().putBoolean("dl:$id", true).apply()
+        set(id) { it.copy(downloading = true, error = null, progress = Downloader.savedProgress(part(spec)) ?: 0f) }
+        val req = OneTimeWorkRequestBuilder<ModelDownloadWorker>()
+            .setInputData(workDataOf("id" to id))
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork("model-$id", ExistingWorkPolicy.KEEP, req)
     }
 
     fun cancel(id: String) {
-        val d = prefs.getLong(id, -1)
-        if (d >= 0) dm.remove(d)
-        prefs.edit().remove(id).apply()
-        set(id) { State(installed = isInstalled(id)) }
+        val spec = ModelCatalog.get(id) ?: return
+        WorkManager.getInstance(context).cancelUniqueWork("model-$id")
+        prefs.edit().remove("dl:$id").apply()
+        Downloader.discard(part(spec))
+        set(id) { State(installed = isInstalled(spec)) }
     }
 
     fun delete(id: String) {
@@ -150,49 +173,22 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
         set(id) { State() }
     }
 
-    private fun set(id: String, change: (State) -> State) = _states.update { it + (id to change(it[id] ?: State())) }
+    internal fun set(id: String, change: (State) -> State) = _states.update { it + (id to change(it[id] ?: State())) }
 
-    private fun startPolling() {
-        if (poller?.isActive == true) return
-        poller = scope.launch(Dispatchers.IO) {
-            while (isActive) {
-                val pending = ModelCatalog.all.filter { prefs.contains(it.id) }
-                if (pending.isEmpty()) break
-                for (spec in pending) poll(spec)
-                delay(1_000)
+    /** Runs inside the worker: download, verify, install. */
+    internal suspend fun install(spec: ModelSpec) {
+        val tmp = part(spec)
+        var lastBytes = 0L
+        var lastAt = System.currentTimeMillis()
+        var speed = 0L
+        Downloader.fetch(spec.url, tmp) { done, total ->
+            val now = System.currentTimeMillis()
+            if (now - lastAt >= 1_000) {
+                speed = (speed * 0.6 + (done - lastBytes) * 1000.0 / (now - lastAt) * 0.4).toLong()
+                lastBytes = done; lastAt = now
             }
+            set(spec.id) { it.copy(downloading = true, progress = if (total > 0) (done.toDouble() / total).toFloat() else 0f, speed = speed) }
         }
-    }
-
-    private fun poll(spec: ModelSpec) {
-        val downloadId = prefs.getLong(spec.id, -1)
-        val c = dm.query(DownloadManager.Query().setFilterById(downloadId)) ?: return
-        c.use {
-            if (!it.moveToFirst()) {
-                prefs.edit().remove(spec.id).apply()
-                set(spec.id) { s -> s.copy(downloading = false, error = "Download was cancelled") }
-                return
-            }
-            val status = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-            val done = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
-            val total = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)).takeIf { t -> t > 0 } ?: spec.bytes
-            when (status) {
-                DownloadManager.STATUS_SUCCESSFUL -> {
-                    prefs.edit().remove(spec.id).apply()
-                    finish(spec)
-                }
-                DownloadManager.STATUS_FAILED -> {
-                    prefs.edit().remove(spec.id).apply()
-                    val reason = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
-                    set(spec.id) { s -> s.copy(downloading = false, error = "Download failed ($reason). Check space and connection.") }
-                }
-                else -> set(spec.id) { s -> s.copy(downloading = true, progress = (done.toFloat() / total).coerceIn(0f, 1f)) }
-            }
-        }
-    }
-
-    private fun finish(spec: ModelSpec) {
-        val tmp = File(root, "${spec.fileName}.part")
         try {
             if (spec.archive) {
                 set(spec.id) { it.copy(downloading = false, extracting = true, progress = 1f) }
@@ -205,14 +201,31 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
             } else {
                 val dest = target(spec)
                 dest.delete()
-                if (!tmp.renameTo(dest)) tmp.copyTo(dest, overwrite = true).also { tmp.delete() }
+                if (!tmp.renameTo(dest)) { tmp.copyTo(dest, overwrite = true); tmp.delete() }
             }
+            prefs.edit().remove("dl:${spec.id}").apply()
             set(spec.id) { State(installed = isInstalled(spec)) }
         } catch (e: Exception) {
             Log.w("EchoModels", "install ${spec.id} failed", e)
-            tmp.delete()
-            set(spec.id) { State(error = "Could not unpack: ${e.message}") }
+            Downloader.discard(tmp)
+            throw e
         }
+    }
+
+    internal fun markInstalled(spec: ModelSpec) {
+        prefs.edit().remove("dl:${spec.id}").apply()
+        Downloader.discard(part(spec))
+        set(spec.id) { State(installed = true) }
+    }
+
+    /** Re-checks the disk, e.g. after a model file was copied in by hand. */
+    fun refresh() {
+        for (spec in ModelCatalog.all) if (isInstalled(spec) && state(spec.id).installed.not()) markInstalled(spec)
+    }
+
+    internal fun failed(spec: ModelSpec, message: String, final: Boolean) {
+        if (final) prefs.edit().remove("dl:${spec.id}").apply()
+        set(spec.id) { it.copy(downloading = !final, extracting = false, error = message) }
     }
 
     /** Extracts files flat into [dir] (packs have one top-level folder; we drop it). */
@@ -238,4 +251,55 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
     }
 
     fun usedBytes(): Long = root.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+}
+
+/** Downloads one model as a foreground job with its own progress notification. */
+class ModelDownloadWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val id = inputData.getString("id") ?: return Result.failure()
+        val spec = ModelCatalog.get(id) ?: return Result.failure()
+        val models = app.echomind.App.graph.models
+        // Already there (copied in over USB, or finished before a restart): just record it.
+        if (models.isInstalled(id)) { models.markInstalled(spec); return Result.success() }
+        runCatching { setForeground(info(spec, 0)) }
+        val progressJob = kotlinx.coroutines.CoroutineScope(Dispatchers.Default).launch {
+            models.states.collect { m ->
+                val s = m[id] ?: return@collect
+                val pct = (s.progress * 100).toInt()
+                if (s.downloading && pct != lastPct) runCatching { setForeground(info(spec, pct)) }
+            }
+        }
+        return try {
+            models.install(spec)
+            Result.success()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val final = runAttemptCount >= 6
+            models.failed(spec, if (final) "Download failed: ${e.message}. Tap Get to try again." else "Connection problem — retrying…", final)
+            if (final) Result.failure() else Result.retry()
+        } finally {
+            progressJob.cancel()
+        }
+    }
+
+    private var lastPct = -1
+
+    private fun info(spec: ModelSpec, pct: Int): ForegroundInfo {
+        val nm = applicationContext.getSystemService(android.app.NotificationManager::class.java)
+        if (nm.getNotificationChannel("downloads") == null) {
+            nm.createNotificationChannel(android.app.NotificationChannel("downloads", "Model downloads", android.app.NotificationManager.IMPORTANCE_LOW))
+        }
+        lastPct = pct
+        val n = androidx.core.app.NotificationCompat.Builder(applicationContext, "downloads")
+            .setSmallIcon(app.echomind.R.drawable.ic_stat_idle)
+            .setContentTitle("Downloading ${spec.label}")
+            .setContentText("$pct% · on-device model, downloaded once")
+            .setProgress(100, pct, pct <= 0)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .build()
+        return ForegroundInfo(5000 + Math.floorMod(spec.id.hashCode(), 1000), n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+    }
 }

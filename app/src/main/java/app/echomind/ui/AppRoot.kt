@@ -1,6 +1,17 @@
 package app.echomind.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -76,6 +87,26 @@ class Navigator(private val stack: NavBackStack<NavKey>) {
 
 val LocalNav = staticCompositionLocalOf<Navigator> { error("Navigator not provided") }
 
+/*
+ * Motion: Material's shared-axis pattern, kept short. Opening a screen slides
+ * it in a sixth of the width while the old one drifts back and fades; closing
+ * reverses it (and follows the finger for predictive back). Switching tabs is
+ * a quick crossfade — tabs are siblings, not a step deeper.
+ */
+private val Ease = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+
+private fun push(): ContentTransform =
+    (slideInHorizontally(tween(280, easing = Ease)) { it / 6 } + fadeIn(tween(220, delayMillis = 30))) togetherWith
+        (slideOutHorizontally(tween(280, easing = Ease)) { -it / 14 } + fadeOut(tween(120)))
+
+private fun pop(): ContentTransform =
+    (slideInHorizontally(tween(280, easing = Ease)) { -it / 14 } + fadeIn(tween(220))) togetherWith
+        (slideOutHorizontally(tween(240, easing = Ease)) { it / 6 } + fadeOut(tween(160)))
+
+private val TabSwitch: Map<String, Any> =
+    NavDisplay.transitionSpec { fadeIn(tween(160)) togetherWith fadeOut(tween(90)) } +
+        NavDisplay.popTransitionSpec { fadeIn(tween(160)) togetherWith fadeOut(tween(90)) }
+
 @Composable
 fun AppRoot(pending: MutableState<String?>) {
     val g = App.graph
@@ -117,12 +148,14 @@ fun AppRoot(pending: MutableState<String?>) {
             Scaffold(
                 contentWindowInsets = WindowInsets(0),
                 bottomBar = {
-                    if (showBar) NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+                    AnimatedVisibility(showBar, enter = slideInVertically(tween(220, easing = Ease)) { it } + fadeIn(tween(150)), exit = slideOutVertically(tween(180, easing = Ease)) { it } + fadeOut(tween(120))) {
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                         Tab(top == TodayRoute, "Today", Icons.Rounded.Today) { nav.tab(TodayRoute) }
                         Tab(top == TimelineRoute, "Timeline", Icons.Rounded.ViewTimeline) { nav.tab(TimelineRoute) }
                         Tab(top is AskRoute, "Ask", Icons.Rounded.Forum) { nav.tab(AskRoute()) }
                         Tab(top == TasksRoute, "Tasks", Icons.Rounded.CheckCircle, badge = suggested) { nav.tab(TasksRoute) }
                         Tab(top == LibraryRoute, "Library", Icons.Rounded.AutoStories) { nav.tab(LibraryRoute) }
+                    }
                     }
                 },
             ) { padding ->
@@ -130,12 +163,15 @@ fun AppRoot(pending: MutableState<String?>) {
                     backStack = stack,
                     onBack = { nav.back() },
                     modifier = Modifier.padding(bottom = padding.calculateBottomPadding()),
+                    transitionSpec = { push() },
+                    popTransitionSpec = { pop() },
+                    predictivePopTransitionSpec = { pop() },
                     entryProvider = entryProvider {
-                        entry<TodayRoute> { TodayScreen() }
-                        entry<TimelineRoute> { TimelineScreen() }
-                        entry<AskRoute> { AskScreen(it.threadId, it.question) }
-                        entry<TasksRoute> { TasksScreen() }
-                        entry<LibraryRoute> { LibraryScreen() }
+                        entry<TodayRoute>(metadata = TabSwitch) { TodayScreen() }
+                        entry<TimelineRoute>(metadata = TabSwitch) { TimelineScreen() }
+                        entry<AskRoute>(metadata = TabSwitch) { AskScreen(it.threadId, it.question) }
+                        entry<TasksRoute>(metadata = TabSwitch) { TasksScreen() }
+                        entry<LibraryRoute>(metadata = TabSwitch) { LibraryScreen() }
                         entry<ConversationRoute> { ConversationScreen(it.id, it.lineId) }
                         entry<NotesRoute> { NotesScreen() }
                         entry<NoteRoute> { NoteScreen(it.id) }
