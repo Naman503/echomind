@@ -111,6 +111,15 @@ object Schemas {
                 "lines" to S.lines,
             ),
         ),
+        "task_updates" to S.arr(
+            S.obj(
+                "task" to S.int("T number of the existing task"),
+                "status" to S.enum("done", "progress", "blocked", "moved", "dropped"),
+                "note" to S.str("one short line: what happened"),
+                "due_iso" to S.str("for moved: the new time as yyyy-MM-ddTHH:mm or yyyy-MM-dd, else empty"),
+                "quote" to S.str("the exact words, copied from the transcript"),
+            ),
+        ),
         "open_questions" to S.arr(
             S.obj(
                 "question" to S.str("A question or request someone put to the owner that was not answered or settled here"),
@@ -208,7 +217,7 @@ object Schemas {
     val actions = S.obj(
         "actions" to S.arr(
             S.obj(
-                "op" to S.enum("add_task", "complete_task", "add_event", "create_note", "move_note", "tag_note", "update_person", "relate", "remember", "organize"),
+                "op" to S.enum("add_task", "complete_task", "add_event", "create_note", "move_note", "tag_note", "update_person", "relate", "remember", "organize", "set_setting", "plan"),
                 "target" to S.str("The existing note, task or person this acts on, as named, or empty"),
                 "title" to S.str("New task/event/note title, or empty"),
                 "text" to S.str("Body text, a fact to remember, or details, or empty"),
@@ -221,6 +230,8 @@ object Schemas {
                 "circle" to S.str("family | work | friends | neighbourhood | services | other, or empty"),
                 "relation" to S.str("For relate: 'manager of', 'wife of'…; for update_person: who they are to the owner"),
                 "other" to S.str("For relate: the other person or organisation"),
+                "setting" to S.str("For set_setting: one of the setting names listed, else empty"),
+                "value" to S.str("For set_setting: the new value; for plan: day, week or month"),
             ),
         ),
         "reply" to S.str("One short sentence telling the owner what was done, or why nothing could be done"),

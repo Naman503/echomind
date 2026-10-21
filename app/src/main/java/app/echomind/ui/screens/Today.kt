@@ -136,6 +136,7 @@ fun TodayScreen() {
         }
         item(key = "quick") { QuickActions() }
         item(key = "listen") { ListeningCard() }
+        item(key = "glance") { DayGlance() }
         item(key = "setup") { SetupHealth() }
         item(key = "work") { WorkCard() }
         item(key = "foryou") { ForYou() }
@@ -528,7 +529,10 @@ private fun TodayTasks() {
                         val timed = at != null && java.time.Instant.ofEpochMilli(at).atZone(java.time.ZoneId.systemDefault()).toLocalTime().let { !(it.hour == 9 && it.minute == 0) || t.remindAt != null }
                         if (overdue || timed) Text(if (overdue) "Overdue · ${Fmt.day(t.dueAt!!)}" else Fmt.time(at!!), style = MaterialTheme.typography.labelSmall,
                             color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                        t.aiNote?.let { Text(it, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            color = if (t.doneSuggestedAt != null) app.echomind.ui.theme.LocalSemantic.current.positive else MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
+                    if (t.doneSuggestedAt != null) androidx.compose.material3.TextButton(onClick = { scope.launch { g.tasks.complete(t) } }) { Text("Done") }
                 }
             }
             if (due.size > 7) Text("+${due.size - 7} more", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
@@ -540,6 +544,31 @@ private fun TodayTasks() {
                     Icon(Icons.Rounded.Add, "Add task")
                 }
             }
+        }
+    }
+}
+
+/** Today's focus and numbers, opening the plan and the dashboard. */
+@Composable
+private fun DayGlance() {
+    val g = App.graph
+    val nav = LocalNav.current
+    val tick = app.echomind.ui.components.rememberResumeTick()
+    val st by produceState<app.echomind.brain.Stats.Day?>(null, tick) { value = g.stats.day(java.time.LocalDate.now()) }
+    val planRaw by remember { g.plans.observe("day") }.collectAsStateWithLifecycle(null)
+    val plan = g.plans.decode(planRaw)
+    Row(horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
+        EchoCard(onClick = { nav.go(app.echomind.ui.PlanRoute) }, modifier = Modifier.weight(1.4f), padding = PaddingValues(Sp.m)) {
+            Text("Today's focus", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text(plan?.focus?.ifBlank { null } ?: "Tap to plan your day", style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            plan?.missing?.size?.takeIf { it > 0 }?.let { Text("$it thing${if (it == 1) "" else "s"} you might be missing", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary) }
+        }
+        EchoCard(onClick = { nav.go(app.echomind.ui.DashboardRoute) }, modifier = Modifier.weight(1f), padding = PaddingValues(Sp.m)) {
+            Text("Your day", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            val s = st
+            Text(if (s == null || s.talkMin == 0) "No talk yet" else "${s.talkMin} min talk", style = MaterialTheme.typography.bodyMedium)
+            if (s != null && s.talkMin > 0) Text("You ${s.meShare}% · ${s.conversations} conv.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (s != null) Text("${s.tasksDone} tasks done", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

@@ -63,13 +63,16 @@ class DailyWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         val s = g.settings.awaitLoaded()
         val today = LocalDate.now()
         if (inputData.getString("kind") == "morning") {
+            if (s.autoPlans) runCatching { g.plans.morning() }
             if (!s.notifyMorning) return Result.success()
             val (_, to) = g.journal.bounds(today)
             val reminders = g.db.tasks().upcomingReminders(System.currentTimeMillis()).filter { (it.remindAt ?: 0) < to }
             val due = g.db.tasks().live().filter { it.status == "open" && it.dueAt != null && it.dueAt < to && it.remindAt == null }
             val yesterday = g.db.days().get(today.minusDays(1).toString())
             val carry = yesterday?.tomorrow?.let { runCatching { Js.json.decodeFromString(ListSerializer(String.serializer()), it) }.getOrNull() }.orEmpty()
-            val lines = reminders.map { "${Prompts.time(it.remindAt!!)} · ${it.title}" } + due.map { "Due · ${it.title}" } + carry.take(3).map { "From yesterday · $it" }
+            val plan = g.plans.get("day")
+            val lines = listOfNotNull(plan?.focus?.takeIf { it.isNotBlank() }?.let { "Focus · $it" }) + reminders.map { "${Prompts.time(it.remindAt!!)} · ${it.title}" } +
+                due.map { "Due · ${it.title}" } + carry.take(3).map { "From yesterday · $it" } + plan?.missing.orEmpty().take(2).map { "Missing? · ${it.title}" }
             val suggested = g.db.tasks().suggestedCount().first()
             if (lines.isEmpty() && suggested == 0) return Result.success()
             g.notifier.brief(

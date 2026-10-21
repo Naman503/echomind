@@ -274,7 +274,9 @@ private fun VoiceRow(v: VoiceSpec, selected: Boolean, language: String) {
                     Text("Also for ${if (other == "hi") "Hindi" else "English"}")
                 }
             }
-            if (st?.installed == true && !selected) TextButton(onClick = { g.models.delete(v.pack) }) { Text("Delete pack", color = MaterialTheme.colorScheme.error) }
+            // A pack still read by your English or Hindi voice stays.
+            val inUse = listOf(g.settings.value.voiceEnglish, g.settings.value.voiceHindi).any { VoiceCatalog.get(it)?.pack == v.pack }
+            if (st?.installed == true && !inUse) TextButton(onClick = { g.models.delete(v.pack) }) { Text("Delete pack", color = MaterialTheme.colorScheme.error) }
         }
         if (st?.downloading == true || st?.extracting == true) {
             LinearProgressIndicator(progress = { st.progress }, modifier = Modifier.fillMaxWidth().padding(top = Sp.s))

@@ -42,6 +42,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -257,10 +261,37 @@ fun VoiceScreen() {
                 return@Column
             }
             if (enrolled) {
+                val st by g.settings.flow.collectAsStateWithLifecycle()
+                var adding by remember { mutableStateOf(false) }
                 EchoCard(color = LocalSemantic.current.onDevice.copy(alpha = 0.1f)) {
                     Text("Your voice is set up ✓", style = MaterialTheme.typography.titleSmall)
+                    Text("${g.voice.samples()} samples of your voice · ${g.voice.corrections()} corrections · match level ${"%.2f".format(g.voice.threshold())}",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text("How sure it must be that a line was you", style = MaterialTheme.typography.titleSmall)
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    listOf("lenient" to "Lenient", "normal" to "Normal", "strict" to "Strict").forEachIndexed { i, (k, l) ->
+                        SegmentedButton(st.voiceSensitivity == k, { g.scope.launch { g.settings.update { it.copy(voiceSensitivity = k) } } },
+                            SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
+                    }
+                }
+                Text(when (st.voiceSensitivity) { "lenient" -> "More of your lines are labelled “You”; others' may be mistaken for you."; "strict" -> "Only lines that clearly sound like you; some of yours may be missed."; else -> "Balanced." },
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                app.echomind.ui.components.SwitchRow("Keep learning my voice", "Long lines it is very sure about add to your voice sample (phone in a pocket, on a desk, outdoors)", st.voiceLearn) { v -> g.scope.launch { g.settings.update { it.copy(voiceLearn = v) } } }
+                app.echomind.ui.components.SwitchRow("Recognise people I talk to", "Name a speaker once — their voice is remembered and their lines get their name next time", st.recognisePeople) { v -> g.scope.launch { g.settings.update { it.copy(recognisePeople = v) } } }
+                Text("Fix mistakes in any transcript: long-press a line → “This was me” or “That wasn't me”. Each fix teaches it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
+                    OutlinedButton(enabled = !adding, onClick = {
+                        adding = true
+                        scope.launch {
+                            val clip = withContext(Dispatchers.IO) { recordClip(8_000) }
+                            result = if (clip != null && g.voice.enroll(listOf(clip), append = true)) "Added — ${g.voice.samples()} samples now." else "Couldn't hear you clearly — try again (pause listening first if the mic is busy)."
+                            adding = false
+                        }
+                    }) { Text(if (adding) "Listening… keep talking" else "Add a sample (8 s)") }
                     TextButton(onClick = { g.voice.forget(); enrolled = false; clips = emptyList() }) { Text("Set up again") }
                 }
+                result?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 return@Column
             }
             val i = clips.size

@@ -70,8 +70,8 @@ object VoiceCatalog {
     )
 
     /** Supertonic 3: voice.bin rows are the sorted style files F1–F5, M1–M5; every voice reads English and Hindi. */
-    private val supertonicVoices = (1..5).map { VoiceSpec("supertonic-f$it", "Supertonic F$it", "supertonic-3", "supertonic", it - 1, setOf("en", "hi"), "f", "English + Hindi", 5, "OpenRAIL-M") } +
-        (1..5).map { VoiceSpec("supertonic-m$it", "Supertonic M$it", "supertonic-3", "supertonic", it + 4, setOf("en", "hi"), "m", "English + Hindi", 5, "OpenRAIL-M") }
+    private val supertonicVoices = (1..5).map { VoiceSpec("supertonic-f$it", "Supertonic F$it", "supertonic-3", "supertonic", it - 1, setOf("en", "hi"), "f", "Multilingual", 5, "OpenRAIL-M") } +
+        (1..5).map { VoiceSpec("supertonic-m$it", "Supertonic M$it", "supertonic-3", "supertonic", it + 4, setOf("en", "hi"), "m", "Multilingual", 5, "OpenRAIL-M") }
 
     private val kittenVoices = (0..7).map { VoiceSpec("kitten-$it", "Kitten ${it + 1}", "kitten-nano", "kitten", it, setOf("en"), "", "US", 3, "Apache 2.0") }
 

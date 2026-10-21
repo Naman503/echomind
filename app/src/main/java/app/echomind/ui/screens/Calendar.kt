@@ -256,6 +256,7 @@ fun CalendarScreen() {
                 item(key = "tkh") { SectionHeader("Tasks") }
                 items(dayTasks, key = { "t${it.id}" }) { t -> CalendarTask(t) { nav.go(TaskRoute(t.id)) } }
             }
+            item(key = "activity") { ActivityTimeline(selected) }
             if (dayConvs.isNotEmpty()) {
                 item(key = "cvh") { SectionHeader("Conversations · ${dayConvs.size}") }
                 items(dayConvs.sortedBy { it.startAt }, key = { "c${it.id}" }) { c -> ConversationRow(c) { nav.go(ConversationRoute(c.id)) } }
@@ -483,7 +484,7 @@ fun EventScreen(id: Long?, day: String? = null) {
     var location by remember(e) { mutableStateOf(e?.location.orEmpty()) }
     var people by remember(e) { mutableStateOf(e?.people?.let { runCatching { Js.json.decodeFromString(ListSerializer(String.serializer()), it) }.getOrNull() }.orEmpty().joinToString(", ")) }
     var notes by remember(e) { mutableStateOf(e?.notes.orEmpty()) }
-    var remind by remember(e) { mutableIntStateOf(e?.remindBeforeMin ?: 15) }
+    var remind by remember(e) { mutableIntStateOf(e?.remindBeforeMin ?: g.settings.value.eventRemindDefault) }
     var pickDate by remember { mutableStateOf(false) }
     var pickTime by remember { mutableStateOf<String?>(null) }
     val s by g.settings.flow.collectAsStateWithLifecycle()

@@ -34,6 +34,7 @@ class Actions(
     private val people: People,
     private val agenda: Agenda,
     private val organizer: () -> Organizer,
+    private val plans: () -> Plans,
 ) {
     data class Done(val reply: String, val changes: List<String>)
 
@@ -129,6 +130,11 @@ class Actions(
                     ?.takeIf { TextNorm.keyTerms(it.title).any { w -> w in terms } } ?: return null
                 tasks.complete(t); "Marked “${t.title}” done"
             }
+            "set_setting" -> setSetting(a.str("setting")?.trim().orEmpty(), a.str("value")?.trim().orEmpty())
+            "plan" -> {
+                val kind = a.str("value")?.lowercase()?.takeIf { it in setOf("day", "week", "month") } ?: "day"
+                plans().make(kind)?.let { "Made ${if (kind == "day") "today's" else "this $kind's"} plan: ${it.focus}" }
+            }
             "organize" -> {
                 val plan = organizer().propose(everything = false)
                 organizer().apply(plan)
@@ -138,11 +144,53 @@ class Actions(
         }
     }
 
+    /** The settings the assistant may change, with checked values. */
+    private suspend fun setSetting(key: String, raw: String): String? {
+        val v = raw.lowercase()
+        fun bool() = v in setOf("on", "true", "yes", "enable", "enabled", "1")
+        fun num() = Regex("-?\\d+(\\.\\d+)?").find(v)?.value?.toFloatOrNull()
+        val change: ((app.echomind.core.Settings) -> app.echomind.core.Settings)? = when (key) {
+            "read_speed" -> num()?.coerceIn(0.5f, 6f)?.let { x -> { s: app.echomind.core.Settings -> s.copy(readSpeed = x) } }
+            "speaker_policy" -> v.takeIf { it in setOf("ask", "allow", "never") }?.let { x -> { s -> s.copy(speakerPolicy = x) } }
+            "keep_recordings_days" -> (if (v.contains("forever")) -1f else num())?.toInt()?.let { x -> { s -> s.copy(keepRecordingsDays = x) } }
+            "ai_quality" -> v.takeIf { it in setOf("fast", "balanced", "best") }?.let { x -> { s -> s.copy(aiQuality = x) } }
+            "web_search" -> v.takeIf { it in setOf("off", "ask", "auto") }?.let { x -> { s -> s.copy(webSearch = x) } }
+            "songs" -> { s -> s.copy(songs = bool()) }
+            "surroundings" -> { s -> s.copy(ambient = bool()) }
+            "nudges" -> { s -> s.copy(nudges = bool()) }
+            "nudges_per_day" -> num()?.toInt()?.coerceIn(1, 10)?.let { x -> { s -> s.copy(nudgesPerDay = x) } }
+            "voice_sensitivity" -> v.takeIf { it in setOf("lenient", "normal", "strict") }?.let { x -> { s -> s.copy(voiceSensitivity = x) } }
+            "recognise_people" -> { s -> s.copy(recognisePeople = bool()) }
+            "newest_first" -> { s -> s.copy(transcriptNewestFirst = bool()) }
+            "read_answers" -> { s -> s.copy(autoReadAnswers = bool()) }
+            "notes_language" -> v.takeIf { it in setOf("english", "hindi", "hinglish") }?.let { x -> { s -> s.copy(notesLanguage = x.replaceFirstChar { it.uppercase() }) } }
+            "phone_calendar" -> { s -> s.copy(showPhoneCalendar = bool()) }
+            "event_headsup" -> { s -> s.copy(eventPrep = bool()) }
+            "tasks_to_today" -> { s -> s.copy(undatedToToday = bool()) }
+            "morning_plans" -> { s -> s.copy(autoPlans = bool()) }
+            "theme" -> v.takeIf { it in setOf("system", "light", "dark") }?.let { x -> { s -> s.copy(theme = x) } }
+            else -> null
+        }
+        change ?: return null
+        settings.update(change)
+        return "Changed ${key.replace('_', ' ')} to $raw"
+    }
+
     companion object {
+        /** What the assistant may change, and how to say the value (shown to the model). */
+        val SETTINGS = linkedMapOf(
+            "read_speed" to "a number 0.5-6", "speaker_policy" to "ask | allow | never (reading aloud without earphones)",
+            "keep_recordings_days" to "days, 0 = don't keep, forever", "ai_quality" to "fast | balanced | best", "web_search" to "off | ask | auto",
+            "songs" to "on | off", "surroundings" to "on | off (activity timeline)", "nudges" to "on | off", "nudges_per_day" to "1-10",
+            "voice_sensitivity" to "lenient | normal | strict", "recognise_people" to "on | off", "newest_first" to "on | off (transcript order)",
+            "read_answers" to "on | off", "notes_language" to "english | hindi | hinglish", "phone_calendar" to "on | off", "event_headsup" to "on | off",
+            "tasks_to_today" to "on | off", "morning_plans" to "on | off", "theme" to "system | light | dark",
+        )
+
         /** Cheap check before asking the model: does this sound like an instruction to change something? */
         fun looksLikeInstruction(t: String): Boolean {
             val s = t.lowercase().trim()
-            return Regex("^(please )?(move|put|file|tag|label|organi[sz]e|tidy|sort|schedule|book|add|create|make|start|set|link|connect|rename|group|save|remember that|note that)\\b").containsMatchIn(s) ||
+            return Regex("^(please )?(move|put|file|tag|label|organi[sz]e|tidy|sort|schedule|book|add|create|make|start|set|link|connect|rename|group|save|remember that|note that|turn|switch|enable|disable|change|keep|read (faster|slower)|plan)\\b").containsMatchIn(s) ||
                 Regex("\\b(is my|is our|works (at|for|as)|is the (manager|boss|owner|wife|husband|brother|sister|friend|son|daughter|father|mother) of|reports to|meeting with|appointment)\\b").containsMatchIn(s)
         }
     }

@@ -22,6 +22,8 @@ import app.echomind.brain.Briefing
 import app.echomind.brain.Organizer
 import app.echomind.brain.People
 import app.echomind.brain.Web
+import app.echomind.brain.Stats
+import app.echomind.brain.Plans
 import app.echomind.brain.VoicePrints
 import app.echomind.brain.Sounds
 import app.echomind.brain.Brain
@@ -106,7 +108,7 @@ class Graph(val app: Application) {
     val notes = Notes(db, ai, settings, embedder)
     val enricher = Enricher(db, ai, settings, memory, notes, tasks, embedder, { nudges }, { people }, { agenda }, voicePrints, voice)
     val journal = Journal(db, ai, settings, memory)
-    val ask = Ask(db, ai, settings, embedder, { agenda }, { people }, { web })
+    val ask = Ask(db, ai, settings, embedder, { agenda }, { people }, { web }) { plans }
     val sessionizer = Sessionizer(db, settings)
     val recordings = Recordings(app, db, settings)
     val playback = Playback(db, recordings, scope)
@@ -114,20 +116,22 @@ class Graph(val app: Application) {
     val calls = CallImporter(app, db, settings)
     val brain: Brain = Brain(app, db, settings, governor, transcriber, sessionizer, enricher, journal, tasks, notes, calls, ai, notifier) {
         // Nightly extras after the journal and memory review: file new notes, refresh people's pages.
-        runCatching { organizer.tidyNew() }
-        runCatching { people.refreshStories(if (ai.llm(Feature.MEMORY).local) 3 else 12) }
+        if (settings.value.organizeNightly) runCatching { organizer.tidyNew() }
+        if (settings.value.storiesNightly) runCatching { people.refreshStories(if (ai.llm(Feature.MEMORY).local) 3 else 12) }
     }
     val capture = CaptureController(app, db, settings, scope, { brain }) { sounds }
     val speaker = Speaker(app, models, settings, scope) { governor.threads() }
-    val briefing = Briefing(db, settings) { agenda }
+    val briefing = Briefing(db, settings, { agenda }) { plans }
     val assistant = Assistant(db, tasks, notes, briefing, speaker, { actions }, { agenda })
     val nudges = Nudges(db, settings, ai, notifier, { capture }, { speaker })
     val people = People(db, ai, settings, memory)
     val web = Web(cloud, settings, secrets, db, ai)
+    val stats = Stats(db)
+    val plans = Plans(db, ai, settings, memory) { agenda }
     val sounds = Sounds(db, settings, models, recordings, voice, ai) { web }
     val agenda = Agenda(app, db, settings, people, notifier)
     val organizer = Organizer(db, ai, settings)
-    val actions = Actions(db, ai, settings, tasks, notes, memory, people, agenda) { organizer }
+    val actions = Actions(db, ai, settings, tasks, notes, memory, people, agenda, { organizer }) { plans }
 }
 
 class App : Application() {

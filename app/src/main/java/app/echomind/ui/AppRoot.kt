@@ -139,6 +139,8 @@ fun AppRoot(pending: MutableState<String?>) {
             "reminders" -> { nav.tab(TasksRoute); nav.go(RemindersRoute) }
             "journal" -> { nav.tab(LibraryRoute); nav.go(JournalRoute) }
             "calendar" -> nav.tab(CalendarRoute)
+            "plan" -> { nav.tab(TodayRoute); nav.go(PlanRoute) }
+            "dashboard" -> { nav.tab(TodayRoute); nav.go(DashboardRoute) }
             "note:new" -> { nav.tab(LibraryRoute); nav.go(NotesRoute); nav.go(NewNoteRoute()) }
             "settings" -> { nav.tab(TodayRoute); nav.go(SettingsRoute) }
             else -> if (r.startsWith("conversation:")) { nav.tab(TodayRoute); r.removePrefix("conversation:").toLongOrNull()?.let { nav.go(ConversationRoute(it)) } } else nav.tab(TodayRoute)
@@ -214,6 +216,15 @@ fun AppRoot(pending: MutableState<String?>) {
                         entry<VoiceRoute> { VoiceScreen() }
                         entry<ReadingRoute> { app.echomind.ui.screens.ReadingScreen() }
                         entry<RecordingsRoute> { app.echomind.ui.screens.RecordingsScreen() }
+                        entry<DashboardRoute> { app.echomind.ui.screens.DashboardScreen() }
+                        entry<PlanRoute> { app.echomind.ui.screens.PlanScreen() }
+                        entry<SongsRoute> { app.echomind.ui.screens.SongsScreen() }
+                        entry<WebSettingsRoute> { app.echomind.ui.screens.WebSettingsScreen() }
+                        entry<SoundsSettingsRoute> { app.echomind.ui.screens.SoundsSettingsScreen() }
+                        entry<AiSettingsRoute> { app.echomind.ui.screens.AiSettingsScreen() }
+                        entry<PeopleSettingsRoute> { app.echomind.ui.screens.PeopleSettingsScreen() }
+                        entry<CalendarSettingsRoute> { app.echomind.ui.screens.CalendarSettingsScreen() }
+                        entry<TasksSettingsRoute> { app.echomind.ui.screens.TasksSettingsScreen() }
                         entry<VoicesRoute> { app.echomind.ui.screens.VoicesScreen(it.lang) }
                     },
                 )

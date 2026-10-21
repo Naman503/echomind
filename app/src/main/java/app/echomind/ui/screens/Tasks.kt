@@ -328,6 +328,7 @@ fun TasksScreen() {
     val open by remember { g.db.tasks().observeOpen() }.collectAsStateWithLifecycle(emptyList())
     val review by remember { g.db.tasks().observeByStatus("suggested") }.collectAsStateWithLifecycle(emptyList())
     val done by remember { g.db.tasks().observeDone() }.collectAsStateWithLifecycle(emptyList())
+    val looksDone by remember { g.db.tasks().observeLooksDone() }.collectAsStateWithLifecycle(emptyList())
     val projectsList by remember { g.db.projects().observe() }.collectAsStateWithLifecycle(emptyList())
     val subCounts by remember { g.db.tasks().observeSubtaskCounts() }.collectAsStateWithLifecycle(emptyList())
     val todayStart = startOf(LocalDate.now())
@@ -362,7 +363,7 @@ fun TasksScreen() {
             if (searching) OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = Sp.gutter), placeholder = { Text("Search tasks") }, singleLine = true, shape = MaterialTheme.shapes.extraLarge)
             LazyRow(contentPadding = PaddingValues(horizontal = Sp.gutter, vertical = Sp.s), horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
                 items(View.entries.toList(), key = { it.name }) { v ->
-                    val count = when (v) { View.REVIEW -> review.size; else -> 0 }
+                    val count = when (v) { View.REVIEW -> review.size + looksDone.size; else -> 0 }
                     FilterChip(view == v && listFilter == null, { view = v; listFilter = null }, label = { Text(v.label + if (count > 0) " · $count" else "") })
                 }
                 items(projectsList, key = { "p${it.id}" }) { p ->
@@ -410,7 +411,11 @@ fun TasksScreen() {
                         if (filtered.isEmpty()) item { EmptyState(if (listFilter != null) "This list is empty" else "No open tasks", "Add one below — #list, !1 priority, @label, \"every week\" all work.") }
                     }
                     View.REVIEW -> {
-                        if (review.isEmpty()) item { EmptyState("All reviewed", "When the AI hears a commitment or a request, it waits here for your OK — nothing notifies you until you accept it.") }
+                        if (looksDone.isNotEmpty()) {
+                            item(key = "ld_h") { SectionHeader("Sounds finished · from your conversations") }
+                            items(looksDone, key = { "ld${it.id}" }) { t -> LooksDone(t) }
+                        }
+                        if (review.isEmpty() && looksDone.isEmpty()) item { EmptyState("All reviewed", "When the AI hears a commitment or a request, it waits here for your OK — nothing notifies you until you accept it.") }
                         else item {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("Found in your conversations. Accept what's real.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
@@ -828,3 +833,20 @@ fun ColorRow(selected: Int, includeNone: Boolean = false, onPick: (Int) -> Unit)
         }
     }
 }
+
+/** A task a conversation suggests is finished (or dropped): confirm with one tap. */
+@Composable
+private fun LooksDone(t: TaskRow) {
+    val g = App.graph
+    val nav = LocalNav.current
+    val scope = rememberCoroutineScope()
+    EchoCard(onClick = { nav.go(TaskRoute(t.id)) }, color = LocalSemantic.current.positive.copy(alpha = 0.08f)) {
+        Text(t.title, style = MaterialTheme.typography.bodyLarge)
+        t.aiNote?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        Row(horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
+            TextButton(onClick = { scope.launch { g.tasks.complete(t) } }) { Text("Mark done") }
+            TextButton(onClick = { scope.launch { g.db.tasks().update(t.copy(doneSuggestedAt = null, aiNote = null)) } }) { Text("Not yet") }
+        }
+    }
+}
+

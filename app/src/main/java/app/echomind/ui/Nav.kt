@@ -44,6 +44,15 @@ import kotlinx.serialization.Serializable
 @Serializable data class NewEventRoute(val day: String? = null) : Route
 @Serializable data object CirclesRoute : Route
 @Serializable data object OrganizeRoute : Route
+@Serializable data object DashboardRoute : Route
+@Serializable data object PlanRoute : Route
+@Serializable data object SongsRoute : Route
+@Serializable data object WebSettingsRoute : Route
+@Serializable data object SoundsSettingsRoute : Route
+@Serializable data object AiSettingsRoute : Route
+@Serializable data object PeopleSettingsRoute : Route
+@Serializable data object CalendarSettingsRoute : Route
+@Serializable data object TasksSettingsRoute : Route
 @Serializable data class VoicesRoute(val lang: String = "en") : Route
 
 val tabs: List<Route> = listOf(TodayRoute, CalendarRoute, AskRoute(), TasksRoute, LibraryRoute)

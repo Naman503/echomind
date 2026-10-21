@@ -21,6 +21,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Edit
@@ -96,34 +99,47 @@ fun LibraryScreen() {
     val facts by remember { g.db.memory().observeActiveFacts() }.collectAsStateWithLifecycle(emptyList())
     val people by remember { g.db.memory().observeEntities() }.collectAsStateWithLifecycle(emptyList())
     val days by remember { g.db.days().observeRecent(30) }.collectAsStateWithLifecycle(emptyList())
-    LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars), contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.m)) {
+    val songs by remember { g.db.sounds().observeSongs() }.collectAsStateWithLifecycle(emptyList())
+    val live = notes.filter { !it.archived }
+    val entries = listOf(
+        Triple(Icons.Rounded.Insights, "Dashboard", "Your day in numbers") to { nav.go(app.echomind.ui.DashboardRoute) },
+        Triple(Icons.Rounded.Flag, "Plan", "Today · week · month") to { nav.go(app.echomind.ui.PlanRoute) },
+        Triple(Icons.Rounded.StickyNote2, "Notes", "${live.size} note${if (live.size == 1) "" else "s"}") to { nav.go(NotesRoute) },
+        Triple(Icons.Rounded.Psychology, "Memory", "${facts.size} things") to { nav.go(MemoryRoute) },
+        Triple(Icons.Rounded.Groups, "People", "${people.count { it.kind == "person" }} people") to { nav.go(PeopleRoute) },
+        Triple(Icons.Rounded.AutoStories, "Journal", "${days.count { it.generatedAt != null }} days") to { nav.go(JournalRoute) },
+        Triple(Icons.Rounded.Mic, "Recordings", "Kept ${retentionLabel(g.settings.value.keepRecordingsDays)}") to { nav.go(app.echomind.ui.RecordingsRoute) },
+        Triple(Icons.Rounded.MusicNote, "Songs", "${songs.size} kept") to { nav.go(app.echomind.ui.SongsRoute) },
+        Triple(Icons.Rounded.AutoAwesome, "Organise", "Folders, tags, circles") to { nav.go(app.echomind.ui.OrganizeRoute) },
+        Triple(Icons.Rounded.Shield, "Data ledger", "What left the phone") to { nav.go(LedgerRoute) },
+    )
+    LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars), contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
         item { Text("Library", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(vertical = Sp.s)) }
-        item { LibraryEntry(Icons.Rounded.StickyNote2, "Notes", "${notes.size} living notes that update themselves") { nav.go(NotesRoute) } }
-        item { LibraryEntry(Icons.Rounded.Psychology, "Memory", "${facts.size} things it remembers about your life") { nav.go(MemoryRoute) } }
-        item { LibraryEntry(Icons.Rounded.Groups, "People", "${people.count { it.kind == "person" }} people · who does what, circles, names to remember") { nav.go(PeopleRoute) } }
-        item { LibraryEntry(Icons.Rounded.Mic, "Recordings", "Listen back · kept ${retentionLabel(App.graph.settings.value.keepRecordingsDays)}") { nav.go(app.echomind.ui.RecordingsRoute) } }
-        item { LibraryEntry(Icons.Rounded.AutoAwesome, "Organise with AI", "Folders and tags for notes, circles for people") { nav.go(app.echomind.ui.OrganizeRoute) } }
-        item { LibraryEntry(Icons.Rounded.AutoStories, "Journal", "${days.count { it.generatedAt != null }} days written · things to improve") { nav.go(JournalRoute) } }
-        item { LibraryEntry(Icons.Rounded.Shield, "Data ledger", "Every time anything left this phone") { nav.go(LedgerRoute) } }
-        val recent = notes.take(4)
-        if (recent.isNotEmpty()) {
-            item { SectionHeader("Recently updated notes") }
-            items(recent, key = { it.id }) { n -> NoteCard(n) { nav.go(NoteRoute(n.id)) } }
+        entries.chunked(2).forEach { pair ->
+            item(key = "e" + pair.first().first.second) {
+                Row(horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
+                    pair.forEach { (t, go) -> LibraryTile(t.first, t.second, t.third, Modifier.weight(1f), go) }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
         }
+        item { SectionHeader("All notes · ${live.size}", action = "Search & filter", onAction = { nav.go(NotesRoute) }) }
+        if (live.isEmpty()) item { EmptyState("No notes yet", "Write one from Notes, or let the AI start one when a topic keeps coming up.") }
+        live.sortedWith(compareByDescending<Note> { it.pinned }.thenByDescending { it.updatedAt }).groupBy { it.folder?.substringBefore('/') ?: "" }
+            .toSortedMap(compareBy<String> { it.isEmpty() }.thenBy { it }).forEach { (folder, list) ->
+                item(key = "f$folder") { Text(if (folder.isEmpty()) "Not in a folder" else "📁 $folder", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = Sp.s)) }
+                items(list, key = { it.id }) { n -> NoteCard(n) { nav.go(NoteRoute(n.id)) } }
+            }
     }
 }
 
 @Composable
-private fun LibraryEntry(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
-    EchoCard(onClick = onClick) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-            Spacer(Modifier.width(Sp.l))
-            Column {
-                Text(title, style = MaterialTheme.typography.titleMedium)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+private fun LibraryTile(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, modifier: Modifier, onClick: () -> Unit) {
+    EchoCard(onClick = onClick, modifier = modifier, padding = PaddingValues(Sp.m)) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.height(Sp.xs))
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

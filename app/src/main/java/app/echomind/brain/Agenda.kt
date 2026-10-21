@@ -88,7 +88,7 @@ class Agenda(
             val sure = settings.value.autoAcceptConfident && f.confidence >= 0.85f
             val e = EventRow(title = f.title.trim().take(90), startAt = f.start, endAt = f.end, allDay = f.allDay, location = f.location,
                 people = Js.json.encodeToString(ListSerializer(String.serializer()), f.people.take(8)), source = "ai",
-                status = if (sure) "confirmed" else "suggested", conversationId = conversationId, quote = f.quote, createdAt = at, updatedAt = at)
+                status = if (sure) "confirmed" else "suggested", conversationId = conversationId, quote = f.quote, remindBeforeMin = settings.value.eventRemindDefault, createdAt = at, updatedAt = at)
             val id = db.events().insert(e)
             if (sure) afterConfirm(e.copy(id = id))
             n++

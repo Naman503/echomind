@@ -149,7 +149,23 @@ data class Settings(
     /** Read the top pages, not just the result snippets (better answers, a few more requests). */
     val webReadPages: Boolean = true,
 
+    // Organising (what the AI does by itself)
+    /** File new notes into folders and tag them every night. */
+    val organizeNightly: Boolean = true,
+    /** Rewrite people's pages at night when there's more to say. */
+    val storiesNightly: Boolean = true,
+    /** Write today's / this week's / this month's plan each morning. */
+    val autoPlans: Boolean = true,
+    /** Conversations update tasks already on your list (done, moved, stuck). */
+    val taskFollowUps: Boolean = true,
+    /** Days a newly met person stays in "Names to remember". */
+    val namesWindowDays: Int = 30,
+
     // Calendar
+    /** Plans heard in conversations are offered as events. */
+    val eventsFromConversations: Boolean = true,
+    /** Default heads-up before your own events, minutes (-1 = none). */
+    val eventRemindDefault: Int = 15,
     /** Show the phone's own calendars next to EchoMind's events (needs calendar permission). */
     val showPhoneCalendar: Boolean = false,
     /** Confirmed events are also written to the phone's main calendar. */

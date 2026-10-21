@@ -66,10 +66,11 @@ class Enricher(
         val local = llm.local
         val lang = settings.value.notesLanguage
 
+        val liveTasks = db.tasks().live().filter { it.status == "open" || it.status == "suggested" }.sortedByDescending { it.updatedAt }.take(if (local) 10 else 40)
         val ctx = Prompts.Context(
             profile = memory.profile().take(if (local) 700 else 4_000),
             people = memory.peopleContext(if (local) 600 else 3_000),
-            openTasks = db.tasks().live().sortedByDescending { it.createdAt }.take(if (local) 8 else 30).map { it.title },
+            openTasks = liveTasks.map { t -> t.title + (t.dueAt?.let { " (due ${Prompts.day(it).substringBefore(',')})" } ?: "") },
             noteTitles = notes.titles().take(if (local) 12 else 30),
             earlier = earlierToday(c, if (local) 400 else 2_500),
         )
@@ -133,7 +134,7 @@ class Enricher(
                 Agenda.Found(e.str("title").orEmpty(), start.at, When.resolve(e.str("end_iso"), null, c.startAt)?.at, !start.hasTime, e.str("location")?.takeIf { it.isNotBlank() },
                     e.strings("people"), (e.dbl("confidence") ?: 0.6).toFloat(), e.str("quote"))
             }
-            runCatching { agenda().addFound(events, c.id, at) }.onFailure { Log.w(TAG, "events failed", it) }
+            if (settings.value.eventsFromConversations) runCatching { agenda().addFound(events, c.id, at) }.onFailure { Log.w(TAG, "events failed", it) }
             val candidates = outputs.flatMap { it.objects("facts") }.mapNotNull { f ->
                 val st = f.str("statement")?.trim().orEmpty()
                 if (st.length < 6) null
@@ -154,6 +155,7 @@ class Enricher(
                 )
             }.filter { it.owner != "other" || it.isReminder }
             taskCount = tasks.addFound(found, c.id, at)
+            if (settings.value.taskFollowUps) runCatching { applyTaskUpdates(outputs, liveTasks, c) }.onFailure { Log.w(TAG, "task updates failed", it) }
 
             val updates = outputs.flatMap { it.objects("note_updates") }.groupBy { it.str("topic").orEmpty().trim() }.mapNotNull { (topic, list) ->
                 if (topic.isBlank()) null else Notes.Update(topic, list.flatMap { it.strings("points") }.distinct(), list.flatMap { sources(it) },
@@ -216,6 +218,30 @@ class Enricher(
                 val arr = outputs[part].objects(k)
                 val kept = keepByPart[part].orEmpty().toSet()
                 outputs[part] = JsonObject(outputs[part] + (k to JsonArray(arr.filterIndexed { i, _ -> i in kept })))
+            }
+        }
+    }
+
+    /** What a conversation says about tasks already on the list: done is offered for a tap, the rest goes in the task's log. */
+    private suspend fun applyTaskUpdates(outputs: List<JsonObject>, live: List<app.echomind.data.TaskRow>, c: Conversation) {
+        val now = System.currentTimeMillis()
+        for (u in outputs.flatMap { it.objects("task_updates") }) {
+            val t = live.getOrNull((u.int("task") ?: 0) - 1)?.let { db.tasks().get(it.id) } ?: continue
+            if (t.status != "open" && t.status != "suggested") continue
+            val note = u.str("note")?.trim().orEmpty()
+            val quote = u.str("quote")?.trim()?.takeIf { it.isNotEmpty() }?.let { " — “${it.take(120)}”" }.orEmpty()
+            val stamp = "${Prompts.day(c.startAt).substringBefore(',')} ${Prompts.time(c.startAt)}"
+            val log = "• $stamp: ${note.ifBlank { u.str("status") }}$quote"
+            val detail = listOfNotNull(t.detail?.takeIf { it.isNotBlank() }, log).joinToString("\n")
+            when (u.str("status")) {
+                "done" -> db.tasks().update(t.copy(doneSuggestedAt = now, aiNote = "Sounds done$quote ($stamp)", detail = detail, updatedAt = now))
+                "dropped" -> db.tasks().update(t.copy(doneSuggestedAt = now, aiNote = "Sounds dropped: ${note.ifBlank { "no longer needed" }} ($stamp)", detail = detail, updatedAt = now))
+                "moved" -> {
+                    val due = When.resolve(u.str("due_iso"), null, c.startAt)
+                    if (due != null) tasks.reschedule(t.copy(detail = detail, aiNote = "Moved to ${Prompts.day(due.at).substringBefore(',')} in a conversation ($stamp)"), due.at)
+                    else db.tasks().update(t.copy(detail = detail, aiNote = note, updatedAt = now))
+                }
+                else -> db.tasks().update(t.copy(detail = detail, aiNote = note.ifBlank { null }, updatedAt = now))
             }
         }
     }

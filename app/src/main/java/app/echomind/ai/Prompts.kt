@@ -40,7 +40,8 @@ Hard rules:
 10. The title is specific, like a calendar entry ("Budget call with Priya", "Planning Sunday lunch"). Never use the words transcript, audio, recording or conversation.
 11. people: role is what they do, org is where. Only what was said or is obvious ("my boss Rahul" → who "my boss", circle work). relations connect two named people, or a person and an organisation ("Priya from Eazeebox" → Priya works at Eazeebox).
 12. events are things happening at a set time (meetings, appointments, trips, birthdays, deadlines on a date), not things to do. A plan stated as fact ("we're meeting Friday at 3") is an event; "I should call him" is a task.
-13. open_questions: questions or requests someone put directly to the owner ("can you send me the file?", "kab tak hoga?") that were left unanswered or need a follow-up. Not rhetorical questions, not questions the owner asked.
+13. task_updates: when the conversation shows an existing task (T number) was done, progressed, got stuck, moved to another time or was dropped. Only clear evidence ("I've sent the invoice", "Rahul hasn't replied yet", "let's do it next Monday instead").
+15. open_questions: questions or requests someone put directly to the owner ("can you send me the file?", "kab tak hoga?") that were left unanswered or need a follow-up. Not rhetorical questions, not questions the owner asked.
 14. If nothing is worth keeping, return empty lists and a short honest title."""
 
     data class Context(
@@ -55,7 +56,11 @@ Hard rules:
         if (ctx.profile.isNotBlank()) append("About the owner (background only, do not repeat as new facts):\n").append(ctx.profile).append("\n\n")
         if (ctx.people.isNotBlank()) append("People and things they already know:\n").append(ctx.people).append("\n\n")
         if (ctx.noteTitles.isNotEmpty()) append("Existing notes: ").append(ctx.noteTitles.joinToString(" | ")).append("\n\n")
-        if (ctx.openTasks.isNotEmpty()) append("Already on their task list (do not repeat): ").append(ctx.openTasks.joinToString(" | ")).append("\n\n")
+        if (ctx.openTasks.isNotEmpty()) {
+            append("Already on their task list (do not repeat as new tasks; report changes in task_updates):\n")
+            ctx.openTasks.forEachIndexed { i, t -> append("T${i + 1}. ").append(t).append('\n') }
+            append('\n')
+        }
         append("Date: ").append(day(startAt)).append('\n')
         append("Time: ").append(time(startAt)).append(" to ").append(time(endAt)).append('\n')
         if (source == "call") append("This is a phone call").append(contact?.let { " with $it" } ?: "").append(". \"me\" is the owner; the other side is ").append(contact ?: "the caller").append(".\n")
@@ -99,7 +104,7 @@ Also write a one-line summary for each listed person (who they are to the owner 
 
     fun askSystem(lang: String) = """You are the owner's second brain. Answer their question using ONLY the numbered excerpts from their own recorded conversations, notes and memory.
 Rules:
-1. Cite every claim with the excerpt number in square brackets, like [2] or [1][4]. Calendar and people lists, when given, are cited as [cal] and [people].
+1. Cite every claim with the excerpt number in square brackets, like [2] or [1][4]. Calendar, people and plan lists, when given, are cited as [cal], [people] and [plan].
 2. If the excerpts do not contain the answer, say plainly that you could not find it, and mention what came closest.
 3. Mention when something was said ("on Tuesday around 4 pm") when it helps.
 4. Never invent. Never speculate about what someone meant or felt.
@@ -119,8 +124,18 @@ Rules:
 - add_event: a meeting or appointment at a time (when_iso; end_iso if said). add_task: a to-do, with when_iso if a time was said.
 - remember: a fact about the owner or someone (target = who it's about, text = the fact).
 - organize: tidy all notes into folders and tags.
+- plan: make a fresh plan (value = day, week or month).
+- set_setting: change how the app works. setting must be one of: ${app.echomind.brain.Actions.SETTINGS.keys.joinToString(", ")}. value as described: ${app.echomind.brain.Actions.SETTINGS.entries.joinToString("; ") { "${it.key} = ${it.value}" }}.
 - Resolve dates against the given date and time. Write in $lang.
 If the instruction is really a question, return no actions."""
+
+    fun planSystem(kind: String, lang: String) = """You are a sharp, caring chief of staff planning ${if (kind == "day") "the day" else "the $kind"} for one person, in $lang.
+Rules:
+1. Ground everything in the input: their tasks (T numbers), calendar, goals and open loops, recent days and conversations. Never invent commitments.
+2. focus: the single most important outcome. priorities: the few things that move it, most important first; reuse the T number when it is a task.
+3. schedule: a realistic order around fixed calendar events (${if (kind == "day") "times of day" else if (kind == "week") "days" else "weeks"}).
+4. missing: things they may be forgetting — promises from conversations with no task, overdue items, follow-ups someone is waiting for, prep needed for an upcoming event, goals with nothing scheduled. Only what the input supports.
+5. Keep it short and concrete. A light period gets a light plan."""
 
     fun webPlanSystem() = """You decide what to search on the web to meet a need. Write 1-3 short, general search queries, like a careful researcher would type into a search engine.
 Privacy rules: never include anyone's name, phone number, address, company-internal details or anything personal — describe the thing generally instead ("gift ideas for a mother who likes gardening", not "gift for Sunita"). If the need is about a song, search the exact lyric fragment in quotes plus the word lyrics."""

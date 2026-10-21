@@ -43,7 +43,7 @@ data class Citation(
  * embedding model is installed, plus memory facts and notes — fused with
  * reciprocal-rank fusion and a mild preference for recent things.
  */
-class Ask(private val db: Db, private val ai: Ai, private val settings: SettingsStore, private val embedder: Embedder, private val agenda: () -> Agenda, private val people: () -> People, private val web: () -> Web) {
+class Ask(private val db: Db, private val ai: Ai, private val settings: SettingsStore, private val embedder: Embedder, private val agenda: () -> Agenda, private val people: () -> People, private val web: () -> Web, private val plans: () -> Plans) {
 
     sealed interface Event {
         data class Searching(val text: String) : Event
@@ -229,6 +229,11 @@ class Ask(private val db: Db, private val ai: Ai, private val settings: Settings
             if (calendar.isNotEmpty()) {
                 append("\nCalendar (can be cited as [cal]):\n")
                 calendar.take(30).forEach { append("- ${Prompts.day(it.startAt)}${if (it.allDay) "" else " ${Prompts.time(it.startAt)}"}: ${it.title}${it.location?.let { l -> " at $l" } ?: ""}\n") }
+            }
+            if (Regex("\\b(plan|focus|priorit|missing|forget|should i|this week|this month|goal)", RegexOption.IGNORE_CASE).containsMatchIn(question)) {
+                for (k in listOf("day", "week", "month")) plans().get(k)?.let { p ->
+                    append("\n${if (k == "day") "Today's" else "This $k's"} plan (can be cited as [plan]): ${p.focus}. Priorities: ${p.priorities.joinToString("; ") { it.title }}. Might be missing: ${p.missing.joinToString("; ") { it.title }}\n")
+                }
             }
             if (named.isNotEmpty()) {
                 append("\nPeople mentioned (can be cited as [people]):\n")

@@ -20,7 +20,7 @@ import java.time.ZoneId
  * the player highlights the part being read and you can skip between them.
  * Written to be heard, not read: counts first, then the items, no symbols.
  */
-class Briefing(private val db: Db, private val settings: SettingsStore, private val agenda: () -> Agenda) {
+class Briefing(private val db: Db, private val settings: SettingsStore, private val agenda: () -> Agenda, private val plans: () -> Plans) {
     data class Script(val title: String, val parts: List<String>)
 
     private val zone get() = ZoneId.systemDefault()
@@ -75,6 +75,10 @@ class Briefing(private val db: Db, private val settings: SettingsStore, private 
             }
         }
         if (carry.isNotEmpty()) parts.add("From yesterday, you meant to: ${list(carry.take(3))}.")
+        runCatching { plans().get("day") }.getOrNull()?.let { p ->
+            if (p.focus.isNotBlank()) parts.add("Today's focus: ${p.focus.trimEnd('.')}.")
+            if (p.missing.isNotEmpty()) parts.add("You might be missing: ${list(p.missing.take(3).map { it.title.trimEnd('.') })}.")
+        }
         if (review > 0) parts.add("${count(review, "suggestion")} from your conversations ${if (review == 1) "is" else "are"} waiting for your OK.")
         return Script("Your brief", parts)
     }

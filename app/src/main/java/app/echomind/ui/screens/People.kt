@@ -126,7 +126,7 @@ fun PeopleScreen() {
     var kind by rememberSaveable { mutableStateOf("person") }
     var query by rememberSaveable { mutableStateOf("") }
     var practice by remember { mutableStateOf(false) }
-    val since = System.currentTimeMillis() - 30 * 86_400_000L
+    val since = System.currentTimeMillis() - g.settings.value.namesWindowDays * 86_400_000L
     val people = all.filter { it.kind == "person" }
     val recent = remember(people) { people.filter { it.firstSeenAt >= since }.sortedByDescending { it.firstSeenAt }.take(12) }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
