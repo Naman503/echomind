@@ -157,7 +157,9 @@ class Ask(private val db: Db, private val ai: Ai, private val settings: Settings
         return lines.sortedByDescending { u -> terms.count { u.searchText.contains(it) } * 10 - (System.currentTimeMillis() - u.startAt) / 86_400_000.0 / 30 }
     }
 
-    private fun lineHit(u: Utterance) = Hit("l${u.id}", Citation(0, "line", u.id, u.conversationId, u.startAt, "", u.text), u.text)
+    private fun lineHit(u: Utterance) = if (u.speaker == Sessionizer.SONG)
+        Hit("l${u.id}", Citation(0, "song", u.id, null, u.startAt, "♪ Song lyrics · ${Prompts.day(u.startAt).substringBefore(',')} ${Prompts.time(u.startAt)}", u.text), u.text)
+    else Hit("l${u.id}", Citation(0, "line", u.id, u.conversationId, u.startAt, "", u.text), u.text)
 
     private suspend fun hydrate(h: Hit, from: Long, to: Long): Hit? {
         val id = h.citation.id

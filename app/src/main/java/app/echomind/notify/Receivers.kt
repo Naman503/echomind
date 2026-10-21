@@ -71,6 +71,29 @@ class NudgeReceiver : BroadcastReceiver() {
     }
 }
 
+/** A scheduled check-in, and inline replies to quick questions. */
+class CheckInReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val g = App.graph
+        when (intent.action) {
+            ACTION_REPLY -> {
+                val text = androidx.core.app.RemoteInput.getResultsFromIntent(intent)?.getCharSequence(EXTRA_REPLY)?.toString()?.trim().orEmpty()
+                async {
+                    val changes = if (text.isNotEmpty()) g.checkIns.answerQuick(text) else emptyList()
+                    g.notifier.quickAnswered(changes)
+                }
+            }
+            else -> intent.getStringExtra(EXTRA_SLOT)?.let { id -> async { g.checkIns.due(id) } }
+        }
+    }
+
+    companion object {
+        const val EXTRA_SLOT = "slot"
+        const val EXTRA_REPLY = "reply"
+        const val ACTION_REPLY = "app.echomind.QUICK_REPLY"
+    }
+}
+
 /** An event's reminder time: the heads-up with who you're meeting. */
 class EventReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -111,6 +134,7 @@ class BootReceiver : BroadcastReceiver() {
             val s = g.settings.awaitLoaded()
             g.tasks.rescheduleAll()
             g.agenda.rescheduleAll()
+            g.checkIns.schedule()
             g.reminders.scheduleDaily(s.morningBriefAt, s.eveningRecapAt)
             if (s.captureWanted && intent.action != Intent.ACTION_TIME_CHANGED && intent.action != Intent.ACTION_TIMEZONE_CHANGED) {
                 g.notifier.resumePrompt(if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) "EchoMind was updated." else "Your phone restarted.")

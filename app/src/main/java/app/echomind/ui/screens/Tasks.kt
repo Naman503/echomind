@@ -340,6 +340,7 @@ fun TasksScreen() {
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var reschedule by remember { mutableStateOf<TaskRow?>(null) }
+    var showDone by rememberSaveable { mutableStateOf(true) }
     val snackbar = remember { SnackbarHostState() }
 
     fun complete(t: TaskRow) = scope.launch {
@@ -408,7 +409,16 @@ fun TasksScreen() {
                         val byList = filtered.groupBy { it.projectId }
                         section("Inbox", byList[null].orEmpty(), showList = false)
                         projectsList.forEach { p -> section(p.name, byList[p.id].orEmpty(), showList = false) }
-                        if (filtered.isEmpty()) item { EmptyState(if (listFilter != null) "This list is empty" else "No open tasks", "Add one below — #list, !1 priority, @label, \"every week\" all work.") }
+                        if (filtered.isEmpty()) item { EmptyState(if (listFilter != null) "Nothing open in this list" else "No open tasks", "Add one below — #list, !1 priority, @label, \"every week\" all work.") }
+                        // Finished tasks stay visible here, newest first (Done shows the full history).
+                        val finished = done.filter { it.parentId == null && (listFilter == null || it.projectId == listFilter) }
+                            .filter { query.isBlank() || it.title.contains(query, true) }
+                        if (finished.isNotEmpty()) {
+                            item(key = "done_h") { SectionHeader("Completed · ${finished.size}", action = if (showDone) "Hide" else "Show", onAction = { showDone = !showDone }) }
+                            if (showDone) items(finished, key = { "ad${it.id}" }) { t ->
+                                TaskLine(t, projects, subs[t.id], onToggle = { scope.launch { g.tasks.reopen(t) } }, onClick = { nav.go(TaskRoute(t.id)) })
+                            }
+                        }
                     }
                     View.REVIEW -> {
                         if (looksDone.isNotEmpty()) {

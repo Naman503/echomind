@@ -257,6 +257,7 @@ fun CalendarScreen() {
                 items(dayTasks, key = { "t${it.id}" }) { t -> CalendarTask(t) { nav.go(TaskRoute(t.id)) } }
             }
             item(key = "activity") { ActivityTimeline(selected) }
+            item(key = "songs") { DaySongs(selected) }
             if (dayConvs.isNotEmpty()) {
                 item(key = "cvh") { SectionHeader("Conversations · ${dayConvs.size}") }
                 items(dayConvs.sortedBy { it.startAt }, key = { "c${it.id}" }) { c -> ConversationRow(c) { nav.go(ConversationRoute(c.id)) } }

@@ -66,7 +66,13 @@ class Notifier(private val context: Context) {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 
-    data class Status(val title: String, val text: String, val recording: Boolean, val paused: Boolean, val progress: Int = -1)
+    data class Status(
+        val title: String, val text: String, val recording: Boolean, val paused: Boolean, val progress: Int = -1,
+        /** Short phone health for the collapsed line: "38°C · 72%". */
+        val sub: String? = null,
+        /** Lines for the expanded notification: what's running, queue, phone, today. */
+        val details: List<String> = emptyList(),
+    )
 
     fun capture(s: Status): Notification {
         val b = NotificationCompat.Builder(context, CAPTURE)
@@ -81,6 +87,9 @@ class Notifier(private val context: Context) {
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setContentIntent(open())
         if (s.progress in 0..100) b.setProgress(100, s.progress, false)
+        s.sub?.let { b.setSubText(it) }
+        if (s.details.isNotEmpty()) b.setStyle(NotificationCompat.InboxStyle().setBigContentTitle(s.title).also { st -> s.details.take(7).forEach { st.addLine(it) } })
+        if (s.recording || s.paused) b.addAction(0, "Process now", serviceAction(CaptureService.ACTION_PROCESS, 15))
         if (s.recording) {
             b.addAction(0, "Pause 30 min", serviceAction(CaptureService.ACTION_PAUSE, 11, CaptureService.EXTRA_MINUTES to 30L))
             val input = RemoteInput.Builder(CaptureService.EXTRA_NOTE).setLabel("Note to remember").build()
@@ -186,6 +195,41 @@ class Notifier(private val context: Context) {
             .build())
     }
 
+    /** "Evening check-in — 6 questions" → opens the check-in. */
+    fun checkInPrompt(slot: app.echomind.core.CheckInSlot, facts: Int) {
+        if (!can()) return
+        nm.notify(CHECKIN_ID, NotificationCompat.Builder(context, NUDGES)
+            .setSmallIcon(R.drawable.ic_stat_idle)
+            .setContentTitle("${slot.kind.replaceFirstChar { it.uppercase() }} check-in")
+            .setContentText(if (facts > 0) "A few questions about your day — $facts things to confirm. Skip any you like." else "A few questions about your day. Skip any you like.")
+            .setAutoCancel(true)
+            .setContentIntent(open("checkin:${slot.id}", 970))
+            .build())
+    }
+
+    /** One quick question, answered inline from the notification. */
+    fun quickQuestion(question: String, why: String) {
+        if (!can()) return
+        val reply = RemoteInput.Builder(CheckInReceiver.EXTRA_REPLY).setLabel("Your answer (or “skip”)").build()
+        val pi = PendingIntent.getBroadcast(context, 971, Intent(context, CheckInReceiver::class.java).setAction(CheckInReceiver.ACTION_REPLY),
+            PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        nm.notify(QUICKQ_ID, NotificationCompat.Builder(context, NUDGES)
+            .setSmallIcon(R.drawable.ic_stat_idle)
+            .setContentTitle(question)
+            .setContentText(why)
+            .setStyle(NotificationCompat.BigTextStyle().bigText("$question\n$why"))
+            .setAutoCancel(true)
+            .setTimeoutAfter(3 * 3_600_000L)
+            .addAction(NotificationCompat.Action.Builder(0, "Answer", pi).addRemoteInput(reply).build())
+            .build())
+    }
+
+    fun quickAnswered(changes: List<String>) {
+        if (!can()) return
+        nm.notify(QUICKQ_ID, NotificationCompat.Builder(context, NUDGES).setSmallIcon(R.drawable.ic_stat_idle)
+            .setContentTitle("Thanks").setContentText(changes.firstOrNull() ?: "Noted.").setTimeoutAfter(8_000).build())
+    }
+
     /** "No earphones — play on the speaker?" when the app isn't open. */
     fun speakerPrompt(title: String) {
         if (!can()) return
@@ -273,6 +317,8 @@ class Notifier(private val context: Context) {
         const val NUDGE_BASE = 4600
         const val EVENT_BASE = 5600
         const val SPEAKER_ID = 4950
+        const val CHECKIN_ID = 4960
+        const val QUICKQ_ID = 4961
         const val CAPTURE_ID = 4107
         const val SUGGESTIONS_ID = 4200
         const val BRIEF_ID = 4201

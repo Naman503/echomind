@@ -252,7 +252,7 @@ class Brain(
             if (batch.isEmpty()) return
             for (u in batch) {
                 last = u.id
-                if (u.speaker != null && u.speaker != "me") continue
+                if (u.speaker != null && u.speaker != "me") continue // includes lyrics ("Song"): a sung "remind me" is not a request
                 // Old lines (an imported call, a long backlog) are left to the normal notes pass.
                 if (System.currentTimeMillis() - u.startAt > 3 * 3_600_000L) continue
                 if (!commandRe.containsMatchIn(u.text)) continue

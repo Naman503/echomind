@@ -44,6 +44,9 @@ import kotlinx.serialization.Serializable
 @Serializable data class NewEventRoute(val day: String? = null) : Route
 @Serializable data object CirclesRoute : Route
 @Serializable data object OrganizeRoute : Route
+@Serializable data class CheckInRoute(val slot: String? = null) : Route
+@Serializable data object CheckInsRoute : Route
+@Serializable data object DeveloperRoute : Route
 @Serializable data object DashboardRoute : Route
 @Serializable data object PlanRoute : Route
 @Serializable data object SongsRoute : Route

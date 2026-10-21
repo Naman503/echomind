@@ -22,6 +22,7 @@ import app.echomind.brain.Briefing
 import app.echomind.brain.Organizer
 import app.echomind.brain.People
 import app.echomind.brain.Web
+import app.echomind.brain.CheckIns
 import app.echomind.brain.Stats
 import app.echomind.brain.Plans
 import app.echomind.brain.VoicePrints
@@ -127,6 +128,7 @@ class Graph(val app: Application) {
     val people = People(db, ai, settings, memory)
     val web = Web(cloud, settings, secrets, db, ai)
     val stats = Stats(db)
+    val checkIns = CheckIns(app, db, ai, settings, tasks, memory, voicePrints, journal, notifier)
     val plans = Plans(db, ai, settings, memory) { agenda }
     val sounds = Sounds(db, settings, models, recordings, voice, ai) { web }
     val agenda = Agenda(app, db, settings, people, notifier)
@@ -145,8 +147,10 @@ class App : Application() {
             runCatching { g.capture.recoverOrphans() }.onFailure { Log.w("EchoApp", "recover failed", it) }
             runCatching { g.recordings.sweep() }
             g.reminders.scheduleDaily(s.morningBriefAt, s.eveningRecapAt)
+            g.checkIns.schedule()
             logExitReasons()
         }
+        app.echomind.surfaces.WidgetUpdater.start(this, g.scope)
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "watchdog", ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<WatchdogWorker>(15, TimeUnit.MINUTES).setConstraints(Constraints.NONE).build(),

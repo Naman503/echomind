@@ -91,6 +91,8 @@ data class Settings(
     val notifyMorning: Boolean = true,
     val notifyEvening: Boolean = true,
     val notifySuggestions: Boolean = true,
+    /** The listening notification: minimal | status (running, queue, phone heat) | full (+ today's numbers, next reminder). */
+    val statusDetail: String = "full",
 
     // Work limits
     /** 10..100: how much of the time the phone may spend on transcription/AI. */
@@ -161,6 +163,27 @@ data class Settings(
     /** Days a newly met person stays in "Names to remember". */
     val namesWindowDays: Int = 30,
 
+    // Check-ins: the assistant asks about your day
+    val checkIns: List<CheckInSlot> = listOf(
+        CheckInSlot("morning", 8 * 60 + 30, kind = "morning", enabled = false, maxQuestions = 4),
+        CheckInSlot("midday", 13 * 60 + 30, kind = "midday", enabled = false, maxQuestions = 4),
+        CheckInSlot("evening", 21 * 60 + 30, kind = "evening", enabled = true, maxQuestions = 8),
+    ),
+    /** tasks | people | gaps | day | feelings | plans | learning | custom */
+    val checkInTopics: Set<String> = setOf("tasks", "people", "gaps", "day", "feelings", "plans", "custom"),
+    /** Your own questions, asked in evening check-ins ("Did you exercise?", "What did you learn?"). */
+    val checkInCustom: List<String> = listOf("What went well today?"),
+    val checkInSpeak: Boolean = true,
+    val checkInAutoListen: Boolean = true,
+    /** A pause this long ends an answer, ms. */
+    val checkInPauseMs: Int = 2_500,
+    val checkInSkipWords: String = "skip, next, pass, chhodo, pata nahi, don't know, rehne do",
+    /** Rewrite today's journal with your answers after an evening check-in. */
+    val checkInJournal: Boolean = true,
+    /** Single questions through the day as notifications you can answer inline (who was that, did you finish…). */
+    val quickQuestions: Boolean = true,
+    val quickQuestionsPerDay: Int = 3,
+
     // Calendar
     /** Plans heard in conversations are offered as events. */
     val eventsFromConversations: Boolean = true,
@@ -194,6 +217,10 @@ data class Settings(
 
 @Serializable
 enum class Privacy { LOCAL_ONLY, CLOUD_ALLOWED }
+
+/** A scheduled check-in: when, on which days (1 = Monday … 7 = Sunday), what kind, how many questions. */
+@Serializable
+data class CheckInSlot(val id: String, val minute: Int, val days: Set<Int> = (1..7).toSet(), val kind: String = "evening", val enabled: Boolean = true, val maxQuestions: Int = 6)
 
 /** When the AI reads the transcript. */
 @Serializable

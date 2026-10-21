@@ -31,7 +31,7 @@ class Stats(private val db: Db) {
     suspend fun day(d: LocalDate): Day {
         val from = d.atStartOfDay(zone).toInstant().toEpochMilli()
         val to = d.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
-        val lines = db.utterances().range(from, to).filter { it.speaker != "Song" }
+        val lines = db.utterances().range(from, to).filter { it.speaker != Sessionizer.SONG && it.speaker != "EchoMind" }
         val hourlyMe = IntArray(24); val hourlyOthers = IntArray(24)
         val bySpeaker = HashMap<String, Long>()
         var meMs = 0L; var otherMs = 0L; var myWords = 0

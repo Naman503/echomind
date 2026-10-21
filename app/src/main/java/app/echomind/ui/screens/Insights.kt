@@ -445,3 +445,34 @@ fun ActivityTimeline(day: LocalDate) {
         }
     }
 }
+
+/** A song in a day's list: who sang, when, a few words — opens Songs. */
+@Composable
+fun SongMoment(s: SoundRow) {
+    val nav = LocalNav.current
+    EchoCard(onClick = { nav.go(app.echomind.ui.SongsRoute) }, color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f), padding = PaddingValues(Sp.m)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.MusicNote, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(Sp.s))
+            Column(Modifier.weight(1f)) {
+                Text(s.title ?: if (s.mine) "You sang" else if (s.label == "Singing") "Someone sang" else "Music played", style = MaterialTheme.typography.titleSmall)
+                Text("${Fmt.span(s.startAt, s.endAt)}${s.lyrics?.takeIf { it.isNotBlank() }?.let { " · “${it.take(60)}…”" } ?: ""}", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+@Composable
+fun DaySongs(day: LocalDate) {
+    val g = App.graph
+    val (from, to) = remember(day) { g.journal.bounds(day) }
+    val sounds by remember(day) { g.db.sounds().observeRange(from, to) }.collectAsStateWithLifecycle(emptyList())
+    val songs = sounds.filter { it.kind == "song" }
+    if (songs.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        SectionHeader("Songs · ${songs.size}")
+        songs.forEach { SongMoment(it) }
+    }
+}
+

@@ -1,6 +1,7 @@
 package app.echomind.brain
 
 import android.util.Log
+import app.echomind.App
 import app.echomind.ai.Ai
 import app.echomind.ai.LlmRequest
 import app.echomind.ai.Prompts
@@ -55,7 +56,8 @@ class Journal(private val db: Db, private val ai: Ai, private val settings: Sett
 
     suspend fun metrics(d: LocalDate): DayMetrics {
         val (from, to) = bounds(d)
-        val lines = db.utterances().range(from, to)
+        // Lyrics and check-in questions aren't talk.
+        val lines = db.utterances().range(from, to).filter { it.speaker != Sessionizer.SONG && it.speaker != "EchoMind" }
         val convs = db.conversations().inRangeOnce(from, to).filter { it.state != "skipped" }
         val lateFrom = d.atTime(23, 0).atZone(zone).toInstant().toEpochMilli()
         val people = convs.flatMap { c -> runCatching { Js.json.decodeFromString(ListSerializer(String.serializer()), c.people ?: "[]") }.getOrDefault(emptyList()) }
@@ -115,6 +117,8 @@ class Journal(private val db: Db, private val ai: Ai, private val settings: Sett
         val user2 = buildString {
             append(user)
             if (done.isNotEmpty()) append("\nFinished today: ").append(done.take(20).joinToString(" | ") { it.title }).append('\n')
+            val answers = runCatching { App.graph.checkIns.answersToday() }.getOrDefault(emptyList())
+            if (answers.isNotEmpty()) { append("\nWhat they told you in today's check-in (their own words, the best source):\n"); answers.forEach { append("- ${it.question} → ${it.answer}\n") } }
             if (events.isNotEmpty()) append("\nOn the calendar: ").append(events.joinToString(" | ") { "${Prompts.time(it.startAt)} ${it.title}" }).append('\n')
         }
         val r = runCatching {

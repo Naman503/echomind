@@ -51,6 +51,13 @@ class Sounds(
 
     data class Slice(val startMs: Long, val endMs: Long, val events: List<Pair<String, Float>>) {
         fun p(names: Set<String>) = events.filter { it.first in names }.maxOfOrNull { it.second } ?: 0f
+        /** Singing shows up spread over related classes (male singing, mantra, lullaby…), so they are summed. */
+        fun singing() = events.filter { it.first in SINGING }.sumOf { it.second.toDouble() }.toFloat()
+        /** Tuned on real and synthetic singing, speech (alone, quiet, over music), alarms and whistling. */
+        fun songish(): Boolean {
+            if (events.firstOrNull()?.first in NOT_SONG) return false
+            return singing() >= 0.35f || (p(MUSIC) >= 0.5f && events.take(2).any { it.first in MUSIC })
+        }
     }
 
     private fun load(): AudioTagging? {
@@ -104,17 +111,23 @@ class Sounds(
         val runs = ArrayList<List<Slice>>()
         var cur = ArrayList<Slice>()
         for (sl in list) {
-            val songish = sl.p(SINGING) >= 0.3f || sl.p(MUSIC) >= 0.45f
-            if (songish) cur.add(sl) else { if (cur.isNotEmpty()) runs.add(cur); cur = ArrayList() }
+            if (sl.songish()) cur.add(sl) else { if (cur.isNotEmpty()) runs.add(cur); cur = ArrayList() }
         }
         if (cur.isNotEmpty()) runs.add(cur)
         for (run in runs) {
-            val a = run.first().startMs; val b = run.last().endMs
-            if (b - a < 20_000) continue
-            val singing = run.map { it.p(SINGING) }.average()
-            val music = run.map { it.p(MUSIC) }.average()
-            val mine = singing > 0.25 && voice.ready() && voice.enrolled() &&
-                (voice.embed(file, a + (b - a) / 3, minOf(b, a + (b - a) / 3 + 8_000))?.let { voice.isMe(it) } == true)
+            // A slice that is partly singing (the song started or ended inside it) adds its half next to the song.
+            val i0 = list.indexOf(run.first()); val i1 = list.indexOf(run.last())
+            val before = list.getOrNull(i0 - 1)?.takeIf { it.singing() >= 0.12f || it.p(MUSIC) >= 0.25f }
+            val after = list.getOrNull(i1 + 1)?.takeIf { it.singing() >= 0.12f || it.p(MUSIC) >= 0.25f }
+            val a = before?.let { (it.startMs + it.endMs) / 2 } ?: run.first().startMs
+            val b = after?.let { (it.startMs + it.endMs) / 2 } ?: run.last().endMs
+            val singing = run.map { it.singing().toDouble() }.average()
+            val music = run.map { it.p(MUSIC).toDouble() }.average()
+            // A short burst counts only when it is clearly singing; otherwise at least 20 s.
+            if (b - a < 20_000 && !(b - a >= 8_000 && singing >= 0.6)) continue
+            // A singing voice drifts from your speaking voice, so the match is a little looser here.
+            val mine = singing > 0.3 && voice.ready() && voice.enrolled() &&
+                (voice.embed(file, a + (b - a) / 3, minOf(b, a + (b - a) / 3 + 8_000))?.let { p -> (voice.meScore(p) ?: 0f) >= voice.threshold() - 0.08f } == true)
             val out = File(songsDir, "song_${item.startedAt + a}.m4a")
             if (!recordings.clip(file, a, b, out)) continue
             val top = run.flatMap { it.events }.filter { it.first !in SPEECH }.groupBy { it.first }.mapValues { e -> e.value.sumOf { it.second.toDouble() } }
@@ -150,7 +163,7 @@ class Sounds(
             val text = lines.joinToString(" ") { it.text }.trim()
             db.sounds().update(song.copy(lyrics = text.ifEmpty { "" }))
             // The lines are lyrics, not talk: labelled so notes and tasks ignore them.
-            for (u in lines) if (u.speaker == null || u.speaker == "me" || u.speaker.startsWith("S")) db.utterances().update(u.copy(speaker = "Song"))
+            for (u in lines) if (u.speaker == null || u.speaker == "me" || u.speaker.startsWith("S")) db.utterances().update(u.copy(speaker = Sessionizer.SONG, conversationId = Sessionizer.SONG_BUCKET))
         }
     }
 
@@ -193,9 +206,12 @@ class Sounds(
     companion object {
         private const val TAG = "EchoSounds"
         const val SLICE_MS = 10_000L
-        val SINGING = setOf("Singing", "Male singing", "Female singing", "Child singing", "Choir", "Humming", "Rapping", "Yodeling", "Chant", "Vocal music", "A capella")
+        val SINGING = setOf("Singing", "Male singing", "Female singing", "Child singing", "Choir", "Humming", "Rapping", "Yodeling", "Chant", "Mantra", "Lullaby", "Vocal music", "A capella", "Synthetic singing")
+        /** Sounds that also score as "music" but are not songs. */
+        val NOT_SONG = setOf("Smoke detector, smoke alarm", "Fire alarm", "Alarm", "Alarm clock", "Siren", "Civil defense siren", "Telephone bell ringing", "Ringtone", "Beep, bleep", "Whistling", "Speech synthesizer", "Doorbell")
         val MUSIC = setOf("Music", "Musical instrument", "Pop music", "Music of Bollywood", "Music of Asia", "Rock music", "Hip hop music", "Electronic music",
-            "Dance music", "Folk music", "Carnatic music", "Classical music", "Soundtrack music", "Background music", "Guitar", "Piano", "Drum", "Tabla", "Sitar")
+            "Dance music", "Folk music", "Carnatic music", "Classical music", "Soundtrack music", "Background music", "Guitar", "Piano", "Drum", "Tabla", "Sitar",
+            "Christian music", "Gospel music", "Patriotic music", "Traditional music", "Independent music", "Happy music", "Sad music", "Tender music")
         val SPEECH = setOf("Speech", "Male speech, man speaking", "Female speech, woman speaking", "Child speech, kid speaking", "Conversation", "Narration, monologue")
 
         /** What a slice says about what was going on. Order matters: the first match wins. */

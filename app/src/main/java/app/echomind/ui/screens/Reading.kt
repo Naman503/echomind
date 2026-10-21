@@ -220,6 +220,22 @@ fun VoicesScreen(lang: String) {
                 Text("${list.size} voices. Stars are how natural they sound. Open voices are downloaded once per pack (one pack can hold many voices) and run offline.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            if (gender.isEmpty() && accent.isEmpty() && source == "all" && !onlyReady) item {
+                SectionHeader("Best for you")
+                val picks = if (language == "hi") listOf(
+                    "supertonic-f1" to "Most natural, reads Hindi and English in one voice — great for Hinglish notes",
+                    "kokoro-hf-alpha" to "Warm Hindi voice; same pack as the best English voices",
+                    "piper-pratham" to "Small (21 MB) and very fast — good above 3× speed",
+                ) else listOf(
+                    "supertonic-f1" to "Most natural, and also reads Hindi — one voice for everything",
+                    "kokoro-heart" to "The most natural English voice of all",
+                    "piper-l2-svbi" to "Indian English, small and fast — good above 3× speed",
+                )
+                picks.mapNotNull { (id, why) -> VoiceCatalog.get(id)?.let { it to why } }.forEach { (v, why) ->
+                    Text("${v.label} — $why", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 2.dp))
+                }
+                Text("Your phone runs all of these smoothly; use “Test voice speed” in Voice & reading to check fast listening.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            }
             items(list, key = { it.id }) { v -> VoiceRow(v, chosen == v.id, language) }
             item {
                 SectionHeader("More voices from your phone")
@@ -254,6 +270,11 @@ private fun VoiceRow(v: VoiceSpec, selected: Boolean, language: String) {
                 Text(listOfNotNull(VoiceCatalog.engineName(v.engine), v.accent, when (v.gender) { "f" -> "female"; "m" -> "male"; else -> null }, if (v.langs.size > 1) "English + Hindi" else null).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (v.note.isNotBlank()) Text(v.note, style = MaterialTheme.typography.labelSmall, color = if (v.online) LocalSemantic.current.cloud else MaterialTheme.colorScheme.outline)
+                Text(when {
+                    v.engine == "system" -> "On your phone already"
+                    st?.installed == true -> "✓ Downloaded"
+                    else -> "Pack not downloaded · ${pack?.let { Fmt.bytes(it.bytes) } ?: ""} · ${VoiceCatalog.open.count { it.pack == v.pack }} voice${if (VoiceCatalog.open.count { it.pack == v.pack } == 1) "" else "s"} in it"
+                }, style = MaterialTheme.typography.labelSmall, color = if (v.engine == "system" || st?.installed == true) LocalSemantic.current.positive else MaterialTheme.colorScheme.outline)
             }
             if (ready) IconButton(onClick = { g.speaker.preview(v.id) }) { Icon(Icons.Rounded.PlayArrow, "Play a sample") }
         }

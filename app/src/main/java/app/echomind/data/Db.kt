@@ -10,12 +10,12 @@ import androidx.room.RoomDatabase
     entities = [
         AudioItem::class, Gap::class, Utterance::class, UtteranceFts::class, Conversation::class,
         EntityRow::class, Fact::class, Note::class, NoteFts::class, NoteRevision::class, TaskRow::class,
-        DayEntry::class, ChatThread::class, ChatMessage::class, VectorRow::class, Egress::class, Kv::class, Project::class, Nudge::class, Relation::class, EventRow::class, SoundRow::class, VoicePrint::class,
+        DayEntry::class, ChatThread::class, ChatMessage::class, VectorRow::class, Egress::class, Kv::class, Project::class, Nudge::class, Relation::class, EventRow::class, SoundRow::class, VoicePrint::class, CheckIn::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
     // Additive changes only, so existing transcripts, notes and tasks are kept.
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun audio(): AudioDao
@@ -35,6 +35,7 @@ abstract class Db : RoomDatabase() {
     abstract fun events(): EventDao
     abstract fun sounds(): SoundDao
     abstract fun voiceprints(): VoicePrintDao
+    abstract fun checkins(): CheckInDao
 
     companion object {
         fun open(context: Context): Db =

@@ -19,6 +19,13 @@ class Ai(
 ) {
     data class Running(val purpose: String, val provider: String, val since: Long)
 
+    /** One finished AI call, for the developer screen. */
+    data class Call(val at: Long, val purpose: String, val provider: String, val think: Think, val ms: Long, val inChars: Int, val ok: Boolean, val error: String? = null)
+
+    private val _calls = MutableStateFlow<List<Call>>(emptyList())
+    /** The last 60 AI calls, newest first. */
+    val calls: StateFlow<List<Call>> = _calls.asStateFlow()
+
     private val _running = MutableStateFlow<Running?>(null)
     val running: StateFlow<Running?> = _running.asStateFlow()
 
@@ -43,11 +50,18 @@ class Ai(
 
     suspend fun <T> track(req: LlmRequest, block: suspend (Llm) -> T): T {
         val llm = llm(req.feature)
-        _running.value = Running(req.purpose, llm.id, System.currentTimeMillis())
+        val started = System.currentTimeMillis()
+        _running.value = Running(req.purpose, llm.id, started)
+        var error: String? = null
         try {
             return block(llm)
+        } catch (e: Throwable) {
+            error = e.message ?: e.javaClass.simpleName
+            throw e
         } finally {
             _running.value = null
+            val call = Call(started, req.purpose, llm.id, req.think, System.currentTimeMillis() - started, req.system.length + req.user.length, error == null, error?.take(200))
+            _calls.value = (listOf(call) + _calls.value).take(60)
         }
     }
 

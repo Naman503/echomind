@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Alarm
+import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.foundation.clickable
@@ -248,7 +249,7 @@ private fun QuickActions() {
     var adding by remember { mutableStateOf(false) }
     Row(horizontalArrangement = Arrangement.spacedBy(Sp.s), modifier = Modifier.fillMaxWidth()) {
         QuickButton(Icons.Rounded.AddTask, "Task", Modifier.weight(1f)) { adding = true }
-        QuickButton(Icons.Rounded.Alarm, "Reminder", Modifier.weight(1f)) { nav.go(app.echomind.ui.RemindersRoute) }
+        QuickButton(Icons.Rounded.RecordVoiceOver, "Check-in", Modifier.weight(1f)) { nav.go(app.echomind.ui.CheckInRoute()) }
         QuickButton(Icons.Rounded.EditNote, "Note", Modifier.weight(1f)) { nav.go(app.echomind.ui.NewNoteRoute()) }
         QuickButton(Icons.Rounded.QuestionAnswer, "Ask", Modifier.weight(1f)) { nav.tab(app.echomind.ui.AskRoute()) }
         val scope = rememberCoroutineScope()

@@ -63,6 +63,7 @@ fun TimelineScreen() {
     val (from, to) = remember(day) { g.journal.bounds(day) }
     val convs by remember(day) { g.db.conversations().inRange(from, to) }.collectAsStateWithLifecycle(emptyList())
     val gaps by remember(day) { g.db.gaps().inRange(from, to) }.collectAsStateWithLifecycle(emptyList())
+    val sounds by remember(day) { g.db.sounds().observeRange(from, to) }.collectAsStateWithLifecycle(emptyList())
     var results by remember { mutableStateOf<List<Utterance>>(emptyList()) }
     LaunchedEffect(query) {
         delay(250)
@@ -93,13 +94,14 @@ fun TimelineScreen() {
             return@Column
         }
         DayStrip(day) { dayStr = it.toString() }
-        val items = remember(convs, gaps, showAll) { merge(convs.filter { showAll || (it.state != "skipped" && !it.ignored) }, gaps) }
+        val items = remember(convs, gaps, sounds, showAll) { merge(convs.filter { showAll || (it.state != "skipped" && !it.ignored) }, gaps, sounds.filter { it.kind == "song" }) }
         val list = rememberLazyListState()
         LazyColumn(state = list, contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.m)) {
             if (items.isEmpty()) item { EmptyState(if (day == LocalDate.now()) "Nothing yet today" else "Nothing on ${Fmt.day(day)}", "Conversations appear here after they're transcribed.") }
-            items(items, key = { when (it) { is Conversation -> "c${it.id}"; is Gap -> "g${it.id}"; else -> it.hashCode() } }, contentType = { it::class }) { item ->
+            items(items, key = { when (it) { is Conversation -> "c${it.id}"; is Gap -> "g${it.id}"; is app.echomind.data.SoundRow -> "s${it.id}"; else -> it.hashCode() } }, contentType = { it::class }) { item ->
                 when (item) {
                     is Conversation -> ConversationRow(item) { nav.go(ConversationRoute(item.id)) }
+                    is app.echomind.data.SoundRow -> SongMoment(item)
                     is Gap -> GapRow(item)
                 }
             }
@@ -112,8 +114,8 @@ fun TimelineScreen() {
     }
 }
 
-private fun merge(convs: List<Conversation>, gaps: List<Gap>): List<Any> =
-    (convs.map { it.startAt to it as Any } + gaps.map { it.startAt to it as Any }).sortedByDescending { it.first }.map { it.second }
+private fun merge(convs: List<Conversation>, gaps: List<Gap>, songs: List<app.echomind.data.SoundRow>): List<Any> =
+    (convs.map { it.startAt to it as Any } + gaps.map { it.startAt to it as Any } + songs.map { it.startAt to it as Any }).sortedByDescending { it.first }.map { it.second }
 
 @Composable
 private fun GapRow(gap: Gap) {

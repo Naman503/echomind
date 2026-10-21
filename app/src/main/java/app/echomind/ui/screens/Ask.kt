@@ -200,6 +200,7 @@ fun AskScreen(initialThread: Long?, initialQuestion: String?) {
                         "note" -> nav.go(NoteRoute(c.id))
                         "fact" -> c.conversationId?.let { nav.go(ConversationRoute(it)) } ?: nav.go(MemoryRoute)
                         "task" -> nav.tab(TasksRoute)
+                        "song" -> nav.go(app.echomind.ui.SongsRoute)
                         "web" -> c.url?.let { u -> runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(u)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } }
                     }
                 }) { Text(when (c.kind) { "line" -> "Open in transcript"; "web" -> "Open the page"; else -> "Open" }) }

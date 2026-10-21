@@ -328,6 +328,21 @@ data class SoundRow(
     val createdAt: Long,
 )
 
+/** One check-in: the assistant's questions, your answers, and what changed because of them. */
+@Entity(tableName = "checkins", indices = [Index("startedAt")])
+data class CheckIn(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** morning | midday | evening | quick | custom */
+    val kind: String,
+    val startedAt: Long,
+    val endedAt: Long? = null,
+    /** JSON list of {question, kind, why, answer, skipped, taskId, ref} */
+    val qa: String = "[]",
+    /** JSON list of what was done: "Marked “Send invoice” done", "Named S1 as Rahul" */
+    val changes: String = "[]",
+    val conversationId: Long? = null,
+)
+
 /** Voice-prints of people you talk to, so their lines get their name in new conversations. */
 @Entity(tableName = "voiceprints", indices = [Index("entityId")])
 data class VoicePrint(

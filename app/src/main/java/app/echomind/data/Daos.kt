@@ -270,6 +270,15 @@ interface VoicePrintDao {
     @Query("UPDATE voiceprints SET entityId = :to WHERE entityId = :from") suspend fun move(from: Long, to: Long)
 }
 
+@Dao
+interface CheckInDao {
+    @Insert suspend fun insert(c: CheckIn): Long
+    @Update suspend fun update(c: CheckIn)
+    @Query("SELECT * FROM checkins WHERE id = :id") suspend fun get(id: Long): CheckIn?
+    @Query("SELECT * FROM checkins ORDER BY startedAt DESC LIMIT :n") fun observeRecent(n: Int): Flow<List<CheckIn>>
+    @Query("SELECT * FROM checkins WHERE startedAt >= :from AND startedAt < :to ORDER BY startedAt") suspend fun range(from: Long, to: Long): List<CheckIn>
+}
+
 data class SubtaskCount(val id: Long, val total: Int, val done: Int)
 
 @Dao

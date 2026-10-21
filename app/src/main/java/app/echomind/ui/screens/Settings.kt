@@ -34,6 +34,8 @@ import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.QuestionAnswer
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.CalendarMonth
@@ -165,6 +167,7 @@ fun SettingsScreen() {
         item { SettingRow("People & names", "Recognise voices · names to remember · people pages", Icons.Rounded.Groups, onClick = { nav.go(app.echomind.ui.PeopleSettingsRoute) }) }
         item { SettingRow("Notes & folders", "Organise notes into a folder tree with AI", Icons.Rounded.Folder, onClick = { nav.go(app.echomind.ui.OrganizeRoute) }) }
         item { SectionHeader("Assistant") }
+        item { SettingRow("Check-ins", s.checkIns.filter { it.enabled }.joinToString(", ") { "%d:%02d".format(it.minute / 60, it.minute % 60) }.ifBlank { "Off" } + if (s.quickQuestions) " · quick questions on" else "", Icons.Rounded.QuestionAnswer, onClick = { nav.go(app.echomind.ui.CheckInsRoute) }) }
         item { SettingRow("Voice & reading", "Voices, speed, earphones vs speaker, nudges", Icons.Rounded.RecordVoiceOver, onClick = { nav.go(app.echomind.ui.ReadingRoute) }) }
         item { SettingRow("Notifications", "Morning brief, evening recap, suggestions", Icons.Rounded.Notifications, onClick = { nav.go(NotificationsRoute) }) }
         item { SectionHeader("Phone & data") }
@@ -172,6 +175,14 @@ fun SettingsScreen() {
         item { SettingRow("Processing", "Queue, progress and what's running", Icons.Rounded.Timer, onClick = { nav.go(ProcessingRoute) }) }
         item { SettingRow("Data ledger", "Everything that left the phone", Icons.Rounded.Shield, onClick = { nav.go(LedgerRoute) }) }
         item { SettingRow("Your data", "Storage, export, delete", Icons.Rounded.Storage, onClick = { nav.go(DataRoute) }) }
+        item { SettingRow("Developer", "Pipeline, phone, AI calls, jobs on demand, data, log", Icons.Rounded.Code, onClick = { nav.go(app.echomind.ui.DeveloperRoute) }) }
+        item { SettingRow("Status notification", when (s.statusDetail) { "minimal" -> "Minimal"; "status" -> "Status and phone heat"; else -> "Full: status, heat, queue, today" }, Icons.Rounded.Notifications, trailing = {
+            SingleChoiceSegmentedButtonRow {
+                listOf("minimal" to "Min", "status" to "Status", "full" to "Full").forEachIndexed { i, (k, l) ->
+                    SegmentedButton(s.statusDetail == k, { update { it.copy(statusDetail = k) } }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
+                }
+            }
+        }) }
         item {
             SectionHeader("Look")
             SettingRow("Theme", null, Icons.Rounded.Palette, trailing = {
@@ -307,91 +318,6 @@ private fun KeyRow(name: String, present: Boolean) {
     }
 }
 
-@Composable
-fun ModelsScreen() {
-    val g = App.graph
-    val s by g.settings.flow.collectAsStateWithLifecycle()
-    val states by g.models.states.collectAsStateWithLifecycle()
-    val used by produceState(0L, states) { value = withContext(Dispatchers.IO) { g.models.usedBytes() } }
-    SettingsPage("On-device models") {
-        item {
-            Text("Downloaded once, then everything runs on this phone with no internet. Storage used: ${Fmt.bytes(used)}.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = Sp.s))
-        }
-        val groups = listOf(
-            ModelSpec.Kind.LLM to "AI for notes, memory, Ask and journal",
-            ModelSpec.Kind.EMBEDDING to "Search by meaning",
-            ModelSpec.Kind.SPEECH to "Speech-to-text (alternative to Google's)",
-            ModelSpec.Kind.VAD to "Speech detection",
-            ModelSpec.Kind.SPEAKER to "Voice ID",
-            ModelSpec.Kind.SOUND to "Sounds: songs and surroundings",
-            ModelSpec.Kind.VOICE to "Reading voices (more in Voice & reading)",
-        )
-        for ((kind, title) in groups) {
-            item(key = kind.name) { SectionHeader(title) }
-            items(ModelCatalog.all.filter { it.kind == kind }, key = { it.id }) { m ->
-                val st = states[m.id] ?: app.echomind.models.ModelManager.State()
-                EchoCard(modifier = Modifier.padding(vertical = 4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(m.label, style = MaterialTheme.typography.titleSmall)
-                                if (m.recommended) { Spacer(Modifier.width(6.dp)); app.echomind.ui.components.Pill("Recommended") }
-                            }
-                            Text("${Fmt.bytes(m.bytes)} · ${m.detail}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        when {
-                            st.installed -> TextButton(onClick = { g.models.delete(m.id) }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-                            st.downloading || st.extracting -> TextButton(onClick = { g.models.cancel(m.id) }) { Text("Cancel") }
-                            else -> Button(onClick = { g.models.download(m.id) }) { Text("Get") }
-                        }
-                    }
-                    if (st.downloading || st.extracting) {
-                        Spacer(Modifier.height(Sp.s))
-                        LinearProgressIndicator(progress = { st.progress }, modifier = Modifier.fillMaxWidth())
-                        Text(if (st.extracting) "Unpacking…" else downloadLine(st, m.bytes), style = MaterialTheme.typography.labelSmall)
-                    }
-                    st.error?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error) }
-                    if (st.installed && kind == ModelSpec.Kind.LLM) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(s.localModel == m.id, { update { it.copy(localModel = m.id) } })
-                            Text("Use for on-device AI", style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                    if (st.installed && kind == ModelSpec.Kind.SPEECH) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(s.sherpaModel == m.id, { update { it.copy(sherpaModel = m.id) } })
-                            Text("Use for the open-model speech engine", style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                }
-            }
-        }
-        item {
-            SectionHeader("On-device AI engine")
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                listOf("cpu" to "CPU", "gpu" to "GPU").forEachIndexed { i, (k, l) ->
-                    SegmentedButton(s.localBackend == k || (k == "cpu" && s.localBackend == "auto"), { update { it.copy(localBackend = k) } }, SegmentedButtonDefaults.itemShape(i, 2)) { Text(l) }
-                }
-            }
-            Text("CPU is the safe default. GPU can be faster on some phones; if notes fail, switch back.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            var bench by remember { mutableStateOf<String?>(null) }
-            var running by remember { mutableStateOf(false) }
-            val scope = rememberCoroutineScope()
-            OutlinedButton(enabled = !running && g.localLlm.installedModel() != null, onClick = {
-                running = true; bench = "Loading the model…"
-                scope.launch {
-                    bench = runCatching { g.localLlm.benchmark() }.fold(
-                        { b -> "${b.backend}: loaded in ${"%.1f".format(b.loadMs / 1000.0)} s · first word after ${"%.1f".format(b.firstTokenMs / 1000.0)} s · ${"%.1f".format(b.chunksPerSec)} words/s" },
-                        { e -> "Test failed: ${e.message?.take(160)}" + if (s.localBackend == "gpu") " — GPU may not be supported here; switch to CPU." else "" },
-                    )
-                    running = false
-                }
-            }) { Text(if (running) "Testing…" else "Test speed") }
-            bench?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-        }
-    }
-}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

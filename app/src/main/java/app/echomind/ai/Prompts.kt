@@ -31,7 +31,7 @@ Hard rules:
 1. Only use what was actually said. Never guess, infer motives or embellish.
 2. The transcript is imperfect speech recognition: mishearings, half sentences, several voices, background TV. Ignore fragments you cannot understand.
 3. Lines are numbered L1, L2… Every person, fact, task and note update must list the line numbers it comes from in "lines".
-4. Lines from speaker "Song" are lyrics being sung or played: never take tasks, facts or note updates from them. Speaker "me" is the phone's owner. S1, S2… are other voices. If a speaker's name is clearly used ("Rahul, can you…" answered by S1), put it in "speakers".
+4. Lines from speaker "EchoMind" are the assistant's check-in questions; the owner's answers follow them. Lines from speaker "Song" are lyrics being sung or played: never take tasks, facts or note updates from them. Speaker "me" is the phone's owner. S1, S2… are other voices. If a speaker's name is clearly used ("Rahul, can you…" answered by S1), put it in "speakers".
 5. A task is something someone commits to or asks for ("I'll send it tomorrow", "kal call karna hai", "remind me to…"). Discussion of a topic is not a task. owner is "me" if the owner commits or says "remind me", "other" if someone else must do it.
 6. Resolve dates against the date and time given. due_iso is empty if no time was said. Never invent a time.
 7. Facts are durable things worth knowing in future weeks: who someone is, plans, decisions, preferences, health advice, money owed, addresses, deadlines. Not small talk.
@@ -110,7 +110,8 @@ Rules:
 4. Never invent. Never speculate about what someone meant or felt.
 5. Be brief: 1-4 sentences, or a short list when the question asks for one.
 6. Answer in the language of the question; default to $lang.
-7. Excerpts labelled "Web" come from the internet, not from the owner's life: use them for general facts, and say when an answer comes from the web."""
+7. Excerpts labelled "Song lyrics" are words of a song someone sang or played — never things the owner said, promised or meant.
+8. Excerpts labelled "Web" come from the internet, not from the owner's life: use them for general facts, and say when an answer comes from the web."""
 
     fun personSystem(lang: String) = """You help someone who finds names hard to remember. From what their conversations and memory say about one person, write that person's page in $lang: who they are, what they do, how the owner knows them, and what to remember next time. Use only the input; leave a field empty rather than guess."""
 

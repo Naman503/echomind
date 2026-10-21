@@ -128,6 +128,7 @@
         <receiver android:name=".notify.DailyReceiver" android:exported="false" />
         <receiver android:name=".notify.NudgeReceiver" android:exported="false" />
         <receiver android:name=".notify.EventReceiver" android:exported="false" />
+        <receiver android:name=".notify.CheckInReceiver" android:exported="false" />
         <receiver android:name=".capture.ResumeReceiver" android:exported="false" />
         <receiver android:name=".notify.BootReceiver" android:exported="false">
             <intent-filter>
@@ -143,6 +144,30 @@
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/echo_widget_info" />
+        </receiver>
+        <receiver android:name=".surfaces.ListenWidgetReceiver" android:exported="false" android:label="EchoMind · Listening">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/listen_widget_info" />
+        </receiver>
+        <receiver android:name=".surfaces.QuickWidgetReceiver" android:exported="false" android:label="EchoMind · Quick actions">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/quick_widget_info" />
+        </receiver>
+        <receiver android:name=".surfaces.NotesWidgetReceiver" android:exported="false" android:label="EchoMind · Notes">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/notes_widget_info" />
+        </receiver>
+        <receiver android:name=".surfaces.DayWidgetReceiver" android:exported="false" android:label="EchoMind · Your day">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/day_widget_info" />
         </receiver>
     </application>
 </manifest>

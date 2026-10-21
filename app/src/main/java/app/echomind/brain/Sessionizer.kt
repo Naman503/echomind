@@ -23,7 +23,11 @@ class Sessionizer(private val db: Db, private val settings: SettingsStore) {
         // Lines are grouped strictly in time order: a line newer than audio still waiting to be
         // transcribed (a typed note, a shared text) waits, so it can't split a conversation early.
         val oldestPendingStart = db.audio().oldestPendingMicStart()
-        val lines = db.utterances().unassigned().filter { it.source == "call" || it.source == "import" || oldestPendingStart == null || it.startAt < oldestPendingStart }
+        val waiting = db.utterances().unassigned()
+        // Lyrics are never a conversation: they go to their own bucket, so notes, tasks, memory
+        // and the journal never see them (Songs shows them instead).
+        waiting.filter { it.speaker == SONG }.map { it.id }.takeIf { it.isNotEmpty() }?.let { db.utterances().assign(it, SONG_BUCKET) }
+        val lines = waiting.filter { it.speaker != SONG }.filter { it.source == "call" || it.source == "import" || oldestPendingStart == null || it.startAt < oldestPendingStart }
         var batchIds = ArrayList<Long>()
         var batchConv: Conversation? = null
 
@@ -84,5 +88,9 @@ class Sessionizer(private val db: Db, private val settings: SettingsStore) {
     companion object {
         /** Fewer words than this is a fragment ("haan", "ok"), not a conversation. */
         const val MIN_WORDS = 12
+        /** Speaker label of sung or played lyrics. */
+        const val SONG = "Song"
+        /** conversationId of lyric lines: not a conversation. */
+        const val SONG_BUCKET = -1L
     }
 }

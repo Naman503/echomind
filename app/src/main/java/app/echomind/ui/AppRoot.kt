@@ -141,9 +141,15 @@ fun AppRoot(pending: MutableState<String?>) {
             "calendar" -> nav.tab(CalendarRoute)
             "plan" -> { nav.tab(TodayRoute); nav.go(PlanRoute) }
             "dashboard" -> { nav.tab(TodayRoute); nav.go(DashboardRoute) }
+            "notes" -> { nav.tab(LibraryRoute); nav.go(NotesRoute) }
+            "songs" -> { nav.tab(LibraryRoute); nav.go(SongsRoute) }
+            "checkin" -> { nav.tab(TodayRoute); nav.go(CheckInRoute()) }
+            "checkins" -> { nav.tab(TodayRoute); nav.go(CheckInsRoute) }
             "note:new" -> { nav.tab(LibraryRoute); nav.go(NotesRoute); nav.go(NewNoteRoute()) }
             "settings" -> { nav.tab(TodayRoute); nav.go(SettingsRoute) }
-            else -> if (r.startsWith("conversation:")) { nav.tab(TodayRoute); r.removePrefix("conversation:").toLongOrNull()?.let { nav.go(ConversationRoute(it)) } } else nav.tab(TodayRoute)
+            else -> if (r.startsWith("checkin:")) { nav.tab(TodayRoute); nav.go(CheckInRoute(r.removePrefix("checkin:"))) }
+            else if (r.startsWith("note:")) { nav.tab(LibraryRoute); r.removePrefix("note:").toLongOrNull()?.let { nav.go(NoteRoute(it)) } }
+            else if (r.startsWith("conversation:")) { nav.tab(TodayRoute); r.removePrefix("conversation:").toLongOrNull()?.let { nav.go(ConversationRoute(it)) } } else nav.tab(TodayRoute)
         }
     }
     val suggested by remember { g.db.tasks().suggestedCount() }.collectAsStateWithLifecycle(0)
@@ -216,6 +222,9 @@ fun AppRoot(pending: MutableState<String?>) {
                         entry<VoiceRoute> { VoiceScreen() }
                         entry<ReadingRoute> { app.echomind.ui.screens.ReadingScreen() }
                         entry<RecordingsRoute> { app.echomind.ui.screens.RecordingsScreen() }
+                        entry<CheckInRoute> { app.echomind.ui.screens.CheckInScreen(it.slot) }
+                        entry<CheckInsRoute> { app.echomind.ui.screens.CheckInsScreen() }
+                        entry<DeveloperRoute> { app.echomind.ui.screens.DeveloperScreen() }
                         entry<DashboardRoute> { app.echomind.ui.screens.DashboardScreen() }
                         entry<PlanRoute> { app.echomind.ui.screens.PlanScreen() }
                         entry<SongsRoute> { app.echomind.ui.screens.SongsScreen() }

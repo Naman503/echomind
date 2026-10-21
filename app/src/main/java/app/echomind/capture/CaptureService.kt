@@ -18,6 +18,7 @@ import android.util.Log
 import androidx.core.app.RemoteInput
 import app.echomind.App
 import app.echomind.ai.Prompts
+import kotlinx.coroutines.flow.first
 import app.echomind.brain.Brain
 import app.echomind.brain.TextNorm
 import app.echomind.data.Gap
@@ -280,6 +281,7 @@ class CaptureService : Service() {
             if (!recording && !s.captureWanted && !g.brain.hasWork() && g.brain.state.value.phase == Brain.Phase.IDLE) {
                 stopSelf(); return
             }
+            refreshInfo()
             refreshNotification()
             delay(60_000)
         }
@@ -312,7 +314,60 @@ class CaptureService : Service() {
         g.capture.publish(CaptureController.State(mode, true, g.settings.value.pausedUntil, Recorder.state.value.device, Recorder.state.value.windowStartedAt))
     }
 
-    private fun status(): Notifier.Status {
+    /** Numbers for the notification's expanded view, refreshed every minute (cheap queries only). */
+    private data class Info(val pending: Int = 0, val pendingMin: Int = 0, val toRead: Int = 0, val talkMin: Int = 0, val convs: Int = 0, val tasksDone: Int = 0,
+                            val nextReminder: String? = null, val listenedMin: Int = 0)
+    @Volatile private var info = Info()
+
+    private suspend fun refreshInfo() = runCatching {
+        val now = System.currentTimeMillis()
+        val dayStart = java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val lines = g.db.utterances().range(dayStart, now)
+        info = Info(
+            pending = g.db.audio().pendingCount().first(), pendingMin = (g.db.audio().pendingMs().first() / 60_000).toInt(),
+            toRead = g.db.conversations().readyCount().first(),
+            talkMin = (lines.filter { it.speaker != "Song" }.sumOf { (it.endAt - it.startAt).coerceIn(300, 60_000) } / 60_000).toInt(),
+            convs = g.db.conversations().inRangeOnce(dayStart, now).count { it.state == "done" },
+            tasksDone = g.db.tasks().completedIn(dayStart, now).size,
+            nextReminder = g.db.tasks().upcomingReminders(now).firstOrNull()?.let { "${Prompts.time(it.remindAt!!)} · ${it.title.take(40)}" },
+            listenedMin = (g.db.audio().overlapping(dayStart, now).filter { it.source == "mic" }.sumOf { minOf(it.endedAt, now) - maxOf(it.startedAt, dayStart) } / 60_000).toInt(),
+        )
+    }
+
+    private fun status(): Notifier.Status = withDetails(baseStatus())
+
+    /** Adds what's running, the queue, phone health and today's numbers (Settings → Notifications decides how much). */
+    private fun withDetails(st: Notifier.Status): Notifier.Status {
+        val s = g.settings.value
+        if (s.statusDetail == "minimal") return st
+        val p = g.governor.read()
+        val thermal = when (p.thermal) { 0 -> "cool"; 1 -> "warm"; 2 -> "hot — slowing down"; 3, 4 -> "very hot — paused"; else -> "overheating" }
+        val sub = listOfNotNull(if (p.tempC > 0) "${"%.0f".format(p.tempC)}°C" else null, if (p.percent >= 0) "${p.percent}%${if (p.charging) "⚡" else ""}" else null).joinToString(" · ")
+        val b = g.brain.state.value
+        val t = g.transcriber.status.value
+        val i = info
+        val running = when (b.phase) {
+            Brain.Phase.TRANSCRIBING -> "Now: transcribing ${if (t.source == "call") "a call" else "speech"}${if (t.pieces > 0) " · part ${t.piece} of ${t.pieces}" else ""} (${t.engine})"
+            Brain.Phase.THINKING -> "Now: AI ${g.ai.running.value?.purpose ?: b.detail} (${g.ai.running.value?.provider ?: s.provider(app.echomind.core.Feature.NOTES)}, ${s.aiQuality})"
+            Brain.Phase.JOURNAL -> "Now: ${b.detail}"
+            Brain.Phase.WAITING -> "Waiting: ${b.waitingReason ?: "for a good moment"}"
+            else -> "Now: idle"
+        }
+        val details = buildList {
+            if (st.recording) add("● Recording · ${Recorder.state.value.device} · ${i.listenedMin / 60}h ${i.listenedMin % 60}m today")
+            add(running)
+            add(if (i.pending == 0 && i.toRead == 0) "Queue: all caught up" else "Queue: ${i.pending} recording${if (i.pending == 1) "" else "s"} (${i.pendingMin} min) · ${i.toRead} conversation${if (i.toRead == 1) "" else "s"} to read")
+            add("Phone: battery ${if (p.tempC > 0) "${"%.1f".format(p.tempC)}°C" else "?"} · $thermal · ${p.percent}%${if (p.charging) " charging" else ""}${p.headroom?.let { " · heat ${(it * 100).toInt()}%" } ?: ""}")
+            g.governor.state.value.takeIf { !it.allowed }?.let { add("Paced: ${it.reason}") }
+            if (s.statusDetail == "full") {
+                add("Today: ${i.talkMin} min talk · ${i.convs} conversations · ${i.tasksDone} tasks done")
+                i.nextReminder?.let { add("Next: $it") }
+            }
+        }
+        return st.copy(sub = sub, details = details)
+    }
+
+    private fun baseStatus(): Notifier.Status {
         val mode = g.capture.state.value.mode
         val t = g.transcriber.status.value
         val b = g.brain.state.value
