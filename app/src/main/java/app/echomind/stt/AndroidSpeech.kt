@@ -85,17 +85,58 @@ class AndroidSpeech(private val context: Context) : SpeechEngine {
         }
     }
 
-    /** Asks the speech service to download language packs; the OS shows its own UI. */
-    fun download(languages: List<String>) {
-        if (!available()) return
-        main.post {
-            val recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-            try {
-                recognizer.triggerModelDownload(intentFor(languages))
-            } finally {
-                main.postDelayed({ recognizer.destroy() }, 2_000)
+    sealed interface PackEvent {
+        data class Progress(val language: String, val percent: Int) : PackEvent
+        data class Done(val language: String) : PackEvent
+        data class Scheduled(val language: String) : PackEvent
+        data class Failed(val language: String, val reason: String) : PackEvent
+    }
+
+    /**
+     * Downloads offline packs one language at a time, reporting progress. The
+     * recogniser is kept alive until the service answers — destroying it early
+     * (as a fire-and-forget call does) silently cancels the request.
+     */
+    suspend fun downloadPacks(languages: List<String>, onEvent: (PackEvent) -> Unit) {
+        if (!available()) { languages.forEach { onEvent(PackEvent.Failed(it, "on-device recognition unavailable")) }; return }
+        for (lang in languages) {
+            val outcome = suspendCancellableCoroutine<PackEvent> { cont ->
+                main.post {
+                    val recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+                    fun finish(e: PackEvent) {
+                        main.post { runCatching { recognizer.destroy() } }
+                        if (cont.isActive) cont.resume(e)
+                    }
+                    try {
+                        recognizer.triggerModelDownload(intentFor(listOf(lang)), Executors.newSingleThreadExecutor(), object : android.speech.ModelDownloadListener {
+                            override fun onProgress(completedPercent: Int) = onEvent(PackEvent.Progress(lang, completedPercent))
+                            override fun onSuccess() = finish(PackEvent.Done(lang))
+                            override fun onScheduled() = finish(PackEvent.Scheduled(lang))
+                            override fun onError(error: Int) = finish(PackEvent.Failed(lang, errorName(error)))
+                        })
+                    } catch (e: Exception) {
+                        finish(PackEvent.Failed(lang, e.message ?: "request refused"))
+                    }
+                    // Some services never answer; don't wait forever.
+                    main.postDelayed({ finish(PackEvent.Failed(lang, "no answer from the speech service")) }, 10 * 60_000L)
+                }
             }
+            onEvent(outcome)
         }
+    }
+
+    /** Google's own screen for adding offline speech languages, as a fallback. */
+    fun openLanguageSettings(): Boolean {
+        val pkg = "com.google.android.tts"
+        val actions = listOf(
+            "com.google.android.libraries.speech.modelmanager.languagepack.settings.AddLanguagesActivity",
+            "com.google.android.libraries.speech.modelmanager.languagepack.settings.SettingsActivity",
+        )
+        for (a in actions) {
+            val i = Intent(a).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (runCatching { context.startActivity(i); true }.getOrDefault(false)) return true
+        }
+        return runCatching { context.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true }.getOrDefault(false)
     }
 
     override suspend fun transcribe(req: SpeechRequest): List<SpokenLine> {

@@ -132,7 +132,8 @@ object Recorder {
             running = true
             rotateReason = null
             silenced = false
-            noiseFloorDb = Float.POSITIVE_INFINITY
+            // Start from a quiet-room floor, so speech right at the start still counts as voiced.
+            noiseFloorDb = -55f
             openWindow(dir)
             thread = Thread({ loop(record, dir, windowMs) }, "EchoMind-recorder").apply { start() }
             publish()

@@ -38,6 +38,7 @@ import app.echomind.stt.GeminiSpeech
 import app.echomind.stt.GroqSpeech
 import app.echomind.stt.SarvamSpeech
 import app.echomind.stt.SherpaSpeech
+import app.echomind.stt.SpeechPacks
 import app.echomind.stt.VoiceId
 import app.echomind.work.Governor
 import app.echomind.work.WatchdogWorker
@@ -60,6 +61,7 @@ class Graph(val app: Application) {
     val reminders = ReminderAlarms(app)
 
     val androidSpeech = AndroidSpeech(app)
+    val speechPacks = SpeechPacks(androidSpeech, scope)
     val sherpa = SherpaSpeech(models, { settings.value.sherpaModel }, { governor.threads() })
     val voice = VoiceId(app, models)
     private val speechEngines = mapOf(

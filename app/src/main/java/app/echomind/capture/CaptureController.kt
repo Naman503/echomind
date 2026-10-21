@@ -39,8 +39,20 @@ class CaptureController(
 
     internal fun publish(s: State) { _state.value = s }
 
+    private val accepting = java.util.Collections.synchronizedList(ArrayList<kotlinx.coroutines.Job>())
+
     init {
-        Recorder.onWindow = { w -> scope.launch(Dispatchers.IO) { accept(w) } }
+        Recorder.onWindow = { w ->
+            val job = scope.launch(Dispatchers.IO) { accept(w) }
+            accepting.add(job)
+            job.invokeOnCompletion { accepting.remove(job) }
+        }
+    }
+
+    /** Waits until every closed window is safely queued (used right after stopping the recorder). */
+    suspend fun flushWindows() {
+        val jobs = synchronized(accepting) { accepting.toList() }
+        jobs.forEach { it.join() }
     }
 
     /** A closed window: dropped if nobody spoke, else queued for transcription. */

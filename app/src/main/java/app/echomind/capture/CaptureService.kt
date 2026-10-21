@@ -119,6 +119,10 @@ class CaptureService : Service() {
                 g.settings.update { it.copy(captureWanted = false) }
                 cancelResumeAlarm()
                 stopRecording("stopped")
+                // The last window is closed by the recorder thread; make sure it is queued
+                // before deciding there is nothing left to do.
+                g.capture.flushWindows()
+                g.brain.poke()
                 idleOrStop()
             }
         }
@@ -174,6 +178,7 @@ class CaptureService : Service() {
     private suspend fun stopRecording(reason: String?) {
         micGuard.stop()
         if (Recorder.isRunning()) Recorder.stop()
+        g.capture.flushWindows()
         if (recording && reason != null) openGap(reason)
         recording = false
     }

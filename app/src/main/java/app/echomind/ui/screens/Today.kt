@@ -343,7 +343,7 @@ private fun SetupHealth() {
         if (g.ai.readiness(Feature.NOTES) != null)
             add(Triple("Notes need an AI model", g.ai.readiness(Feature.NOTES)!!, "Set up") to { nav.go(if (s.provider(Feature.NOTES) == "local") ModelsRoute else ProvidersRoute) })
         if (missingLangs.isNotEmpty())
-            add(Triple("Speech packs missing: ${missingLangs.joinToString()}", "Download Google's offline speech packs for these languages.", "Download") to { g.androidSpeech.download(missingLangs) })
+            add(Triple("Speech packs missing: ${missingLangs.joinToString()}", "Download Google's offline speech packs for these languages.", "Download") to { g.speechPacks.download(missingLangs); nav.go(app.echomind.ui.RecordingRoute) })
         if (!ctx.getSharedPreferences("setup", Context.MODE_PRIVATE).getBoolean("vivoDone", false) && android.os.Build.MANUFACTURER.lowercase() in setOf("vivo", "iqoo"))
             add(Triple("Keep EchoMind running on vivo", "Two settings stop Funtouch from closing it in the background.", "Show me") to { nav.go(PowerRoute) })
     }

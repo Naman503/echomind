@@ -394,7 +394,12 @@ fun RecordingScreen() {
                     val missing = s.speechLanguages.filter { l -> sup.installed.none { it.equals(l, true) } }
                     Text(if (missing.isEmpty()) "All offline speech packs installed." else "Not installed yet: ${missing.joinToString()}${if (sup.pending.isNotEmpty()) " (downloading)" else ""}",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (missing.isNotEmpty()) TextButton(onClick = { g.androidSpeech.download(missing) }) { Text("Download speech packs") }
+                    val packStatus by g.speechPacks.status.collectAsStateWithLifecycle()
+                    val packFailed by g.speechPacks.failed.collectAsStateWithLifecycle()
+                    if (missing.isNotEmpty()) TextButton(onClick = { g.speechPacks.download(missing) }) { Text("Download speech packs") }
+                    packStatus.forEach { (lang, st) -> Text("$lang · $st", style = MaterialTheme.typography.bodySmall) }
+                    if (packFailed || missing.isNotEmpty()) TextButton(onClick = { g.speechPacks.openGoogleSettings() }) { Text("Open Google's speech languages") }
+                    LaunchedEffect(packStatus) { support = g.androidSpeech.support(s.speechLanguages) }
                 }
             }
         }

@@ -64,7 +64,8 @@ class Sessionizer(private val db: Db, private val settings: SettingsStore) {
                 val audioId = key.substringAfter(':').toLongOrNull()
                 audioId != null && db.audio().get(audioId)?.state in setOf("pending", "working")
             }
-            val quietLongEnough = key != "mic" || now - c.endAt > gapMs
+            // Once listening stops nothing more can join, so the conversation is done now.
+            val quietLongEnough = key != "mic" || now - c.endAt > gapMs || !app.echomind.capture.Recorder.isRunning()
             if (!stillComing && quietLongEnough) close(c)
         }
     }

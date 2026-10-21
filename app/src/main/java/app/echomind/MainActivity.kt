@@ -57,6 +57,8 @@ class MainActivity : ComponentActivity() {
             g.models.refresh()
             g.brain.importCalls()
             g.governor.refresh()
+            // Something waiting and nothing running it: start catching up now (allowed while the app is open).
+            if (!app.echomind.capture.CaptureService.running && g.brain.hasWork()) g.capture.processNow()
             g.brain.poke()
         }
     }
