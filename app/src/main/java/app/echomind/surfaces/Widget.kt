@@ -7,7 +7,12 @@ import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
+import androidx.glance.action.ActionParameters
+import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
+import androidx.glance.appwidget.action.ActionCallback
+import androidx.glance.appwidget.action.actionRunCallback
+import androidx.glance.layout.width
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.action.actionStartActivity
@@ -40,6 +45,8 @@ class EchoWidget : GlanceAppWidget() {
         val mode = g.capture.state.value.mode
         val next = g.db.tasks().upcomingReminders(System.currentTimeMillis()).firstOrNull()
         val waiting = g.db.tasks().suggestedCount().first()
+        val endToday = java.time.LocalDate.now().plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val today = g.db.tasks().observeOpen().first().filter { it.dueAt != null && it.dueAt < endToday }.sortedWith(compareBy({ it.priority }, { it.dueAt })).take(4)
         provideContent {
             GlanceTheme {
                 Column(
@@ -61,11 +68,25 @@ class EchoWidget : GlanceAppWidget() {
                     Text(next?.let { "${Prompts.time(it.remindAt!!)} · ${it.title}" } ?: "No reminders coming up",
                         style = TextStyle(fontSize = 13.sp, color = GlanceTheme.colors.onSurfaceVariant), maxLines = 2)
                     if (waiting > 0) Text("$waiting to review", style = TextStyle(fontSize = 12.sp, color = GlanceTheme.colors.primary))
+                    today.forEach { t ->
+                        Text(
+                            "○  ${t.title}", maxLines = 1,
+                            style = TextStyle(fontSize = 13.sp, color = GlanceTheme.colors.onSurface),
+                            modifier = GlanceModifier.padding(vertical = 3.dp).clickable(actionRunCallback<CompleteTaskAction>(actionParametersOf(TaskKey to t.id))),
+                        )
+                    }
                     Spacer(GlanceModifier.height(8.dp))
                     Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         val listening = mode == CaptureController.Mode.LISTENING
                         Text(
-                            if (listening) "Pause" else "Start listening",
+                            "+ Add",
+                            style = TextStyle(fontWeight = FontWeight.Medium, fontSize = 14.sp, color = GlanceTheme.colors.onSecondaryContainer),
+                            modifier = GlanceModifier.background(GlanceTheme.colors.secondaryContainer).cornerRadius(16.dp).padding(horizontal = 12.dp, vertical = 6.dp)
+                                .clickable(actionStartActivity(Intent(context, QuickAddActivity::class.java))),
+                        )
+                        Spacer(GlanceModifier.width(8.dp))
+                        Text(
+                            if (listening) "Pause" else "Listen",
                             style = TextStyle(fontWeight = FontWeight.Medium, fontSize = 14.sp, color = GlanceTheme.colors.onPrimaryContainer),
                             modifier = GlanceModifier.background(GlanceTheme.colors.primaryContainer).cornerRadius(16.dp).padding(horizontal = 12.dp, vertical = 6.dp)
                                 .clickable(
@@ -81,6 +102,18 @@ class EchoWidget : GlanceAppWidget() {
                 }
             }
         }
+    }
+}
+
+private val TaskKey = ActionParameters.Key<Long>("task")
+
+/** Ticks a task off straight from the home screen. */
+class CompleteTaskAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        val id = parameters[TaskKey] ?: return
+        val g = App.graph
+        g.db.tasks().get(id)?.let { g.tasks.complete(it) }
+        EchoWidget().update(context, glanceId)
     }
 }
 

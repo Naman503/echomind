@@ -160,6 +160,18 @@ interface TaskDao {
     @Update suspend fun update(t: TaskRow)
     @Query("SELECT * FROM tasks WHERE id = :id") suspend fun get(id: Long): TaskRow?
     @Query("SELECT * FROM tasks WHERE status = :status ORDER BY CASE WHEN dueAt IS NULL THEN 1 ELSE 0 END, dueAt, createdAt DESC") fun observeByStatus(status: String): Flow<List<TaskRow>>
+    /** Open top-level tasks (subtasks are shown inside their parent). */
+    @Query("SELECT * FROM tasks WHERE status = 'open' AND parentId IS NULL ORDER BY priority, CASE WHEN dueAt IS NULL THEN 1 ELSE 0 END, dueAt, sortOrder, createdAt DESC")
+    fun observeOpen(): Flow<List<TaskRow>>
+    @Query("SELECT * FROM tasks WHERE parentId = :parentId ORDER BY sortOrder, createdAt") fun observeSubtasks(parentId: Long): Flow<List<TaskRow>>
+    @Query("SELECT * FROM tasks WHERE parentId = :parentId") suspend fun subtasks(parentId: Long): List<TaskRow>
+    @Query("SELECT parentId AS id, COUNT(*) AS total, SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS done FROM tasks WHERE parentId IS NOT NULL AND status != 'dismissed' GROUP BY parentId")
+    fun observeSubtaskCounts(): Flow<List<SubtaskCount>>
+    @Query("SELECT * FROM tasks WHERE id = :id") fun observe(id: Long): Flow<TaskRow?>
+    @Query("SELECT * FROM tasks WHERE status = 'open' AND remindAt IS NOT NULL ORDER BY remindAt") fun observeAllReminders(): Flow<List<TaskRow>>
+    @Query("SELECT * FROM tasks WHERE status = 'done' AND completedAt >= :from") fun observeDoneSince(from: Long): Flow<List<TaskRow>>
+    @Query("SELECT * FROM tasks WHERE status IN ('open','done') AND parentId IS NULL AND (title LIKE '%' || :q || '%' OR detail LIKE '%' || :q || '%') ORDER BY status = 'done', updatedAt DESC LIMIT 60")
+    suspend fun search(q: String): List<TaskRow>
     @Query("SELECT * FROM tasks WHERE status = 'done' ORDER BY completedAt DESC LIMIT 100") fun observeDone(): Flow<List<TaskRow>>
     @Query("SELECT * FROM tasks WHERE status IN ('open','suggested')") suspend fun live(): List<TaskRow>
     @Query("SELECT * FROM tasks WHERE status = 'open' AND remindAt IS NOT NULL AND remindAt > :now ORDER BY remindAt") suspend fun upcomingReminders(now: Long): List<TaskRow>
@@ -172,6 +184,20 @@ interface TaskDao {
     suspend fun expireSuggestions(before: Long, now: Long): Int
     @Query("DELETE FROM tasks WHERE id = :id") suspend fun delete(id: Long)
 }
+
+@Dao
+interface ProjectDao {
+    @Insert suspend fun insert(p: Project): Long
+    @Update suspend fun update(p: Project)
+    @Query("SELECT * FROM projects WHERE archived = 0 ORDER BY sortOrder, name") fun observe(): Flow<List<Project>>
+    @Query("SELECT * FROM projects WHERE archived = 0 ORDER BY sortOrder, name") suspend fun all(): List<Project>
+    @Query("SELECT * FROM projects WHERE id = :id") suspend fun get(id: Long): Project?
+    @Query("SELECT * FROM projects WHERE lower(name) = lower(:name) LIMIT 1") suspend fun byName(name: String): Project?
+    @Query("DELETE FROM projects WHERE id = :id") suspend fun delete(id: Long)
+    @Query("UPDATE tasks SET projectId = NULL WHERE projectId = :id") suspend fun detachTasks(id: Long)
+}
+
+data class SubtaskCount(val id: Long, val total: Int, val done: Int)
 
 @Dao
 interface DayDao {

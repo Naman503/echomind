@@ -93,7 +93,10 @@ class MainActivity : ComponentActivity() {
         val note = ShortcutInfoCompat.Builder(this, "note").setShortLabel("New note")
             .setIcon(IconCompat.createWithResource(this, R.drawable.ic_stat_idle))
             .setIntent(Intent(this, MainActivity::class.java).setAction(Intent.ACTION_VIEW).putExtra(EXTRA_ROUTE, "note:new")).build()
-        runCatching { ShortcutManagerCompat.setDynamicShortcuts(this, listOf(listen, ask, note)) }
+        val task = ShortcutInfoCompat.Builder(this, "task").setShortLabel("New task")
+            .setIcon(IconCompat.createWithResource(this, R.drawable.ic_stat_idle))
+            .setIntent(Intent(this, app.echomind.surfaces.QuickAddActivity::class.java).setAction(Intent.ACTION_VIEW)).build()
+        runCatching { ShortcutManagerCompat.setDynamicShortcuts(this, listOf(task, listen, ask, note)) }
     }
 
     companion object {

@@ -100,6 +100,7 @@ class Notifier(private val context: Context) {
         if (!can()) return
         val done = actionBroadcast(ReminderReceiver.ACTION_DONE, t.id, 1)
         val snooze = actionBroadcast(ReminderReceiver.ACTION_SNOOZE, t.id, 2)
+        val tomorrow = actionBroadcast(ReminderReceiver.ACTION_TOMORROW, t.id, 3)
         val n = NotificationCompat.Builder(context, REMINDERS)
             .setSmallIcon(R.drawable.ic_stat_listen)
             .setContentTitle(t.title)
@@ -108,9 +109,10 @@ class Notifier(private val context: Context) {
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
-            .setContentIntent(open("tasks", (t.id % 100_000).toInt()))
+            .setContentIntent(open("reminders", (t.id % 100_000).toInt()))
             .addAction(0, "Done", done)
-            .addAction(0, "In 1 hour", snooze)
+            .addAction(0, "Snooze 15 min", snooze)
+            .addAction(0, "Tomorrow", tomorrow)
             .build()
         nm.notify(REMINDER_BASE + (t.id % 100_000).toInt(), n)
     }

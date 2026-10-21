@@ -27,6 +27,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Alarm
+import androidx.compose.material.icons.rounded.AddTask
+import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.material.icons.rounded.QuestionAnswer
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Mic
@@ -119,6 +122,7 @@ fun TodayScreen() {
                 IconButton(onClick = { nav.go(SettingsRoute) }) { Icon(Icons.Rounded.Settings, "Settings") }
             }
         }
+        item(key = "quick") { QuickActions() }
         item(key = "listen") { ListeningCard() }
         item(key = "setup") { SetupHealth() }
         item(key = "work") { WorkCard() }
@@ -135,7 +139,7 @@ fun TodayScreen() {
             }
         }
         if (upcoming.isNotEmpty()) {
-            item(key = "up_h") { SectionHeader("Coming up") }
+            item(key = "up_h") { SectionHeader("Coming up", action = "All reminders", onAction = { nav.go(app.echomind.ui.RemindersRoute) }) }
             items(upcoming, key = { "r${it.id}" }) { t ->
                 EchoCard(onClick = { nav.tab(TasksRoute) }) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -175,6 +179,37 @@ fun TodayScreen() {
             }
         }
         item(key = "bottom") { Spacer(Modifier.height(Sp.xl)) }
+    }
+}
+
+/** One tap to capture: a task (natural language), a reminder, a note, or a question. */
+@Composable
+private fun QuickActions() {
+    val nav = LocalNav.current
+    var adding by remember { mutableStateOf(false) }
+    Row(horizontalArrangement = Arrangement.spacedBy(Sp.s), modifier = Modifier.fillMaxWidth()) {
+        QuickButton(Icons.Rounded.AddTask, "Task", Modifier.weight(1f)) { adding = true }
+        QuickButton(Icons.Rounded.Alarm, "Reminder", Modifier.weight(1f)) { nav.go(app.echomind.ui.RemindersRoute) }
+        QuickButton(Icons.Rounded.EditNote, "Note", Modifier.weight(1f)) { nav.go(app.echomind.ui.NewNoteRoute()) }
+        QuickButton(Icons.Rounded.QuestionAnswer, "Ask", Modifier.weight(1f)) { nav.tab(app.echomind.ui.AskRoute()) }
+    }
+    if (adding) androidx.compose.material3.ModalBottomSheet(onDismissRequest = { adding = false }) {
+        Column(Modifier.padding(bottom = Sp.xl)) {
+            Text("New task", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = Sp.xl))
+            Text("Try: “Pay electricity bill Friday 5pm !1 #home”", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = Sp.xl, vertical = 4.dp))
+            QuickAddBar { adding = false }
+        }
+    }
+}
+
+@Composable
+private fun QuickButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
+    androidx.compose.material3.Surface(onClick = onClick, shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.secondaryContainer, modifier = modifier) {
+        Column(Modifier.padding(vertical = Sp.m), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+            Spacer(Modifier.height(4.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+        }
     }
 }
 
@@ -324,10 +359,15 @@ private fun SetupHealth() {
     var tick by remember { mutableIntStateOf(0) }
     val resumeTick = app.echomind.ui.components.rememberResumeTick()
     var missingLangs by remember { mutableStateOf<List<String>>(emptyList()) }
+    var offlineless by remember { mutableStateOf<List<String>>(emptyList()) }
     LaunchedEffect(s.speechLanguages, tick, resumeTick) {
         if (s.provider(Feature.TRANSCRIBE) == "android" && g.androidSpeech.available()) {
             val sup = g.androidSpeech.support(s.speechLanguages)
-            missingLangs = if (sup.available && sup.installed.isNotEmpty() || sup.supported.isNotEmpty()) s.speechLanguages.filter { l -> sup.installed.none { it.equals(l, true) } && sup.pending.none { it.equals(l, true) } } else emptyList()
+            val known = sup.installed + sup.pending + sup.supported
+            val notInstalled = if (sup.available && known.isNotEmpty()) s.speechLanguages.filter { l -> sup.installed.none { it.equals(l, true) } && sup.pending.none { it.equals(l, true) } } else emptyList()
+            // Google doesn't offer every language offline; don't offer a download that can't happen.
+            offlineless = notInstalled.filter { l -> sup.supported.isNotEmpty() && sup.supported.none { it.equals(l, true) } }
+            missingLangs = notInstalled - offlineless.toSet()
         }
     }
     val perms = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { tick++ }
@@ -342,6 +382,9 @@ private fun SetupHealth() {
             add(Triple("Battery optimisation is on", "Android may stop EchoMind in the background.", "Fix") to { requestBattery(ctx) })
         if (g.ai.readiness(Feature.NOTES) != null)
             add(Triple("Notes need an AI model", g.ai.readiness(Feature.NOTES)!!, "Set up") to { nav.go(if (s.provider(Feature.NOTES) == "local") ModelsRoute else ProvidersRoute) })
+        if (offlineless.isNotEmpty())
+            add(Triple("No offline Google pack for ${offlineless.joinToString { java.util.Locale.forLanguageTag(it).displayLanguage }}",
+                "Lines in it will be missed. Get the Omnilingual model (all Indian languages) or use Sarvam for speech.", "Options") to { nav.go(app.echomind.ui.RecordingRoute) })
         if (missingLangs.isNotEmpty())
             add(Triple("Speech packs missing: ${missingLangs.joinToString()}", "Download Google's offline speech packs for these languages.", "Download") to { g.speechPacks.download(missingLangs); nav.go(app.echomind.ui.RecordingRoute) })
         if (!ctx.getSharedPreferences("setup", Context.MODE_PRIVATE).getBoolean("vivoDone", false) && android.os.Build.MANUFACTURER.lowercase() in setOf("vivo", "iqoo"))

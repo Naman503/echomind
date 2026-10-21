@@ -30,7 +30,12 @@ class ReminderReceiver : BroadcastReceiver() {
             when (intent.action) {
                 ACTION_FIRE -> if (t.status == "open") g.notifier.reminder(t)
                 ACTION_DONE -> { g.tasks.complete(t); g.notifier.cancelReminder(id) }
-                ACTION_SNOOZE -> { g.notifier.cancelReminder(id); g.tasks.snooze(id, 60) }
+                ACTION_SNOOZE -> { g.notifier.cancelReminder(id); g.tasks.snooze(id, 15) }
+                ACTION_TOMORROW -> {
+                    g.notifier.cancelReminder(id)
+                    val at = java.time.LocalDate.now().plusDays(1).atTime(9, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    g.tasks.setReminder(t, at)
+                }
             }
         }
     }
@@ -39,6 +44,7 @@ class ReminderReceiver : BroadcastReceiver() {
         const val ACTION_FIRE = "app.echomind.REMINDER"
         const val ACTION_DONE = "app.echomind.REMINDER_DONE"
         const val ACTION_SNOOZE = "app.echomind.REMINDER_SNOOZE"
+        const val ACTION_TOMORROW = "app.echomind.REMINDER_TOMORROW"
         const val EXTRA_TASK = "task"
     }
 }

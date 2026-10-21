@@ -174,6 +174,12 @@ data class Note(
     val updatedAt: Long,
     /** Lines the user typed themselves (rendered in full contrast), JSON list. */
     val userLines: String = "[]",
+    /** Palette index (0 = default surface). */
+    @ColumnInfo(defaultValue = "0") val color: Int = 0,
+    @ColumnInfo(defaultValue = "NULL") val folder: String? = null,
+    /** JSON string list */
+    @ColumnInfo(defaultValue = "'[]'") val tags: String = "[]",
+    @ColumnInfo(defaultValue = "0") val archived: Boolean = false,
 )
 
 @Fts4(contentEntity = Note::class, tokenizer = FtsOptions.TOKENIZER_UNICODE61)
@@ -209,7 +215,8 @@ data class TaskRow(
     val dueText: String? = null,
     /** When to notify; null = no reminder. */
     val remindAt: Long? = null,
-    val priority: Int = 2,
+    /** 1 = urgent … 4 = none */
+    val priority: Int = 4,
     val confidence: Float = 0.7f,
     val conversationId: Long? = null,
     val sources: String = "[]",
@@ -220,6 +227,26 @@ data class TaskRow(
     val dismissReason: String? = null,
     /** ai | user | voice */
     val origin: String = "ai",
+    /** The list it belongs to; null = Inbox. */
+    @ColumnInfo(defaultValue = "NULL") val projectId: Long? = null,
+    /** JSON string list */
+    @ColumnInfo(defaultValue = "'[]'") val labels: String = "[]",
+    /** Repeat rule, see [app.echomind.brain.Recurrence]; null = once. */
+    @ColumnInfo(defaultValue = "NULL") val recurrence: String? = null,
+    /** Set for a subtask. */
+    @ColumnInfo(defaultValue = "NULL") val parentId: Long? = null,
+    @ColumnInfo(defaultValue = "0") val sortOrder: Int = 0,
+)
+
+/** A task list ("Work", "Home", "Shopping"). */
+@Entity(tableName = "projects")
+data class Project(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val color: Int = 0,
+    val sortOrder: Int = 0,
+    val archived: Boolean = false,
+    val createdAt: Long,
 )
 
 /** One day: diary, summary, things to improve, metrics. */

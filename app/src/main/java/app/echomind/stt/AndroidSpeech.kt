@@ -73,6 +73,7 @@ class AndroidSpeech(private val context: Context) : SpeechEngine {
                 object : RecognitionSupportCallback {
                     override fun onSupportResult(s: RecognitionSupport) {
                         main.post { recognizer.destroy() }
+                        installed = s.installedOnDeviceLanguages.toList()
                         if (cont.isActive) cont.resume(Support(true, s.installedOnDeviceLanguages, s.pendingOnDeviceLanguages, s.supportedOnDeviceLanguages))
                     }
 
@@ -139,10 +140,16 @@ class AndroidSpeech(private val context: Context) : SpeechEngine {
         return runCatching { context.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true }.getOrDefault(false)
     }
 
+    /** Languages with an installed offline pack, learned from the last support check. */
+    @Volatile private var installed: List<String>? = null
+
     override suspend fun transcribe(req: SpeechRequest): List<SpokenLine> {
         if (!available()) throw SpeechException("unavailable", "On-device speech recognition is not available on this phone", retryable = false)
+        if (installed == null) runCatching { support(req.languages) }
+        // Only ask for languages the phone can actually recognise offline.
+        val usable = installed?.let { inst -> req.languages.filter { l -> inst.any { it.equals(l, true) } } }.orEmpty().ifEmpty { req.languages }
         val result = suspendCancellableCoroutine { cont ->
-            run(req) { r -> if (cont.isActive) cont.resume(r) }
+            run(req.copy(languages = usable)) { r -> if (cont.isActive) cont.resume(r) }
         }
         return result.getOrThrow()
     }

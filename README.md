@@ -13,7 +13,9 @@ Native Kotlin + Jetpack Compose. Runs fully on the phone, or uses cloud AI for t
 | Calls too | The mic is blocked during calls, so EchoMind imports your dialer's call recordings afterwards and labels them with the contact. |
 | Living notes | Notes per topic that update themselves with small, traceable edits — every change has a reason and links to the moment it came from. |
 | Memory | People, facts, plans and preferences, reviewed nightly: kept, updated, replaced (with history) or let go. |
-| Tasks & reminders | Commitments land in a review inbox; accepted ones get exact reminders with Done / Snooze. "Remind me…" said out loud works within a minute. |
+| Tasks & reminders | Lists, priorities, labels, subtasks, repeating tasks; Today / Upcoming views; natural-language quick add ("Call mom tomorrow 6pm #family !1 every week"); a reminders timeline with one-tap snooze. AI-found commitments wait in a review inbox; "remind me…" said out loud works within a minute. |
+| Notes | Living AI notes plus your own: colours, folders, tags, tappable checklists, templates, grid view, formatting toolbar, checklist → tasks. |
+| Quick actions | Quick Settings tiles (listen, quick add), a widget with today's tasks, launcher shortcuts, share-to-EchoMind. |
 | Journal | An evening diary with loose ends, plans for tomorrow and a few gentle things to improve, plus daily numbers. |
 | Ask | "What did Rahul say about the invoice?" — answers only from your own data, with citations that open the exact transcript line. |
 | Your choice of AI | On-device Gemma 4 / Qwen 3.5 via LiteRT-LM, or Gemini, Claude, OpenAI-compatible (Groq, OpenRouter, Ollama) with your own key. |

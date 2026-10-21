@@ -86,10 +86,79 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
         reminders.cancel(t.id)
     }
 
-    suspend fun complete(t: TaskRow) {
+    /**
+     * Completes a task. A repeating task is kept as done (so history is real)
+     * and its next occurrence is created, subtasks reset, reminder moved along.
+     */
+    suspend fun complete(t: TaskRow): Long? {
         val now = System.currentTimeMillis()
         db.tasks().update(t.copy(status = "done", completedAt = now, updatedAt = now))
         reminders.cancel(t.id)
+        val rule = t.recurrence ?: return null
+        val base = t.dueAt ?: t.remindAt ?: now
+        val nextDue = Recurrence.next(rule, base, now) ?: return null
+        val offset = (t.remindAt ?: base) - base
+        val next = t.copy(
+            id = 0, status = "open", dueAt = nextDue, remindAt = t.remindAt?.let { nextDue + offset },
+            completedAt = null, createdAt = now, updatedAt = now, dismissReason = null,
+        )
+        val id = db.tasks().insert(next)
+        for (sub in db.tasks().subtasks(t.id)) db.tasks().insert(sub.copy(id = 0, parentId = id, status = "open", completedAt = null, createdAt = now, updatedAt = now))
+        if (next.remindAt != null) reminders.schedule(next.copy(id = id))
+        return id
+    }
+
+    suspend fun save(t: TaskRow) {
+        val updated = t.copy(updatedAt = System.currentTimeMillis())
+        db.tasks().update(updated)
+        if (updated.status == "open" && updated.remindAt != null && updated.remindAt > System.currentTimeMillis()) reminders.schedule(updated)
+        else reminders.cancel(updated.id)
+    }
+
+    suspend fun delete(t: TaskRow) {
+        reminders.cancel(t.id)
+        for (sub in db.tasks().subtasks(t.id)) db.tasks().delete(sub.id)
+        db.tasks().delete(t.id)
+    }
+
+    suspend fun addSubtask(parent: TaskRow, title: String) {
+        val now = System.currentTimeMillis()
+        db.tasks().insert(TaskRow(title = title.trim(), status = "open", parentId = parent.id, projectId = parent.projectId, confidence = 1f, createdAt = now, updatedAt = now, origin = "user"))
+    }
+
+    suspend fun toggleSubtask(sub: TaskRow) {
+        val now = System.currentTimeMillis()
+        db.tasks().update(if (sub.status == "done") sub.copy(status = "open", completedAt = null, updatedAt = now) else sub.copy(status = "done", completedAt = now, updatedAt = now))
+    }
+
+    /** Moves a task (and its reminder) to a new time, keeping the gap between due and reminder. */
+    suspend fun reschedule(t: TaskRow, newDue: Long?) {
+        val remind = when {
+            newDue == null -> null
+            t.remindAt != null && t.dueAt != null -> newDue + (t.remindAt - t.dueAt)
+            t.remindAt != null -> newDue
+            else -> null
+        }
+        save(t.copy(dueAt = newDue, remindAt = remind, dueText = null))
+    }
+
+    /** Adds a task typed in quick-add syntax; creates the list if it is new. */
+    suspend fun addQuick(text: String, defaultProjectId: Long? = null): Long? {
+        if (text.isBlank()) return null
+        val p = QuickAdd.parse(text)
+        val now = System.currentTimeMillis()
+        val projectId = p.list?.let { name ->
+            db.projects().byName(name)?.id ?: db.projects().insert(app.echomind.data.Project(name = name.replaceFirstChar { it.uppercase() }, color = (name.hashCode() and 0x7fffffff) % 8 + 1, createdAt = now))
+        } ?: defaultProjectId
+        val row = TaskRow(
+            title = p.title, status = "open", priority = p.priority, dueAt = p.due?.at,
+            remindAt = if (p.remind) p.due?.at?.takeIf { it > now } else null,
+            projectId = projectId, labels = Js.json.encodeToString(ListSerializer(String.serializer()), p.labels),
+            recurrence = p.recurrence, confidence = 1f, createdAt = now, updatedAt = now, origin = "user",
+        )
+        val id = db.tasks().insert(row)
+        if (row.remindAt != null) reminders.schedule(row.copy(id = id))
+        return id
     }
 
     suspend fun reopen(t: TaskRow) = db.tasks().update(t.copy(status = "open", completedAt = null, updatedAt = System.currentTimeMillis()))

@@ -66,6 +66,25 @@
             android:taskAffinity=""
             android:theme="@style/Theme.EchoMind.Invisible" />
 
+        <activity
+            android:name=".surfaces.QuickAddActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity="in.elecroom.echomind.quickadd"
+            android:windowSoftInputMode="adjustResize|stateVisible"
+            android:theme="@style/Theme.EchoMind.Invisible" />
+
+        <service
+            android:name=".surfaces.QuickAddTile"
+            android:exported="true"
+            android:icon="@drawable/ic_stat_idle"
+            android:label="Quick add"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <service
             android:name=".capture.CaptureService"
             android:exported="false"

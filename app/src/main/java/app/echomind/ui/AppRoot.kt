@@ -131,8 +131,9 @@ fun AppRoot(pending: MutableState<String?>) {
         when (r) {
             "ask" -> nav.tab(AskRoute())
             "tasks" -> nav.tab(TasksRoute)
+            "reminders" -> { nav.tab(TasksRoute); nav.go(RemindersRoute) }
             "journal" -> { nav.tab(LibraryRoute); nav.go(JournalRoute) }
-            "note:new" -> { nav.tab(LibraryRoute); nav.go(NotesRoute); nav.go(NewNoteRoute) }
+            "note:new" -> { nav.tab(LibraryRoute); nav.go(NotesRoute); nav.go(NewNoteRoute()) }
             "settings" -> { nav.tab(TodayRoute); nav.go(SettingsRoute) }
             else -> nav.tab(TodayRoute)
         }
@@ -173,9 +174,12 @@ fun AppRoot(pending: MutableState<String?>) {
                         entry<TasksRoute>(metadata = TabSwitch) { TasksScreen() }
                         entry<LibraryRoute>(metadata = TabSwitch) { LibraryScreen() }
                         entry<ConversationRoute> { ConversationScreen(it.id, it.lineId) }
+                        entry<TaskRoute> { app.echomind.ui.screens.TaskScreen(it.id) }
+                        entry<RemindersRoute> { app.echomind.ui.screens.RemindersScreen() }
+                        entry<ListsRoute> { app.echomind.ui.screens.ListsScreen() }
                         entry<NotesRoute> { NotesScreen() }
                         entry<NoteRoute> { NoteScreen(it.id) }
-                        entry<NewNoteRoute> { NoteScreen(null) }
+                        entry<NewNoteRoute> { NoteScreen(null, it.template) }
                         entry<MemoryRoute> { MemoryScreen() }
                         entry<PeopleRoute> { PeopleScreen() }
                         entry<PersonRoute> { PersonScreen(it.id) }

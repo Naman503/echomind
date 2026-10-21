@@ -128,3 +128,13 @@ object Sp {
     val xxl = 32.dp
     val gutter = 16.dp
 }
+
+/** Colours for lists and notes; index 0 means "no colour". Readable in light and dark. */
+object Palette {
+    private val colors = listOf(
+        Color(0xFFE5484D), Color(0xFFF08C00), Color(0xFFE2B007), Color(0xFF2F9E44),
+        Color(0xFF0F8A7E), Color(0xFF3E7BFA), Color(0xFF6E56CF), Color(0xFFD6409F),
+    )
+    val size get() = colors.size
+    fun color(i: Int): Color = if (i in 1..colors.size) colors[i - 1] else Color(0xFF8D8A85)
+}

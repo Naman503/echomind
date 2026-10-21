@@ -12,9 +12,12 @@ import kotlinx.serialization.Serializable
 @Serializable data object TasksRoute : Route
 @Serializable data object LibraryRoute : Route
 
+@Serializable data class TaskRoute(val id: Long) : Route
+@Serializable data object RemindersRoute : Route
+@Serializable data object ListsRoute : Route
 @Serializable data class ConversationRoute(val id: Long, val lineId: Long? = null) : Route
 @Serializable data class NoteRoute(val id: Long) : Route
-@Serializable data object NewNoteRoute : Route
+@Serializable data class NewNoteRoute(val template: String? = null) : Route
 @Serializable data object NotesRoute : Route
 @Serializable data object MemoryRoute : Route
 @Serializable data object PeopleRoute : Route

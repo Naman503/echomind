@@ -1,6 +1,7 @@
 package app.echomind.data
 
 import android.content.Context
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -9,10 +10,12 @@ import androidx.room.RoomDatabase
     entities = [
         AudioItem::class, Gap::class, Utterance::class, UtteranceFts::class, Conversation::class,
         EntityRow::class, Fact::class, Note::class, NoteFts::class, NoteRevision::class, TaskRow::class,
-        DayEntry::class, ChatThread::class, ChatMessage::class, VectorRow::class, Egress::class, Kv::class,
+        DayEntry::class, ChatThread::class, ChatMessage::class, VectorRow::class, Egress::class, Kv::class, Project::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
+    // Additive changes only, so existing transcripts, notes and tasks are kept.
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun audio(): AudioDao
@@ -26,6 +29,7 @@ abstract class Db : RoomDatabase() {
     abstract fun chat(): ChatDao
     abstract fun vectors(): VectorDao
     abstract fun egress(): EgressDao
+    abstract fun projects(): ProjectDao
 
     companion object {
         fun open(context: Context): Db =

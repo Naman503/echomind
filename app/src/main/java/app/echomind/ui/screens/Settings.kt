@@ -391,7 +391,10 @@ fun RecordingScreen() {
             support?.let { sup ->
                 if (!sup.available) Text("Google's on-device recogniser isn't available on this phone — use an open model or a cloud provider.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 else {
-                    val missing = s.speechLanguages.filter { l -> sup.installed.none { it.equals(l, true) } }
+                    val offlineless = s.speechLanguages.filter { l -> sup.supported.isNotEmpty() && (sup.installed + sup.pending + sup.supported).none { it.equals(l, true) } }
+                    val missing = s.speechLanguages.filter { l -> sup.installed.none { it.equals(l, true) } } - offlineless.toSet()
+                    if (offlineless.isNotEmpty()) Text("Google has no offline pack for ${offlineless.joinToString { java.util.Locale.forLanguageTag(it).displayLanguage }}. For it, download Omnilingual (On-device models) and choose “Whisper / Parakeet on-device”, or pick Sarvam in Privacy & providers.",
+                        style = MaterialTheme.typography.bodySmall, color = LocalSemantic.current.warning)
                     Text(if (missing.isEmpty()) "All offline speech packs installed." else "Not installed yet: ${missing.joinToString()}${if (sup.pending.isNotEmpty()) " (downloading)" else ""}",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     val packStatus by g.speechPacks.status.collectAsStateWithLifecycle()
