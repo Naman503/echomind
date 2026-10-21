@@ -30,6 +30,7 @@ class WatchdogWorker(context: Context, params: WorkerParameters) : CoroutineWork
             if (beat == 0L || System.currentTimeMillis() - beat > 5 * 60_000L) g.notifier.resumePrompt("Listening stopped in the background.")
         }
         runCatching { g.calls.scan() }
+        runCatching { g.nudges.check() }
         if (!CaptureService.running && g.brain.hasWork()) ProcessWorker.enqueue(applicationContext)
         return Result.success()
     }

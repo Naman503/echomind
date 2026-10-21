@@ -38,7 +38,8 @@ Hard rules:
 8. note_updates collect information about an ongoing topic (a project, a trip, a health issue, a purchase). Reuse an existing note title from the list when it is the same topic.
 9. If it is TV, a video, a song, an ad or a scam call, set is_media to true and leave tasks, facts and note_updates empty.
 10. The title is specific, like a calendar entry ("Budget call with Priya", "Planning Sunday lunch"). Never use the words transcript, audio, recording or conversation.
-11. If nothing is worth keeping, return empty lists and a short honest title."""
+11. open_questions: questions or requests someone put directly to the owner ("can you send me the file?", "kab tak hoga?") that were left unanswered or need a follow-up. Not rhetorical questions, not questions the owner asked.
+12. If nothing is worth keeping, return empty lists and a short honest title."""
 
     data class Context(
         val profile: String = "",

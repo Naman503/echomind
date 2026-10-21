@@ -27,6 +27,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import kotlinx.coroutines.launch
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -89,24 +94,37 @@ fun AskScreen(initialThread: Long?, initialQuestion: String?) {
     val provider = s.provider(Feature.ASK)
     val list = rememberLazyListState()
 
-    fun send(q: String) {
+    fun send(q: String, spoken: Boolean = false) {
         if (q.isBlank() || draft != null || searching != null) return
         input = ""
         pendingQuestion = q
         searching = "Searching your memory…"
+        val speakIt = spoken || s.autoReadAnswers
         scope.launch {
+            // Commands ("what's pending", "remind me…", "mark X done") are done directly.
+            val handled = runCatching { g.assistant.handle(q, speak = speakIt) }.getOrNull()
+            if (handled != null) {
+                threadId = g.ask.record(threadId, q, handled.reply)
+                searching = null; pendingQuestion = null
+                return@launch
+            }
+            var answer = ""
             g.ask.answer(threadId, q).collect { e ->
                 when (e) {
                     is Ask.Event.Searching -> searching = e.text
                     is Ask.Event.Sources -> searching = if (e.citations.isEmpty()) "Nothing matched — answering honestly" else "Found ${e.citations.size} moments · thinking"
-                    is Ask.Event.Delta -> { searching = null; draft = (draft ?: "") + e.text }
-                    is Ask.Event.Done -> { threadId = e.threadId; draft = null; searching = null; pendingQuestion = null }
+                    is Ask.Event.Delta -> { searching = null; draft = (draft ?: "") + e.text; answer += e.text }
+                    is Ask.Event.Done -> {
+                        threadId = e.threadId; draft = null; searching = null; pendingQuestion = null
+                        if (speakIt && answer.isNotBlank()) g.speaker.speak("Answer", answer)
+                    }
                     is Ask.Event.Failed -> {}
                 }
             }
             draft = null; searching = null; pendingQuestion = null
         }
     }
+    val voice = app.echomind.ui.components.rememberVoiceInput(onPartial = { input = it }, onFinal = { heard -> input = ""; send(heard, spoken = true) })
     LaunchedEffect(initialQuestion) { if (!initialQuestion.isNullOrBlank()) send(initialQuestion) }
     LaunchedEffect(messages.size, draft) { if (messages.isNotEmpty() || draft != null) list.animateScrollToItem(maxOf(0, messages.size + 1)) }
 
@@ -116,6 +134,9 @@ fun AskScreen(initialThread: Long?, initialQuestion: String?) {
             onBack = if (threadId != null) ({ if (initialThread != null) nav.back() else threadId = null }) else null,
         ) {
             PrivacyChip(Providers.isLocal(provider), if (Providers.isLocal(provider)) "On this phone" else Providers.get(provider)?.label, Modifier.padding(end = Sp.s))
+            IconButton(onClick = { g.scope.launch { g.settings.update { it.copy(autoReadAnswers = !it.autoReadAnswers) } } }) {
+                Icon(if (s.autoReadAnswers) Icons.AutoMirrored.Rounded.VolumeUp else Icons.AutoMirrored.Rounded.VolumeOff, if (s.autoReadAnswers) "Stop reading answers aloud" else "Read answers aloud")
+            }
             IconButton(onClick = { nav.go(ChatsRoute) }) { Icon(Icons.Rounded.History, "Past questions") }
         }
         LazyColumn(Modifier.weight(1f), state = list, contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.m)) {
@@ -127,7 +148,7 @@ fun AskScreen(initialThread: Long?, initialQuestion: String?) {
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(Sp.l))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(Sp.s), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
-                        listOf("What did I promise to do today?", "What's still pending from this week?", "Summarise yesterday", "What did we decide about money?", "Who did I talk to today?")
+                        listOf("Brief me", "What's pending?", "Read my reminders", "Summarise yesterday", "What did I promise to do today?", "Remind me to drink water in 1 hour", "Who did I talk to today?")
                             .forEach { q -> AssistChip(onClick = { send(q) }, label = { Text(q) }) }
                     }
                 }
@@ -146,11 +167,13 @@ fun AskScreen(initialThread: Long?, initialQuestion: String?) {
         Row(Modifier.fillMaxWidth().padding(Sp.gutter), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = input, onValueChange = { input = it }, modifier = Modifier.weight(1f),
-                placeholder = { Text("e.g. What did Rahul say about the invoice?") },
+                placeholder = { Text(if (voice.listening) "Listening…" else "Ask, or tap the mic: “what's pending?”") },
                 shape = MaterialTheme.shapes.extraLarge, maxLines = 4,
             )
             Spacer(Modifier.width(Sp.s))
-            FilledIconButton(onClick = { send(input.trim()) }, enabled = input.isNotBlank() && draft == null && searching == null) {
+            if (input.isBlank()) FilledIconButton(onClick = { if (voice.listening) voice.stop() else voice.start() }) {
+                Icon(if (voice.listening) Icons.Rounded.Stop else Icons.Rounded.Mic, if (voice.listening) "Stop" else "Speak")
+            } else FilledIconButton(onClick = { send(input.trim()) }, enabled = draft == null && searching == null) {
                 Icon(Icons.AutoMirrored.Rounded.Send, "Ask")
             }
         }
@@ -190,13 +213,23 @@ private fun UserBubble(text: String) {
 @Composable
 private fun AssistantText(text: String) = Text(text, style = MaterialTheme.typography.bodyLarge)
 
+@Composable
+private fun SpeakIcon(text: String) {
+    IconButton(onClick = { App.graph.speaker.speak("Answer", text) }, modifier = Modifier.size(32.dp)) {
+        Icon(Icons.AutoMirrored.Rounded.VolumeUp, "Read aloud", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Bubble(m: ChatMessage, onCite: (Citation) -> Unit) {
     if (m.role == "user") { UserBubble(m.text); return }
     val cites = remember(m.citations) { Ask.decode(m.citations) }
     Column {
-        AssistantText(m.text)
+        Row(verticalAlignment = Alignment.Top) {
+            Box(Modifier.weight(1f)) { AssistantText(m.text) }
+            SpeakIcon(m.text)
+        }
         if (cites.isNotEmpty()) {
             Spacer(Modifier.height(Sp.s))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -238,4 +271,3 @@ fun ChatsScreen() {
     }
 }
 
-@Suppress("unused") private val unusedBack = Icons.AutoMirrored.Rounded.ArrowBack

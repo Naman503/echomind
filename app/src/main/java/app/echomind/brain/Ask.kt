@@ -234,6 +234,16 @@ class Ask(private val db: Db, private val ai: Ai, private val settings: Settings
         emit(Event.Done(id, thread.id))
     }
 
+    /** Records a command and the assistant's reply in a chat thread (creating one if needed); returns the thread id. */
+    suspend fun record(threadId: Long?, question: String, reply: String): Long {
+        val now = System.currentTimeMillis()
+        val thread = threadId?.let { db.chat().thread(it) } ?: ChatThread(title = question.take(60), createdAt = now, updatedAt = now).let { it.copy(id = db.chat().insertThread(it)) }
+        db.chat().insertMessage(ChatMessage(threadId = thread.id, role = "user", text = question, createdAt = now))
+        db.chat().insertMessage(ChatMessage(threadId = thread.id, role = "assistant", text = reply, provider = "assistant", createdAt = now + 1))
+        db.chat().updateThread(thread.copy(updatedAt = now))
+        return thread.id
+    }
+
     private fun encode(c: List<Citation>) = Js.json.encodeToString(ListSerializer(Citation.serializer()), c)
 
     companion object {

@@ -143,6 +143,7 @@ fun SettingsScreen() {
         item { SettingRow("Privacy & AI providers", "Who does transcription, notes, memory, Ask", Icons.Rounded.Shield, onClick = { nav.go(ProvidersRoute) }) }
         item { SettingRow("On-device models", "Download speech, AI and search models", Icons.Rounded.Download, onClick = { nav.go(ModelsRoute) }) }
         item { SettingRow("Listening", "Microphone, languages, quiet hours, audio", Icons.Rounded.Mic, onClick = { nav.go(RecordingRoute) }) }
+        item { SettingRow("Voice & assistant", "Read aloud, voices, speed, nudges", Icons.Rounded.RecordVoiceOver, onClick = { nav.go(app.echomind.ui.ReadingRoute) }) }
         item { SettingRow("Your voice", "So notes know what you said", Icons.Rounded.RecordVoiceOver, onClick = { nav.go(VoiceRoute) }) }
         item { SettingRow("Phone calls", if (s.importCalls) "Importing call recordings" else "Off", Icons.Rounded.Call, onClick = { nav.go(CallsRoute) }) }
         item { SettingRow("AI sessions", "When the AI reads your day: ${s.session.mode.name.lowercase()}", Icons.Rounded.AutoAwesome, onClick = { nav.go(SessionsRoute) }) }

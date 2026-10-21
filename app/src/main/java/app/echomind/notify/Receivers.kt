@@ -49,6 +49,28 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 }
 
+/** "Add task" / "Dismiss" on a nudge. */
+class NudgeReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val id = intent.getLongExtra(EXTRA_ID, -1)
+        if (id < 0) return
+        val g = App.graph
+        async {
+            when (intent.action) {
+                ACTION_TASK -> g.nudges.act(id) { g.tasks.addQuick(it) }
+                ACTION_DISMISS -> g.nudges.dismiss(id)
+            }
+            g.notifier.cancelNudge(id)
+        }
+    }
+
+    companion object {
+        const val ACTION_TASK = "app.echomind.NUDGE_TASK"
+        const val ACTION_DISMISS = "app.echomind.NUDGE_DISMISS"
+        const val EXTRA_ID = "id"
+    }
+}
+
 /** Morning brief and evening recap alarms hand off to a worker (which may need the AI). */
 class DailyReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {

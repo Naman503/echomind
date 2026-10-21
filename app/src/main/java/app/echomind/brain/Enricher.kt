@@ -45,6 +45,7 @@ class Enricher(
     private val notes: Notes,
     private val tasks: Tasks,
     private val embedder: Embedder,
+    private val nudges: () -> Nudges,
 ) {
     data class Result(val tasks: Int, val facts: Int, val notes: Int)
 
@@ -156,7 +157,11 @@ class Enricher(
             ignored = media,
         )
         db.conversations().update(done)
-        if (!media) index(done, utts)
+        if (!media) {
+            index(done, utts)
+            val questions = outputs.flatMap { it.objects("open_questions") }.mapNotNull { q -> q.str("question")?.trim()?.takeIf { it.length > 5 }?.let { it to q.str("asked_by") } }
+            runCatching { nudges().fromConversation(done, questions, taskCount) }
+        }
         return Result(taskCount, factCount, noteIds.size)
     }
 

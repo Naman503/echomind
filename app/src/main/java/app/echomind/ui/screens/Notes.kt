@@ -388,6 +388,7 @@ fun NoteScreen(id: Long?, template: String? = null) {
                     IconButton(onClick = { scope.launch { g.db.notes().update(n.copy(pinned = !n.pinned)) } }) { Icon(Icons.Rounded.PushPin, if (n.pinned) "Unpin" else "Pin", tint = if (n.pinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
                     IconButton(onClick = { colorSheet = true }) { Icon(Icons.Rounded.Palette, "Colour") }
                 }
+                if (n != null && !editing) app.echomind.ui.components.ListenButton("Read this note") { g.briefing.note(n) }
                 IconButton(onClick = { if (editing) scope.launch { save() } else editing = true }) { Icon(if (editing) Icons.Rounded.Visibility else Icons.Rounded.Edit, if (editing) "Done" else "Edit") }
                 if (n != null) Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More") }

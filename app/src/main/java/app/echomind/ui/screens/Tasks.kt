@@ -354,6 +354,7 @@ fun TasksScreen() {
         Column(Modifier.fillMaxSize().padding(pad).windowInsetsPadding(WindowInsets.statusBars).windowInsetsPadding(WindowInsets.ime)) {
             Row(Modifier.padding(start = Sp.gutter, end = 4.dp, top = Sp.s), verticalAlignment = Alignment.CenterVertically) {
                 Text("Tasks", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+                app.echomind.ui.components.ListenButton("Read what's pending") { g.briefing.pending() }
                 IconButton(onClick = { searching = !searching; if (!searching) query = "" }) { Icon(Icons.Rounded.Search, "Search") }
                 IconButton(onClick = { nav.go(RemindersRoute) }) { Icon(Icons.Rounded.NotificationsActive, "Reminders") }
                 IconButton(onClick = { nav.go(ListsRoute) }) { Icon(Icons.Rounded.FormatListBulleted, "Lists") }
@@ -664,7 +665,7 @@ fun RemindersScreen() {
         "Later" to { r: Long -> r >= startOf(today.plusDays(7)) },
     )
     Scaffold(
-        topBar = { ScreenTopBar("Reminders", onBack = { nav.back() }) },
+        topBar = { ScreenTopBar("Reminders", onBack = { nav.back() }) { app.echomind.ui.components.ListenButton("Read reminders") { g.briefing.reminders() } } },
         floatingActionButton = { androidx.compose.material3.ExtendedFloatingActionButton(onClick = { adding = true }, icon = { Icon(Icons.Rounded.Alarm, null) }, text = { Text("Reminder") }) },
     ) { pad ->
         LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {

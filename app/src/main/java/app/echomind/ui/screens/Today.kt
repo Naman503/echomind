@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Alarm
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.AddTask
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.QuestionAnswer
@@ -126,6 +127,7 @@ fun TodayScreen() {
         item(key = "listen") { ListeningCard() }
         item(key = "setup") { SetupHealth() }
         item(key = "work") { WorkCard() }
+        item(key = "foryou") { ForYou() }
         if (suggested > 0) item(key = "review") {
             EchoCard(onClick = { nav.tab(TasksRoute) }, color = MaterialTheme.colorScheme.primaryContainer) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -182,6 +184,35 @@ fun TodayScreen() {
     }
 }
 
+/** What the assistant noticed on its own — the same nudges it may notify, shown calmly here. */
+@Composable
+private fun ForYou() {
+    val g = App.graph
+    val nav = LocalNav.current
+    val scope = rememberCoroutineScope()
+    val since = remember { System.currentTimeMillis() - 24 * 3_600_000L }
+    val list by remember { g.db.nudges().observeOpen(since) }.collectAsStateWithLifecycle(emptyList())
+    if (list.isEmpty()) return
+    SectionHeader("For you")
+    Column(verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        list.take(3).forEach { n ->
+            EchoCard(onClick = n.conversationId?.let { { nav.go(ConversationRoute(it)) } }, color = if (n.urgency >= 3) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceContainerLow) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(Sp.s))
+                    Text(n.title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                }
+                Text(n.body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row {
+                    TextButton(onClick = { g.speaker.speak(n.title, listOf(n.title + ".", n.body)) }) { Text("Listen") }
+                    if (n.taskText != null) TextButton(onClick = { scope.launch { g.nudges.act(n.id) { g.tasks.addQuick(it) }; g.notifier.cancelNudge(n.id) } }) { Text("Add task") }
+                    TextButton(onClick = { scope.launch { g.nudges.dismiss(n.id); g.notifier.cancelNudge(n.id) } }) { Text("Dismiss") }
+                }
+            }
+        }
+    }
+}
+
 /** One tap to capture: a task (natural language), a reminder, a note, or a question. */
 @Composable
 private fun QuickActions() {
@@ -192,6 +223,10 @@ private fun QuickActions() {
         QuickButton(Icons.Rounded.Alarm, "Reminder", Modifier.weight(1f)) { nav.go(app.echomind.ui.RemindersRoute) }
         QuickButton(Icons.Rounded.EditNote, "Note", Modifier.weight(1f)) { nav.go(app.echomind.ui.NewNoteRoute()) }
         QuickButton(Icons.Rounded.QuestionAnswer, "Ask", Modifier.weight(1f)) { nav.tab(app.echomind.ui.AskRoute()) }
+        val scope = rememberCoroutineScope()
+        QuickButton(Icons.AutoMirrored.Rounded.VolumeUp, "Brief me", Modifier.weight(1f)) {
+            scope.launch { val b = App.graph.briefing.morning(); App.graph.speaker.speak(b.title, b.parts) }
+        }
     }
     if (adding) androidx.compose.material3.ModalBottomSheet(onDismissRequest = { adding = false }) {
         Column(Modifier.padding(bottom = Sp.xl)) {

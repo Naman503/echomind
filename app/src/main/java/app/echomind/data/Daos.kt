@@ -197,6 +197,19 @@ interface ProjectDao {
     @Query("UPDATE tasks SET projectId = NULL WHERE projectId = :id") suspend fun detachTasks(id: Long)
 }
 
+@Dao
+interface NudgeDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insert(n: Nudge): Long
+    @Update suspend fun update(n: Nudge)
+    @Query("SELECT * FROM nudges WHERE id = :id") suspend fun get(id: Long): Nudge?
+    @Query("SELECT * FROM nudges WHERE state = 'pending' ORDER BY urgency DESC, createdAt") suspend fun pending(): List<Nudge>
+    @Query("SELECT COUNT(*) FROM nudges WHERE shownAt >= :from") suspend fun shownSince(from: Long): Int
+    @Query("SELECT MAX(shownAt) FROM nudges") suspend fun lastShownAt(): Long?
+    @Query("SELECT * FROM nudges WHERE kind = :kind AND state IN ('acted','dismissed') ORDER BY createdAt DESC LIMIT 5") suspend fun recentOutcomes(kind: String): List<Nudge>
+    @Query("SELECT * FROM nudges WHERE state IN ('pending','shown') AND createdAt >= :from ORDER BY urgency DESC, createdAt DESC LIMIT 5") fun observeOpen(from: Long): Flow<List<Nudge>>
+    @Query("UPDATE nudges SET state = 'expired' WHERE state = 'pending' AND createdAt < :before") suspend fun expire(before: Long)
+}
+
 data class SubtaskCount(val id: Long, val total: Int, val done: Int)
 
 @Dao

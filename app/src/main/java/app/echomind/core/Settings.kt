@@ -87,6 +87,22 @@ data class Settings(
     val maxBatteryTempC: Int = 40,
     val minBatteryPct: Int = 20,
 
+    // Reading aloud
+    /** open (Kokoro / Piper on the phone) | system (Android's voices) */
+    val readEngine: String = "open",
+    val voiceEnglish: String = "kokoro-heart",
+    val voiceHindi: String = "kokoro-hf-alpha",
+    /** 0.5…6× */
+    val readSpeed: Float = 1.25f,
+    /** Speak Ask answers automatically. */
+    val autoReadAnswers: Boolean = false,
+
+    // Proactive nudges
+    val nudges: Boolean = true,
+    val nudgesPerDay: Int = 4,
+    /** Read nudges aloud — only when headphones are connected. */
+    val speakNudges: Boolean = false,
+
     // Look
     /** system | light | dark */
     val theme: String = "system",

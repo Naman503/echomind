@@ -80,6 +80,12 @@ object Schemas {
                 "lines" to S.lines,
             ),
         ),
+        "open_questions" to S.arr(
+            S.obj(
+                "question" to S.str("A question or request someone put to the owner that was not answered or settled here"),
+                "asked_by" to S.str("Who asked, if known"),
+            ),
+        ),
         "note_updates" to S.arr(
             S.obj(
                 "topic" to S.str("An existing note title from the list, or a short new topic title"),

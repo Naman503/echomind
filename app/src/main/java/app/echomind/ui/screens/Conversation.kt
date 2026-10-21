@@ -97,6 +97,7 @@ fun ConversationScreen(id: Long, lineId: Long?) {
                 subtitle = "${Fmt.day(conv.startAt)} · ${Fmt.span(conv.startAt, conv.endAt)}${conv.contact?.let { " · $it" } ?: ""}",
                 onBack = { nav.back() }, scroll = scroll,
             ) {
+                if (conv.state == "done") app.echomind.ui.components.ListenButton("Read the summary") { g.briefing.conversation(conv) }
                 IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More") }
                 DropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem(text = { Text("Make notes again") }, onClick = {

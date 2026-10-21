@@ -37,6 +37,7 @@ import kotlinx.serialization.Serializable
 @Serializable data object LedgerRoute : Route
 @Serializable data object DataRoute : Route
 @Serializable data object VoiceRoute : Route
+@Serializable data object ReadingRoute : Route
 
 val tabs: List<Route> = listOf(TodayRoute, TimelineRoute, AskRoute(), TasksRoute, LibraryRoute)
 fun Route.isTab() = this == TodayRoute || this == TimelineRoute || this is AskRoute && threadId == null && question == null || this == TasksRoute || this == LibraryRoute

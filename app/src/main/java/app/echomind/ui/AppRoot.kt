@@ -135,7 +135,7 @@ fun AppRoot(pending: MutableState<String?>) {
             "journal" -> { nav.tab(LibraryRoute); nav.go(JournalRoute) }
             "note:new" -> { nav.tab(LibraryRoute); nav.go(NotesRoute); nav.go(NewNoteRoute()) }
             "settings" -> { nav.tab(TodayRoute); nav.go(SettingsRoute) }
-            else -> nav.tab(TodayRoute)
+            else -> if (r.startsWith("conversation:")) { nav.tab(TodayRoute); r.removePrefix("conversation:").toLongOrNull()?.let { nav.go(ConversationRoute(it)) } } else nav.tab(TodayRoute)
         }
     }
     val suggested by remember { g.db.tasks().suggestedCount() }.collectAsStateWithLifecycle(0)
@@ -149,6 +149,8 @@ fun AppRoot(pending: MutableState<String?>) {
             Scaffold(
                 contentWindowInsets = WindowInsets(0),
                 bottomBar = {
+                    androidx.compose.foundation.layout.Column {
+                    app.echomind.ui.components.MiniPlayer()
                     AnimatedVisibility(showBar, enter = slideInVertically(tween(220, easing = Ease)) { it } + fadeIn(tween(150)), exit = slideOutVertically(tween(180, easing = Ease)) { it } + fadeOut(tween(120))) {
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                         Tab(top == TodayRoute, "Today", Icons.Rounded.Today) { nav.tab(TodayRoute) }
@@ -156,6 +158,7 @@ fun AppRoot(pending: MutableState<String?>) {
                         Tab(top is AskRoute, "Ask", Icons.Rounded.Forum) { nav.tab(AskRoute()) }
                         Tab(top == TasksRoute, "Tasks", Icons.Rounded.CheckCircle, badge = suggested) { nav.tab(TasksRoute) }
                         Tab(top == LibraryRoute, "Library", Icons.Rounded.AutoStories) { nav.tab(LibraryRoute) }
+                    }
                     }
                     }
                 },
@@ -198,6 +201,7 @@ fun AppRoot(pending: MutableState<String?>) {
                         entry<LedgerRoute> { LedgerScreen() }
                         entry<DataRoute> { DataScreen() }
                         entry<VoiceRoute> { VoiceScreen() }
+                        entry<ReadingRoute> { app.echomind.ui.screens.ReadingScreen() }
                     },
                 )
             }

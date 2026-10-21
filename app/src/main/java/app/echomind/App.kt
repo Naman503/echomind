@@ -12,12 +12,15 @@ import app.echomind.ai.GeminiLlm
 import app.echomind.ai.LocalLlm
 import app.echomind.ai.OpenAiLlm
 import app.echomind.brain.Ask
+import app.echomind.brain.Assistant
+import app.echomind.brain.Briefing
 import app.echomind.brain.Brain
 import app.echomind.brain.Embedder
 import app.echomind.brain.Enricher
 import app.echomind.brain.Journal
 import app.echomind.brain.Memory
 import app.echomind.brain.Notes
+import app.echomind.brain.Nudges
 import app.echomind.brain.Sessionizer
 import app.echomind.brain.Tasks
 import app.echomind.brain.Transcriber
@@ -39,6 +42,7 @@ import app.echomind.stt.GroqSpeech
 import app.echomind.stt.SarvamSpeech
 import app.echomind.stt.SherpaSpeech
 import app.echomind.stt.SpeechPacks
+import app.echomind.tts.Speaker
 import app.echomind.stt.VoiceId
 import app.echomind.work.Governor
 import app.echomind.work.WatchdogWorker
@@ -89,7 +93,7 @@ class Graph(val app: Application) {
     val tasks = Tasks(db, settings, reminders)
     val memory = Memory(db, ai, settings, embedder)
     val notes = Notes(db, ai, settings, embedder)
-    val enricher = Enricher(db, ai, settings, memory, notes, tasks, embedder)
+    val enricher = Enricher(db, ai, settings, memory, notes, tasks, embedder) { nudges }
     val journal = Journal(db, ai, settings, memory)
     val ask = Ask(db, ai, settings, embedder)
     val sessionizer = Sessionizer(db, settings)
@@ -97,6 +101,10 @@ class Graph(val app: Application) {
     val calls = CallImporter(app, db, settings)
     val brain: Brain = Brain(app, db, settings, governor, transcriber, sessionizer, enricher, journal, tasks, notes, calls, ai, notifier)
     val capture = CaptureController(app, db, settings, scope) { brain }
+    val speaker = Speaker(app, models, settings, scope) { governor.threads() }
+    val briefing = Briefing(db, settings)
+    val assistant = Assistant(db, tasks, notes, briefing, speaker)
+    val nudges = Nudges(db, settings, ai, notifier, { capture }, { speaker })
 }
 
 class App : Application() {

@@ -39,7 +39,7 @@ data class ModelSpec(
     val archive: Boolean = false,
     val recommended: Boolean = false,
 ) {
-    enum class Kind { LLM, EMBEDDING, SPEECH, VAD, SPEAKER }
+    enum class Kind { LLM, EMBEDDING, SPEECH, VAD, SPEAKER, VOICE }
     val fileName get() = url.substringAfterLast('/')
 }
 
@@ -78,6 +78,19 @@ object ModelCatalog {
         ModelSpec("silero-vad", "Silero voice detector", ModelSpec.Kind.VAD,
             "$SHERPA/asr-models/silero_vad.onnx", 643_854,
             "Precise speech detection, so only speech is transcribed.", recommended = true),
+        ModelSpec("kokoro-multi", "Kokoro voices (English + Hindi)", ModelSpec.Kind.VOICE,
+            // v1.0, not v1.1: only v1.0 contains the Hindi voices.
+            "$SHERPA/tts-models/kokoro-int8-multi-lang-v1_0.tar.bz2", 132_303_094,
+            "The most natural open-source voices: warm English and Hindi readers.", archive = true, recommended = true),
+        ModelSpec("piper-en-lessac", "Piper Lessac (English, light)", ModelSpec.Kind.VOICE,
+            "$SHERPA/tts-models/vits-piper-en_US-lessac-medium-int8.tar.bz2", 20_969_179,
+            "Small and very fast English voice.", archive = true),
+        ModelSpec("piper-hi-priyamvada", "Piper Priyamvada (Hindi, light)", ModelSpec.Kind.VOICE,
+            "$SHERPA/tts-models/vits-piper-hi_IN-priyamvada-medium-int8.tar.bz2", 21_097_319,
+            "Small, fast Hindi voice (female). Licence: personal, non-commercial use.", archive = true),
+        ModelSpec("piper-hi-rohan", "Piper Rohan (Hindi, light)", ModelSpec.Kind.VOICE,
+            "$SHERPA/tts-models/vits-piper-hi_IN-rohan-medium-int8.tar.bz2", 21_064_499,
+            "Small, fast Hindi voice (male). Licence: personal, non-commercial use.", archive = true),
         ModelSpec("voice-id", "Voice ID (who is speaking)", ModelSpec.Kind.SPEAKER,
             "$SHERPA/speaker-recongition-models/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx", 26_485_263,
             "Tells your voice apart from others, so notes know what you said.", recommended = true),

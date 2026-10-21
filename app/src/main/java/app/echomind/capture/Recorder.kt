@@ -75,6 +75,8 @@ object Recorder {
     @Volatile private var rotateReason: String? = null
     @Volatile var silenced = false
         private set
+    /** True while EchoMind itself is speaking: those frames are recorded as silence so it never transcribes itself. */
+    @Volatile var assistantSpeaking = false
     @Volatile var sessionId = 0
         private set
 
@@ -205,6 +207,7 @@ object Recorder {
                     if (n < 0) Thread.sleep(50)
                     continue
                 }
+                if (assistantSpeaking) java.util.Arrays.fill(buffer, 0, n, 0)
                 var sum = 0.0
                 for (i in 0 until n) {
                     val s = buffer[i].toInt()

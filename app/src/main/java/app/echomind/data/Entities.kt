@@ -314,6 +314,27 @@ data class Egress(
     val ok: Boolean = true,
 )
 
+/** Something the assistant decided to tell you without being asked. */
+@Entity(tableName = "nudges", indices = [Index("state"), Index("createdAt"), Index(value = ["key"], unique = true)])
+data class Nudge(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** question | recap | due_soon | check_in | audio | insight */
+    val kind: String,
+    /** De-duplication key: the same thing is never nudged twice. */
+    val key: String,
+    val title: String,
+    val body: String,
+    /** 1 = nice to know … 3 = act now */
+    val urgency: Int = 2,
+    /** pending | shown | acted | dismissed | expired */
+    val state: String = "pending",
+    val createdAt: Long,
+    val shownAt: Long? = null,
+    val conversationId: Long? = null,
+    /** If set, "Add task" creates this (quick-add syntax). */
+    val taskText: String? = null,
+)
+
 /** Small key/value store for things like the core memory profile. */
 @Entity(tableName = "kv")
 data class Kv(@PrimaryKey val key: String, val value: String, val updatedAt: Long)

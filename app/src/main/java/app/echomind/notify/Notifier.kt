@@ -42,6 +42,7 @@ class Notifier(private val context: Context) {
                 ch(SUGGESTIONS, "Suggestions to review", NotificationManager.IMPORTANCE_DEFAULT, "Tasks and reminders the AI found, waiting for your OK", silent = true),
                 ch(BRIEF, "Morning brief", NotificationManager.IMPORTANCE_DEFAULT, "Today's reminders and open loops"),
                 ch(RECAP, "Evening recap", NotificationManager.IMPORTANCE_DEFAULT, "Your day in a few lines, and your journal"),
+                ch(NUDGES, "Nudges", NotificationManager.IMPORTANCE_DEFAULT, "Things the assistant thinks you should know — a few a day at most"),
                 ch(ATTENTION, "Needs attention", NotificationManager.IMPORTANCE_HIGH, "Listening stopped, permissions, storage"),
             ),
         )
@@ -141,9 +142,38 @@ class Notifier(private val context: Context) {
 
     fun clearSuggestions() = nm.cancel(SUGGESTIONS_ID)
 
+    private fun speak(title: String, body: String, code: Int): PendingIntent = PendingIntent.getForegroundService(
+        context, code,
+        Intent(context, app.echomind.tts.PlaybackService::class.java).setAction(app.echomind.tts.PlaybackService.ACTION_SPEAK)
+            .putExtra(app.echomind.tts.PlaybackService.EXTRA_TITLE, title).putExtra(app.echomind.tts.PlaybackService.EXTRA_TEXT, body),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
+    fun nudge(n: app.echomind.data.Nudge) {
+        if (!can()) return
+        fun receiver(action: String, code: Int) = PendingIntent.getBroadcast(context, (n.id % 10_000).toInt() * 10 + code,
+            Intent(context, NudgeReceiver::class.java).setAction(action).putExtra(NudgeReceiver.EXTRA_ID, n.id), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val b = NotificationCompat.Builder(context, NUDGES)
+            .setSmallIcon(R.drawable.ic_stat_idle)
+            .setContentTitle(n.title)
+            .setContentText(n.body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(n.body))
+            .setPriority(if (n.urgency >= 3) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setContentIntent(open(if (n.conversationId != null) "conversation:${n.conversationId}" else "today", 400 + (n.id % 1000).toInt()))
+            .addAction(0, "Listen", speak(n.title, n.body, 500 + (n.id % 1000).toInt()))
+        if (n.taskText != null) b.addAction(0, "Add task", receiver(NudgeReceiver.ACTION_TASK, 1))
+        b.addAction(0, "Dismiss", receiver(NudgeReceiver.ACTION_DISMISS, 2))
+        nm.notify(NUDGE_BASE + (n.id % 1000).toInt(), b.build())
+    }
+
+    fun cancelNudge(id: Long) = nm.cancel(NUDGE_BASE + (id % 1000).toInt())
+
     fun brief(title: String, lines: List<String>) {
         if (!can()) return
         nm.notify(BRIEF_ID, NotificationCompat.Builder(context, BRIEF)
+            .addAction(0, "Listen", PendingIntent.getForegroundService(context, 310,
+                Intent(context, app.echomind.tts.PlaybackService::class.java).setAction(app.echomind.tts.PlaybackService.ACTION_BRIEF), PendingIntent.FLAG_IMMUTABLE))
             .setSmallIcon(R.drawable.ic_stat_idle)
             .setContentTitle(title)
             .setContentText(lines.firstOrNull() ?: "")
@@ -201,6 +231,8 @@ class Notifier(private val context: Context) {
         const val BRIEF = "brief"
         const val RECAP = "recap"
         const val ATTENTION = "attention"
+        const val NUDGES = "nudges"
+        const val NUDGE_BASE = 4600
         const val CAPTURE_ID = 4107
         const val SUGGESTIONS_ID = 4200
         const val BRIEF_ID = 4201

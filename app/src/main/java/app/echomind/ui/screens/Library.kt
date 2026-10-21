@@ -337,7 +337,10 @@ fun DayScreen(day: String) {
     var busy by remember { mutableStateOf(false) }
     val date = LocalDate.parse(day)
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
-        ScreenTopBar(Fmt.dayLong(date), onBack = { nav.back() }) { IconButton(onClick = { editing = true }) { Icon(Icons.Rounded.Edit, "Edit") } }
+        ScreenTopBar(Fmt.dayLong(date), onBack = { nav.back() }) {
+            app.echomind.ui.components.ListenButton("Read this day") { g.briefing.day(date) }
+            IconButton(onClick = { editing = true }) { Icon(Icons.Rounded.Edit, "Edit") }
+        }
         val e = d
         LazyColumn(contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
             item {
