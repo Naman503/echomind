@@ -48,6 +48,8 @@ class Enricher(
     private val nudges: () -> Nudges,
     private val people: () -> People,
     private val agenda: () -> Agenda,
+    private val voicePrints: VoicePrints,
+    private val voice: VoiceId,
 ) {
     data class Result(val tasks: Int, val facts: Int, val notes: Int)
 
@@ -176,6 +178,7 @@ class Enricher(
         )
         db.conversations().update(done)
         if (!media) {
+            if (settings.value.recognisePeople) runCatching { voicePrints.learnFromConversation(c.id, c.contact) }
             index(done, utts)
             val questions = outputs.flatMap { it.objects("open_questions") }.mapNotNull { q -> q.str("question")?.trim()?.takeIf { it.length > 5 }?.let { it to q.str("asked_by") } }
             runCatching { nudges().fromConversation(done, questions, taskCount) }
@@ -223,15 +226,31 @@ class Enricher(
         db.conversations().update(latest.copy(state = if (permanent || latest.attempts >= 3) "failed" else "ready", error = e.message?.take(300)))
     }
 
-    /** Lines that are not the owner are grouped into Speaker 1, 2… by voice within this conversation. */
+    /**
+     * Lines that are not the owner are grouped into speakers by voice. A group whose
+     * voice as a whole is the owner's becomes "me" (single short lines can miss);
+     * a group matching someone you've talked to before gets their name; the rest
+     * are Speaker 1, 2…
+     */
     private suspend fun groupSpeakers(c: Conversation, lines: List<Utterance>) {
         val candidates = lines.filter { it.speaker == null || (it.speaker.startsWith("S") && it.speaker.length <= 3) }
-        if (candidates.size < 2) return
+        if (candidates.isEmpty()) return
         val prints = candidates.map { it.id }.chunked(500).flatMap { db.vectors().forOwners("s", it) }.associateBy { it.ownerId }
         val withPrints = candidates.map { u -> prints[u.id]?.let { VoiceId.normalize(Vectors.dequantize(it.vector, it.scale)) } }
-        if (withPrints.count { it != null } < 2) return
+        if (withPrints.count { it != null } < 1) return
         val clusters = VoiceId.cluster(withPrints)
-        candidates.zip(clusters).forEach { (u, k) -> if (k != null) db.utterances().update(u.copy(speaker = "S${k + 1}")) }
+        val members = candidates.indices.filter { clusters[it] != null }.groupBy { clusters[it]!! }
+        var next = 1
+        for ((_, idx) in members.entries.sortedBy { it.value.first() }) {
+            val ps = idx.mapNotNull { withPrints[it] }
+            val avg = FloatArray(ps[0].size).also { a -> for (p in ps) for (i in a.indices) a[i] += p[i] / ps.size }.let { VoiceId.normalize(it) }
+            val label = when {
+                voice.enrolled() && voice.isMe(avg) && ps.size >= 2 -> "me"
+                settings.value.recognisePeople && (ps.size >= 2 || idx.sumOf { candidates[it].endAt - candidates[it].startAt } >= 4_000) -> voicePrints.match(avg)?.first?.name
+                else -> null
+            } ?: "S${next++}"
+            idx.forEach { db.utterances().update(candidates[it].copy(speaker = label)) }
+        }
     }
 
     private suspend fun earlierToday(c: Conversation, maxChars: Int): String {

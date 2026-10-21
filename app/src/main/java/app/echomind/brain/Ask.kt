@@ -30,6 +30,8 @@ data class Citation(
     val at: Long,
     val label: String,
     val quote: String,
+    /** Web results: the page it came from. */
+    val url: String? = null,
 )
 
 /**
@@ -41,7 +43,7 @@ data class Citation(
  * embedding model is installed, plus memory facts and notes — fused with
  * reciprocal-rank fusion and a mild preference for recent things.
  */
-class Ask(private val db: Db, private val ai: Ai, private val settings: SettingsStore, private val embedder: Embedder, private val agenda: () -> Agenda, private val people: () -> People) {
+class Ask(private val db: Db, private val ai: Ai, private val settings: SettingsStore, private val embedder: Embedder, private val agenda: () -> Agenda, private val people: () -> People, private val web: () -> Web) {
 
     sealed interface Event {
         data class Searching(val text: String) : Event
@@ -188,7 +190,7 @@ class Ask(private val db: Db, private val ai: Ai, private val settings: Settings
     }
 
     /** Answers in a thread (a new one when [threadId] is null), streaming. */
-    fun answer(threadId: Long?, question: String): Flow<Event> = flow {
+    fun answer(threadId: Long?, question: String, useWeb: Boolean = false): Flow<Event> = flow {
         val now = System.currentTimeMillis()
         val thread = threadId?.let { db.chat().thread(it) } ?: ChatThread(title = question.take(60), createdAt = now, updatedAt = now).let { it.copy(id = db.chat().insertThread(it)) }
         val history = db.chat().messages(thread.id).takeLast(4)
@@ -197,7 +199,17 @@ class Ask(private val db: Db, private val ai: Ai, private val settings: Settings
         val reason = ai.readiness(Feature.ASK)
         val llm = ai.llm(Feature.ASK)
         emit(Event.Searching("Searching your memory…"))
-        val sources = retrieve(question, if (llm.local) 3_500 else 18_000)
+        val mine = retrieve(question, if (llm.local) 3_500 else 18_000)
+        // The web, only when asked for (or set to automatic and memory had nothing): general queries, your OK first.
+        val wantWeb = web().enabled() && (useWeb || (settings.value.webSearch == "auto" && mine.isEmpty()))
+        val found = if (wantWeb && reason == null) {
+            emit(Event.Searching("Looking it up on ${web().providerLabel()}…"))
+            web().research(question, "To answer: “${question.take(80)}”")
+        } else emptyList()
+        val sources = mine + found.mapIndexed { i, r ->
+            Citation(mine.size + i + 1, "web", 0, null, now, "Web · ${runCatching { java.net.URI(r.url).host.removePrefix("www.") }.getOrDefault(r.source)} · ${r.title.take(80)}",
+                r.snippet.take(if (llm.local) 700 else 2_500), r.url)
+        }
         emit(Event.Sources(sources))
 
         if (reason != null) {

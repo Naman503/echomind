@@ -39,7 +39,7 @@ data class ModelSpec(
     val archive: Boolean = false,
     val recommended: Boolean = false,
 ) {
-    enum class Kind { LLM, EMBEDDING, SPEECH, VAD, SPEAKER, VOICE }
+    enum class Kind { LLM, EMBEDDING, SPEECH, VAD, SPEAKER, VOICE, SOUND }
     val fileName get() = url.substringAfterLast('/')
 }
 
@@ -91,6 +91,9 @@ object ModelCatalog {
     ) + VoicePacks.piper.map { (id, file, bytes, label) ->
         ModelSpec(id, label, ModelSpec.Kind.VOICE, "$SHERPA/tts-models/$file", bytes, "Piper voice: small (~21 MB) and very fast.", archive = true)
     } + listOf(
+        ModelSpec("sound-tagger", "Sound recognition", ModelSpec.Kind.SOUND,
+            "$SHERPA/audio-tagging-models/sherpa-onnx-ced-tiny-audio-tagging-2024-04-19.tar.bz2", 28_531_989,
+            "Recognises 527 kinds of sound — singing, music, traffic, kitchen, TV — for Songs and the activity timeline.", archive = true),
         ModelSpec("voice-id", "Voice ID (who is speaking)", ModelSpec.Kind.SPEAKER,
             "$SHERPA/speaker-recongition-models/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx", 26_485_263,
             "Tells your voice apart from others, so notes know what you said.", recommended = true),

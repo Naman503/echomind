@@ -304,6 +304,8 @@ fun ModelsScreen() {
             ModelSpec.Kind.SPEECH to "Speech-to-text (alternative to Google's)",
             ModelSpec.Kind.VAD to "Speech detection",
             ModelSpec.Kind.SPEAKER to "Voice ID",
+            ModelSpec.Kind.SOUND to "Sounds: songs and surroundings",
+            ModelSpec.Kind.VOICE to "Reading voices (more in Voice & reading)",
         )
         for ((kind, title) in groups) {
             item(key = kind.name) { SectionHeader(title) }

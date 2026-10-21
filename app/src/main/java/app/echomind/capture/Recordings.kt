@@ -57,6 +57,14 @@ class Recordings(private val context: Context, private val db: Db, private val s
         db.audio().update(a.copy(keptPath = null, keepUntil = null))
     }
 
+    /** A part of a recording as its own small AAC clip (songs). */
+    fun clip(wav: File, startMs: Long, endMs: Long, out: File): Boolean = runCatching {
+        val tmp = File(out.parentFile, out.name + ".wav")
+        Wav.write(tmp, Wav.readSamples(wav, startMs, endMs))
+        try { encode(tmp, out, 32_000) } finally { tmp.delete() }
+        out.length() > 0
+    }.getOrDefault(false)
+
     /** 16 kHz mono PCM WAV → AAC-LC in an .m4a, with the platform encoder. */
     private fun encode(wav: File, out: File, bitrate: Int) {
         val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, Wav.SAMPLE_RATE, 1).apply {

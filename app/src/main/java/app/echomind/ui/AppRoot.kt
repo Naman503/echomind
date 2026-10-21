@@ -40,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -219,6 +220,7 @@ fun AppRoot(pending: MutableState<String?>) {
             }
             CloudBanner()
             SpeakerQuestion()
+            WebQuestion()
         }
     }
 }
@@ -263,3 +265,32 @@ private fun androidx.compose.foundation.layout.RowScope.Tab(selected: Boolean, l
         label = { Text(label) },
     )
 }
+
+/** Shows exactly what would be searched, before anything is sent. */
+@Composable
+private fun WebQuestion() {
+    val g = App.graph
+    val a by g.web.approval.collectAsStateWithLifecycle()
+    val req = a ?: return
+    val picked = remember(req) { androidx.compose.runtime.mutableStateListOf<String>().apply { addAll(req.queries) } }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { g.web.answer(null) },
+        icon = { Icon(Icons.Rounded.Public, null) },
+        title = { Text("Search the web?") },
+        text = {
+            androidx.compose.foundation.layout.Column {
+                Text("${req.purpose}. Only these words go to ${g.web.providerLabel()} — nothing from your conversations:", style = MaterialTheme.typography.bodyMedium)
+                req.queries.forEach { q ->
+                    androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(q in picked, { if (it) picked.add(q) else picked.remove(q) })
+                        Text("“$q”", style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+                Text("Turn off this question in Settings → Web search.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(enabled = picked.isNotEmpty(), onClick = { g.web.answer(picked.toList()) }) { Text("Search") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = { g.web.answer(null) }) { Text("Don't search") } },
+    )
+}
+

@@ -37,7 +37,21 @@ class Cloud(private val egress: EgressDao, private val settings: SettingsStore) 
      */
     suspend fun <T> send(feature: Feature, provider: String, bytes: Long, what: String, block: suspend () -> T): T {
         if (settings.value.privacy == Privacy.LOCAL_ONLY) throw Blocked("Local-only mode is on")
-        val item = InFlight(feature.label, Providers.get(provider)?.label ?: provider, what)
+        return track(feature.label, Providers.get(provider)?.label ?: provider, bytes, what, block)
+    }
+
+    /**
+     * A web search: only a short public query leaves the phone (already scrubbed of
+     * names and numbers), so it is allowed by its own switch rather than the cloud
+     * mode — but it is still shown and logged like everything else that goes out.
+     */
+    suspend fun <T> sendPublic(provider: String, bytes: Long, what: String, block: suspend () -> T): T {
+        if (settings.value.webSearch == "off") throw Blocked("Web search is off")
+        return track("Web search", provider, bytes, what, block)
+    }
+
+    private suspend fun <T> track(featureLabel: String, providerLabel: String, bytes: Long, what: String, block: suspend () -> T): T {
+        val item = InFlight(featureLabel, providerLabel, what)
         _active.update { it + item }
         var ok = false
         try {
@@ -46,7 +60,7 @@ class Cloud(private val egress: EgressDao, private val settings: SettingsStore) 
             return result
         } finally {
             _active.update { list -> list.toMutableList().also { it.remove(item) } }
-            egress.insert(Egress(at = System.currentTimeMillis(), feature = feature.label, provider = item.provider, bytes = bytes, detail = what, ok = ok))
+            egress.insert(Egress(at = System.currentTimeMillis(), feature = featureLabel, provider = item.provider, bytes = bytes, detail = what, ok = ok))
         }
     }
 }

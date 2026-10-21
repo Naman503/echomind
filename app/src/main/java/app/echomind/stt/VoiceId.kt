@@ -21,7 +21,7 @@ import kotlin.math.sqrt
  * Runs on the transcription path while the audio still exists; only the
  * 512-number voice-print is kept, never the audio.
  */
-class VoiceId(private val context: Context, private val models: ModelManager) {
+class VoiceId(private val context: Context, private val models: ModelManager, private val sensitivity: () -> String = { "normal" }) {
     private val lock = Mutex()
     private var extractor: SpeakerEmbeddingExtractor? = null
     private val prefs = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
@@ -52,29 +52,80 @@ class VoiceId(private val context: Context, private val models: ModelManager) {
 
     suspend fun embed(file: File, startMs: Long, endMs: Long): FloatArray? = embed(Wav.readSamples(file, startMs, endMs))
 
-    /** Averages voice-prints from the enrolment clips and stores the result. */
-    suspend fun enroll(clips: List<ShortArray>): Boolean {
+    /**
+     * Learns the owner's voice from enrolment clips. Each clip is kept as its own
+     * sample (a phone on the desk and in a pocket sound different), and the
+     * threshold is calibrated from how alike the owner's own clips are.
+     */
+    suspend fun enroll(clips: List<ShortArray>, append: Boolean = false): Boolean {
         val prints = clips.mapNotNull { embed(it) }
-        if (prints.size < 2) return false
-        val avg = FloatArray(prints[0].size)
-        for (p in prints) for (i in avg.indices) avg[i] += p[i] / prints.size
-        prefs.edit().putString("me", normalize(avg).joinToString(",")).apply()
+        if (prints.size < (if (append) 1 else 2)) return false
+        val bank = (if (append) bank("me_bank") else emptyList()) + prints
+        save("me_bank", bank.takeLast(BANK))
+        recompute()
         return true
     }
 
-    fun forget() = prefs.edit().remove("me").apply()
+    /** "That line was me" / "that wasn't me": the voice model learns from corrections and confident lines. */
+    fun learn(print: FloatArray, isMe: Boolean) {
+        val key = if (isMe) "me_bank" else "me_neg"
+        val bank = bank(key)
+        if (bank.any { cosine(it, print) > 0.93f }) return // nothing new
+        save(key, (bank + print).takeLast(BANK))
+        if (isMe) recompute()
+    }
+
+    fun samples() = bank("me_bank").size
+    fun corrections() = bank("me_neg").size
+
+    fun forget() = prefs.edit().remove("me").remove("me_bank").remove("me_neg").remove("me_thr").apply()
+
+    private fun recompute() {
+        val bank = bank("me_bank")
+        if (bank.isEmpty()) return
+        val avg = FloatArray(bank[0].size)
+        for (p in bank) for (i in avg.indices) avg[i] += p[i] / bank.size
+        // Calibrate: a little below how alike the owner's own samples are, within sane bounds.
+        val pairs = bank.indices.flatMap { i -> (i + 1 until bank.size).map { j -> cosine(bank[i], bank[j]) } }
+        val thr = if (pairs.isEmpty()) ME_THRESHOLD else (pairs.sorted()[pairs.size / 5] - 0.08f).coerceIn(0.45f, 0.65f)
+        prefs.edit().putString("me", normalize(avg).joinToString(",")).putFloat("me_thr", thr).apply()
+    }
+
+    private fun bank(key: String): List<FloatArray> = prefs.getString(key, null)?.split(';')?.mapNotNull { p ->
+        p.split(',').mapNotNull { it.toFloatOrNull() }.toFloatArray().takeIf { it.isNotEmpty() }
+    } ?: listOfNotNull(if (key == "me_bank") me() else null)
+
+    private fun save(key: String, list: List<FloatArray>) = prefs.edit().putString(key, list.joinToString(";") { it.joinToString(",") }).apply()
 
     private fun me(): FloatArray? = prefs.getString("me", null)?.split(',')?.mapNotNull { it.toFloatOrNull() }?.toFloatArray()
 
-    /** Similarity to the owner's voice, or null if not enrolled. */
-    fun meScore(print: FloatArray): Float? = me()?.takeIf { it.size == print.size }?.let { cosine(it, print) }
+    /** The owner's calibrated threshold, shifted by the sensitivity setting. */
+    fun threshold(): Float = prefs.getFloat("me_thr", ME_THRESHOLD) + when (sensitivity()) { "strict" -> 0.06f; "lenient" -> -0.06f; else -> 0f }
 
-    fun isMe(print: FloatArray) = (meScore(print) ?: 0f) >= ME_THRESHOLD
+    /** Similarity to the owner's voice: the closer of the average and the best two samples. */
+    fun meScore(print: FloatArray): Float? {
+        val c = me()?.takeIf { it.size == print.size } ?: return null
+        val top = bank("me_bank").filter { it.size == print.size }.map { cosine(it, print) }.sortedDescending().take(2)
+        return maxOf(cosine(c, print), if (top.isEmpty()) 0f else top.average().toFloat())
+    }
+
+    private fun notMeScore(print: FloatArray): Float = bank("me_neg").filter { it.size == print.size }.maxOfOrNull { cosine(it, print) } ?: 0f
+
+    /** Owner when close enough — and clearly closer than to voices you said weren't you. */
+    fun isMe(print: FloatArray): Boolean {
+        val s = meScore(print) ?: return false
+        return s >= threshold() && s - notMeScore(print) > 0.04f
+    }
+
+    /** Confident enough to learn from by itself (well above the threshold). */
+    fun surelyMe(print: FloatArray) = (meScore(print) ?: 0f) >= threshold() + 0.12f && isMe(print)
 
     suspend fun release() = lock.withLock { extractor?.release(); extractor = null }
 
     companion object {
         const val ME_THRESHOLD = 0.55f
+        const val PERSON_THRESHOLD = 0.6f
+        private const val BANK = 40
         const val SAME_THRESHOLD = 0.6f
 
         fun cosine(a: FloatArray, b: FloatArray): Float {

@@ -37,6 +37,7 @@ class Transcriber(
     private val sherpa: SherpaSpeech,
     private val voice: VoiceId,
     private val recordings: app.echomind.capture.Recordings,
+    private val sounds: () -> Sounds,
 ) {
     data class Status(
         val active: Boolean = false,
@@ -114,6 +115,11 @@ class Transcriber(
             finish(item, file)
             return true
         }
+        // Songs and surroundings are found while the audio still exists (first pass only).
+        if (item.progressMs == 0L && sounds().wanted()) {
+            governor.awaitTurn()
+            runCatching { sounds().analyse(file, item) }.onFailure { Log.w(TAG, "sound analysis failed", it) }
+        }
         val langs = settings.value.speechLanguages.ifEmpty { listOf("en-IN") }
         val hints = hints()
         var lastText: String? = null
@@ -178,21 +184,35 @@ class Transcriber(
         return true
     }
 
-    /** "me" vs others by voice; keeps each line's voice-print for per-conversation speaker grouping. */
+    /**
+     * "me" vs others by voice; keeps each line's voice-print for speaker grouping.
+     * Short lines next to each other are measured together (a voice needs ~1.5 s),
+     * and lines it is very sure about teach it more of your voice.
+     */
     private suspend fun labelVoices(file: File, item: AudioItem, rows: List<Pair<Utterance, Long>>) {
-        if (!settings.value.labelSpeakers || !voice.ready()) return
-        for ((u, id) in rows) {
-            val startMs = u.startAt - item.startedAt
-            val endMs = u.endAt - item.startedAt
+        val s = settings.value
+        if (!s.labelSpeakers || !voice.ready()) return
+        val groups = ArrayList<MutableList<Pair<Utterance, Long>>>()
+        for (r in rows) {
+            val g = groups.lastOrNull()
+            val prevEnd = g?.last()?.first?.endAt ?: Long.MIN_VALUE
+            val span = g?.let { it.last().first.endAt - it.first().first.startAt } ?: 0
+            if (g != null && r.first.startAt - prevEnd < 800 && span < 1_500) g.add(r) else groups.add(mutableListOf(r))
+        }
+        var learned = false
+        for (g in groups) {
+            val startMs = g.first().first.startAt - item.startedAt
+            val endMs = g.last().first.endAt - item.startedAt
             if (endMs - startMs < 1_200) continue
             val print = runCatching { voice.embed(file, startMs, endMs) }.getOrNull() ?: continue
             val (bytes, scale) = Vectors.quantize(print)
-            db.vectors().put(VectorRow("s", id, bytes, scale, "voice-id", System.currentTimeMillis()))
-            if (voice.enrolled() && voice.isMe(print)) {
-                db.utterances().update(u.copy(id = id, speaker = "me"))
-            } else if (item.source == "call" && voice.enrolled()) {
-                db.utterances().update(u.copy(id = id, speaker = item.contact ?: "Caller"))
+            for ((u, id) in g) {
+                db.vectors().put(VectorRow("s", id, bytes, scale, "voice-id", System.currentTimeMillis()))
+                if (voice.enrolled() && voice.isMe(print)) db.utterances().update(u.copy(id = id, speaker = "me"))
+                else if (item.source == "call" && voice.enrolled()) db.utterances().update(u.copy(id = id, speaker = item.contact ?: "Caller"))
             }
+            // At most one new sample per recording, only from long, very clear lines.
+            if (s.voiceLearn && !learned && endMs - startMs >= 3_000 && voice.enrolled() && voice.surelyMe(print)) { voice.learn(print, true); learned = true }
         }
     }
 
@@ -201,6 +221,7 @@ class Transcriber(
         db.audio().update(latest.copy(state = "done", progressMs = latest.durationMs, error = null))
         // The working WAV goes once its words are safe; a small compressed copy stays as the record
         // for as long as the user chose. Imported call recordings are copies; the dialer's original is never touched.
+        runCatching { sounds().fillLyrics(latest) }
         recordings.keep(latest, file)
         _status.value = _status.value.copy(active = false)
     }

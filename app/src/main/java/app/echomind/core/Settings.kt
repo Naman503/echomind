@@ -55,6 +55,12 @@ data class Settings(
     val sherpaModel: String = "whisper-small",
     /** Enrolled "me" voice is used to label lines (needs the speaker pack). */
     val labelSpeakers: Boolean = true,
+    /** strict | normal | lenient — how sure it must be that a line was you. */
+    val voiceSensitivity: String = "normal",
+    /** Keeps learning your voice from lines it is very sure about. */
+    val voiceLearn: Boolean = true,
+    /** Remembers the voices of people you talk to and labels their lines by name. */
+    val recognisePeople: Boolean = true,
 
     // Calls
     val importCalls: Boolean = false,
@@ -121,6 +127,27 @@ data class Settings(
 
     /** Transcript order: newest line at the top. */
     val transcriptNewestFirst: Boolean = true,
+
+    // Sounds
+    /** Keep songs you sing or that play near you, as their own clips. */
+    val songs: Boolean = true,
+    /** Look up which song it was on the web by itself (only a few words of lyrics are sent). */
+    val songsAutoIdentify: Boolean = false,
+    /** Note what's going on around you (traffic, kitchen, TV…) for an activity timeline. Uses more battery. */
+    val ambient: Boolean = false,
+    /** Days to keep the activity timeline. */
+    val ambientDays: Int = 30,
+
+    // Web
+    /** off | ask (show each search first) | auto */
+    val webSearch: String = "ask",
+    /** duckduckgo | wikipedia | searxng | brave | google */
+    val webProvider: String = "duckduckgo",
+    /** Your own SearXNG instance (most private), e.g. https://search.example.com */
+    val searxngUrl: String = "",
+    val googleCx: String = "",
+    /** Read the top pages, not just the result snippets (better answers, a few more requests). */
+    val webReadPages: Boolean = true,
 
     // Calendar
     /** Show the phone's own calendars next to EchoMind's events (needs calendar permission). */

@@ -50,6 +50,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,6 +95,8 @@ fun AskScreen(initialThread: Long?, initialQuestion: String?) {
     val provider = s.provider(Feature.ASK)
     val list = rememberLazyListState()
 
+    var useWeb by rememberSaveable { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     fun send(q: String, spoken: Boolean = false) {
         if (q.isBlank() || draft != null || searching != null) return
         input = ""
@@ -109,7 +112,7 @@ fun AskScreen(initialThread: Long?, initialQuestion: String?) {
                 return@launch
             }
             var answer = ""
-            g.ask.answer(threadId, q).collect { e ->
+            g.ask.answer(threadId, q, useWeb).collect { e ->
                 when (e) {
                     is Ask.Event.Searching -> searching = e.text
                     is Ask.Event.Sources -> searching = if (e.citations.isEmpty()) "Nothing matched — answering honestly" else "Found ${e.citations.size} moments · thinking"
@@ -167,9 +170,12 @@ fun AskScreen(initialThread: Long?, initialQuestion: String?) {
         Row(Modifier.fillMaxWidth().padding(Sp.gutter), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = input, onValueChange = { input = it }, modifier = Modifier.weight(1f),
-                placeholder = { Text(if (voice.listening) "Listening…" else "Ask, or tap the mic: “what's pending?”") },
+                placeholder = { Text(if (voice.listening) "Listening…" else if (useWeb) "Ask — memory and the web" else "Ask, or tap the mic: “what's pending?”") },
                 shape = MaterialTheme.shapes.extraLarge, maxLines = 4,
             )
+            if (s.webSearch != "off") IconButton(onClick = { useWeb = !useWeb }) {
+                Icon(Icons.Rounded.Public, if (useWeb) "Stop searching the web" else "Also search the web", tint = if (useWeb) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
+            }
             Spacer(Modifier.width(Sp.s))
             if (input.isBlank()) FilledIconButton(onClick = { if (voice.listening) voice.stop() else voice.start() }) {
                 Icon(if (voice.listening) Icons.Rounded.Stop else Icons.Rounded.Mic, if (voice.listening) "Stop" else "Speak")
@@ -194,8 +200,9 @@ fun AskScreen(initialThread: Long?, initialQuestion: String?) {
                         "note" -> nav.go(NoteRoute(c.id))
                         "fact" -> c.conversationId?.let { nav.go(ConversationRoute(it)) } ?: nav.go(MemoryRoute)
                         "task" -> nav.tab(TasksRoute)
+                        "web" -> c.url?.let { u -> runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(u)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } }
                     }
-                }) { Text(if (c.kind == "line") "Open in transcript" else "Open") }
+                }) { Text(when (c.kind) { "line" -> "Open in transcript"; "web" -> "Open the page"; else -> "Open" }) }
             }
         }
     }

@@ -26,6 +26,7 @@ class CaptureController(
     private val settings: SettingsStore,
     private val scope: CoroutineScope,
     private val brain: () -> Brain,
+    private val sounds: () -> app.echomind.brain.Sounds,
 ) {
     val windowsDir = File(context.filesDir, "audio").apply { mkdirs() }
 
@@ -58,7 +59,12 @@ class CaptureController(
     /** A closed window: dropped if nobody spoke, else queued for transcription. */
     private suspend fun accept(w: Recorder.Window) {
         val forgetFrom = prefs.getLong("forgetFrom", 0)
-        if (w.voicedMs < MIN_VOICED_MS || (w.startedAt < forgetFrom && w.endedAt <= forgetFrom + 5_000)) {
+        if (w.startedAt < forgetFrom && w.endedAt <= forgetFrom + 5_000) { w.file.delete(); return }
+        if (w.voicedMs < MIN_VOICED_MS) {
+            // No talk — but maybe music, or surroundings for the activity timeline, before it's deleted unheard.
+            if (sounds().wanted()) runCatching {
+                sounds().analyse(w.file, AudioItem(path = w.file.absolutePath, startedAt = w.startedAt, endedAt = w.endedAt, durationMs = w.durationMs, voicedMs = w.voicedMs, source = "mic"), dropped = true)
+            }
             w.file.delete()
             return
         }

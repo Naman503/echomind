@@ -187,6 +187,7 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE status = 'open' AND remindAt IS NOT NULL AND remindAt > :now ORDER BY remindAt") suspend fun upcomingReminders(now: Long): List<TaskRow>
     @Query("SELECT * FROM tasks WHERE status = 'open' AND remindAt IS NOT NULL AND remindAt > :now ORDER BY remindAt LIMIT :n") fun observeUpcoming(now: Long, n: Int): Flow<List<TaskRow>>
     @Query("SELECT COUNT(*) FROM tasks WHERE status = 'suggested'") fun suggestedCount(): Flow<Int>
+    @Query("SELECT * FROM tasks WHERE status = 'open' AND doneSuggestedAt IS NOT NULL ORDER BY doneSuggestedAt DESC") fun observeLooksDone(): Flow<List<TaskRow>>
     @Query("SELECT * FROM tasks WHERE conversationId = :id") fun observeForConversation(id: Long): Flow<List<TaskRow>>
     @Query("SELECT * FROM tasks WHERE createdAt >= :from AND createdAt < :to") suspend fun createdIn(from: Long, to: Long): List<TaskRow>
     @Query("SELECT * FROM tasks WHERE completedAt >= :from AND completedAt < :to") suspend fun completedIn(from: Long, to: Long): List<TaskRow>
@@ -242,6 +243,31 @@ interface EventDao {
     @Query("SELECT * FROM events WHERE status = 'suggested' ORDER BY startAt") fun observeSuggested(): Flow<List<EventRow>>
     @Query("SELECT * FROM events WHERE deviceId = :deviceId LIMIT 1") suspend fun byDevice(deviceId: Long): EventRow?
     @Query("DELETE FROM events WHERE id = :id") suspend fun delete(id: Long)
+}
+
+@Dao
+interface SoundDao {
+    @Insert suspend fun insert(s: SoundRow): Long
+    @Update suspend fun update(s: SoundRow)
+    @Query("SELECT * FROM sounds WHERE id = :id") suspend fun get(id: Long): SoundRow?
+    @Query("SELECT * FROM sounds WHERE kind = 'song' ORDER BY startAt DESC") fun observeSongs(): Flow<List<SoundRow>>
+    @Query("SELECT * FROM sounds WHERE startAt < :to AND endAt > :from ORDER BY startAt") fun observeRange(from: Long, to: Long): Flow<List<SoundRow>>
+    @Query("SELECT * FROM sounds WHERE startAt < :to AND endAt > :from ORDER BY startAt") suspend fun range(from: Long, to: Long): List<SoundRow>
+    @Query("SELECT * FROM sounds WHERE kind = :kind ORDER BY endAt DESC LIMIT 1") suspend fun last(kind: String): SoundRow?
+    @Query("SELECT * FROM sounds WHERE kind = 'song' AND lyrics IS NULL AND endAt < :before") suspend fun songsWithoutLyrics(before: Long): List<SoundRow>
+    @Query("DELETE FROM sounds WHERE id = :id") suspend fun delete(id: Long)
+    @Query("DELETE FROM sounds WHERE kind = 'ambient' AND endAt < :before") suspend fun pruneAmbient(before: Long)
+}
+
+@Dao
+interface VoicePrintDao {
+    @Insert suspend fun insert(v: VoicePrint): Long
+    @Query("SELECT * FROM voiceprints") suspend fun all(): List<VoicePrint>
+    @Query("SELECT * FROM voiceprints WHERE entityId = :id ORDER BY createdAt") suspend fun forEntity(id: Long): List<VoicePrint>
+    @Query("SELECT COUNT(*) FROM voiceprints WHERE entityId = :id") fun observeCount(id: Long): Flow<Int>
+    @Query("DELETE FROM voiceprints WHERE id = :id") suspend fun delete(id: Long)
+    @Query("DELETE FROM voiceprints WHERE entityId = :id") suspend fun deleteFor(id: Long)
+    @Query("UPDATE voiceprints SET entityId = :to WHERE entityId = :from") suspend fun move(from: Long, to: Long)
 }
 
 data class SubtaskCount(val id: Long, val total: Int, val done: Int)

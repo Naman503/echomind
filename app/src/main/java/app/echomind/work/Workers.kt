@@ -33,6 +33,7 @@ class WatchdogWorker(context: Context, params: WorkerParameters) : CoroutineWork
         runCatching { g.nudges.check() }
         runCatching { g.recordings.sweep() }
         runCatching { g.agenda.checkUpcoming() }
+        runCatching { g.sounds.identifyPending() }
         if (!CaptureService.running && g.brain.hasWork()) ProcessWorker.enqueue(applicationContext)
         return Result.success()
     }

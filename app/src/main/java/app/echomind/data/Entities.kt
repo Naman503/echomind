@@ -292,6 +292,53 @@ data class TaskRow(
     /** Set for a subtask. */
     @ColumnInfo(defaultValue = "NULL") val parentId: Long? = null,
     @ColumnInfo(defaultValue = "0") val sortOrder: Int = 0,
+    /** The AI's latest word on this task from a conversation: "Sounds done — you said you sent it (Tue 4 PM)". */
+    @ColumnInfo(defaultValue = "NULL") val aiNote: String? = null,
+    /** When a conversation suggested the task is finished; shown for one-tap confirmation. */
+    @ColumnInfo(defaultValue = "NULL") val doneSuggestedAt: Long? = null,
+)
+
+/**
+ * Something heard that wasn't talk: a song (sung or playing) kept as its own
+ * clip, or a stretch of surroundings ("traffic", "kitchen") for the activity timeline.
+ */
+@Entity(tableName = "sounds", indices = [Index("startAt"), Index("kind")])
+data class SoundRow(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** song | ambient */
+    val kind: String,
+    val startAt: Long,
+    val endAt: Long,
+    /** Activity or sound name: "Singing", "Music", "Traffic", "Kitchen". */
+    val label: String,
+    /** JSON [{"name":…,"p":…}] — the top sound classes heard. */
+    val labels: String = "[]",
+    val confidence: Float = 0f,
+    val audioId: Long? = null,
+    /** Songs: a kept AAC clip of just the song. */
+    val clipPath: String? = null,
+    val title: String? = null,
+    val artist: String? = null,
+    val lyrics: String? = null,
+    /** How the song was named: you | ai | web */
+    val identifiedBy: String? = null,
+    /** Songs: you were the one singing (your voice matched). */
+    val mine: Boolean = false,
+    val favourite: Boolean = false,
+    val createdAt: Long,
+)
+
+/** Voice-prints of people you talk to, so their lines get their name in new conversations. */
+@Entity(tableName = "voiceprints", indices = [Index("entityId")])
+data class VoicePrint(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val entityId: Long,
+    @ColumnInfo(typeAffinity = ColumnInfo.BLOB) val vector: ByteArray,
+    val scale: Float,
+    /** How many lines went into this print. */
+    val samples: Int,
+    val conversationId: Long? = null,
+    val createdAt: Long,
 )
 
 /** A task list ("Work", "Home", "Shopping"). */

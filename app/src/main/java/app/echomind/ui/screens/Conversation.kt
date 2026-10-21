@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -186,7 +187,8 @@ fun ConversationScreen(id: Long, lineId: Long?) {
                         Icon(Icons.Rounded.SwapVert, null); Spacer(Modifier.width(4.dp)); Text(if (newestFirst) "Oldest first" else "Newest first")
                     }
                 }
-                Transcript(if (newestFirst) lines.asReversed() else lines, lineId, onPlay = { at -> scope.launch { if (!g.playback.playAt(at)) noAudio = true } }) { rename = it }
+                Transcript(if (newestFirst) lines.asReversed() else lines, lineId, onPlay = { at -> scope.launch { if (!g.playback.playAt(at)) noAudio = true } },
+                    onCorrect = { u, me -> scope.launch { correct(u, me) } }) { rename = it }
             }
         }
     }
@@ -208,7 +210,11 @@ fun ConversationScreen(id: Long, lineId: Long?) {
                 TextButton(enabled = name.isNotBlank(), onClick = {
                     val n = name.trim()
                     rename = null
-                    scope.launch { g.db.utterances().renameSpeaker(id, from, n); g.memory.link("person", n, null, conv.endAt) }
+                    scope.launch {
+                        g.db.utterances().renameSpeaker(id, from, n); g.memory.link("person", n, null, conv.endAt)
+                        // Their voice is remembered, so next time their lines are named by themselves.
+                        if (g.settings.value.recognisePeople) g.voicePrints.learnFromConversation(id, conv.contact)
+                    }
                 }) { Text("Save") }
             },
             dismissButton = { TextButton(onClick = { rename = null }) { Text("Cancel") } },
@@ -216,8 +222,19 @@ fun ConversationScreen(id: Long, lineId: Long?) {
     }
 }
 
+/** "This was me" / "not me": fixes the line and teaches the voice model. */
+private suspend fun correct(u: Utterance, me: Boolean) {
+    val g = App.graph
+    g.db.utterances().update(u.copy(speaker = if (me) "me" else "S9"))
+    g.db.vectors().forOwners("s", listOf(u.id)).firstOrNull()?.let { v ->
+        g.voice.learn(app.echomind.stt.VoiceId.normalize(app.echomind.brain.Vectors.dequantize(v.vector, v.scale)), me)
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun Transcript(lines: List<Utterance>, focus: Long?, onPlay: (Long) -> Unit, onSpeaker: (String) -> Unit) {
+private fun Transcript(lines: List<Utterance>, focus: Long?, onPlay: (Long) -> Unit, onCorrect: (Utterance, Boolean) -> Unit, onSpeaker: (String) -> Unit) {
+    var menuFor by remember { mutableStateOf<Long?>(null) }
     val state = rememberLazyListState()
     LaunchedEffect(focus, lines.size) {
         val i = lines.indexOfFirst { it.id == focus }
@@ -237,6 +254,7 @@ private fun Transcript(lines: List<Utterance>, focus: Long?, onPlay: (Long) -> U
             }
             Column(
                 Modifier.fillMaxWidth()
+                    .combinedClickable(onClick = {}, onLongClick = { menuFor = u.id })
                     .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f * highlight), MaterialTheme.shapes.small)
                     .padding(horizontal = Sp.s, vertical = if (newSpeaker) 6.dp else 2.dp),
             ) {
@@ -251,6 +269,12 @@ private fun Transcript(lines: List<Utterance>, focus: Long?, onPlay: (Long) -> U
                     }
                 }
                 Text(u.text, style = MaterialTheme.typography.bodyLarge, color = if (u.source == "typed") MaterialTheme.colorScheme.tertiary else Color.Unspecified)
+                DropdownMenu(menuFor == u.id, { menuFor = null }) {
+                    if (speaker != "me") DropdownMenuItem(text = { Text("This was me") }, onClick = { menuFor = null; onCorrect(u, true) })
+                    if (speaker == "me") DropdownMenuItem(text = { Text("That wasn't me") }, onClick = { menuFor = null; onCorrect(u, false) })
+                    if (speaker != "me") DropdownMenuItem(text = { Text("Who is speaking? Name them") }, onClick = { menuFor = null; onSpeaker(speaker) })
+                    DropdownMenuItem(text = { Text("Play from here") }, onClick = { menuFor = null; onPlay(u.startAt) })
+                }
             }
         }
         item { Spacer(Modifier.height(Sp.xl)) }

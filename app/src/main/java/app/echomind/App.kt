@@ -21,6 +21,9 @@ import app.echomind.brain.Assistant
 import app.echomind.brain.Briefing
 import app.echomind.brain.Organizer
 import app.echomind.brain.People
+import app.echomind.brain.Web
+import app.echomind.brain.VoicePrints
+import app.echomind.brain.Sounds
 import app.echomind.brain.Brain
 import app.echomind.brain.Embedder
 import app.echomind.brain.Enricher
@@ -76,7 +79,8 @@ class Graph(val app: Application) {
     val androidSpeech = AndroidSpeech(app, speed = feedSpeed, singleLanguage = singleLanguage)
     val speechPacks = SpeechPacks(androidSpeech, scope)
     val sherpa = SherpaSpeech(models, { settings.value.sherpaModel }, { governor.threads() })
-    val voice = VoiceId(app, models)
+    val voice = VoiceId(app, models) { settings.value.voiceSensitivity }
+    val voicePrints = VoicePrints(db)
     private val speechEngines = mapOf(
         "android" to androidSpeech,
         // Server-side: real time is the natural pace for it.
@@ -100,25 +104,27 @@ class Graph(val app: Application) {
     val tasks = Tasks(db, settings, reminders)
     val memory = Memory(db, ai, settings, embedder)
     val notes = Notes(db, ai, settings, embedder)
-    val enricher = Enricher(db, ai, settings, memory, notes, tasks, embedder, { nudges }, { people }, { agenda })
+    val enricher = Enricher(db, ai, settings, memory, notes, tasks, embedder, { nudges }, { people }, { agenda }, voicePrints, voice)
     val journal = Journal(db, ai, settings, memory)
-    val ask = Ask(db, ai, settings, embedder, { agenda }, { people })
+    val ask = Ask(db, ai, settings, embedder, { agenda }, { people }, { web })
     val sessionizer = Sessionizer(db, settings)
     val recordings = Recordings(app, db, settings)
     val playback = Playback(db, recordings, scope)
-    val transcriber = Transcriber(db, settings, governor, speechEngines, androidSpeech, sherpa, voice, recordings)
+    val transcriber = Transcriber(db, settings, governor, speechEngines, androidSpeech, sherpa, voice, recordings) { sounds }
     val calls = CallImporter(app, db, settings)
     val brain: Brain = Brain(app, db, settings, governor, transcriber, sessionizer, enricher, journal, tasks, notes, calls, ai, notifier) {
         // Nightly extras after the journal and memory review: file new notes, refresh people's pages.
         runCatching { organizer.tidyNew() }
         runCatching { people.refreshStories(if (ai.llm(Feature.MEMORY).local) 3 else 12) }
     }
-    val capture = CaptureController(app, db, settings, scope) { brain }
+    val capture = CaptureController(app, db, settings, scope, { brain }) { sounds }
     val speaker = Speaker(app, models, settings, scope) { governor.threads() }
     val briefing = Briefing(db, settings) { agenda }
     val assistant = Assistant(db, tasks, notes, briefing, speaker, { actions }, { agenda })
     val nudges = Nudges(db, settings, ai, notifier, { capture }, { speaker })
     val people = People(db, ai, settings, memory)
+    val web = Web(cloud, settings, secrets, db, ai)
+    val sounds = Sounds(db, settings, models, recordings, voice, ai) { web }
     val agenda = Agenda(app, db, settings, people, notifier)
     val organizer = Organizer(db, ai, settings)
     val actions = Actions(db, ai, settings, tasks, notes, memory, people, agenda) { organizer }
