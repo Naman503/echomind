@@ -38,6 +38,9 @@ data class AudioItem(
     val contact: String? = null,
     /** For imports: the MediaStore id, so a recording is never imported twice. */
     val mediaId: Long? = null,
+    /** A small compressed copy kept for listening back (AAC), deleted at [keepUntil]. */
+    @ColumnInfo(defaultValue = "NULL") val keptPath: String? = null,
+    @ColumnInfo(defaultValue = "NULL") val keepUntil: Long? = null,
 )
 
 /** Time when nothing was recorded, and why — shown honestly on the timeline. */
@@ -123,6 +126,59 @@ data class EntityRow(
     val mentions: Int = 1,
     val firstSeenAt: Long,
     val lastSeenAt: Long,
+    /** What they do ("Sales lead"), where ("Eazeebox"), which circle (family | work | friends | other). */
+    @ColumnInfo(defaultValue = "NULL") val role: String? = null,
+    @ColumnInfo(defaultValue = "NULL") val org: String? = null,
+    @ColumnInfo(defaultValue = "NULL") val circle: String? = null,
+    /** Who they are to the owner ("my manager", "sister", "plumber"). */
+    @ColumnInfo(defaultValue = "NULL") val relationToMe: String? = null,
+    /** How and when the owner met or first heard of them. */
+    @ColumnInfo(defaultValue = "NULL") val howMet: String? = null,
+    /** A few sentences: who they are and what's been going on (written by the AI from memory). */
+    @ColumnInfo(defaultValue = "NULL") val story: String? = null,
+    /** JSON list: small things worth remembering when you next see them. */
+    @ColumnInfo(defaultValue = "'[]'") val details: String = "[]",
+    @ColumnInfo(defaultValue = "NULL") val storyAt: Long? = null,
+    /** Mentions when the story was last written, so it is rewritten only when there's more to say. */
+    @ColumnInfo(defaultValue = "0") val storyMentions: Int = 0,
+)
+
+/** A connection between two people or things: "Rahul — manager of — Priya", "Priya — works at — Eazeebox". */
+@Entity(tableName = "relations", indices = [Index("fromId"), Index("toId"), Index(value = ["fromId", "toId", "type"], unique = true)])
+data class Relation(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val fromId: Long,
+    val toId: Long,
+    val type: String,
+    val detail: String? = null,
+    val sources: String = "[]",
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+/** A calendar event: found in a conversation, added by you, or read from the phone's calendar. */
+@Entity(tableName = "events", indices = [Index("startAt"), Index("status"), Index("deviceId")])
+data class EventRow(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val title: String,
+    val startAt: Long,
+    val endAt: Long? = null,
+    val allDay: Boolean = false,
+    val location: String? = null,
+    /** JSON list of names */
+    val people: String = "[]",
+    val notes: String? = null,
+    /** ai | user | device */
+    val source: String = "user",
+    /** suggested | confirmed | cancelled */
+    val status: String = "confirmed",
+    val conversationId: Long? = null,
+    val quote: String? = null,
+    /** The phone calendar's event id, once written there or read from it. */
+    val deviceId: Long? = null,
+    val remindBeforeMin: Int = 15,
+    val createdAt: Long,
+    val updatedAt: Long,
 )
 
 /**
@@ -267,6 +323,12 @@ data class DayEntry(
     val provider: String? = null,
     val userEdited: Boolean = false,
     val memoryReviewedAt: Long? = null,
+    /** 0–100, from the journal pass. */
+    @ColumnInfo(defaultValue = "NULL") val productivity: Int? = null,
+    /** One line: why the day was or wasn't productive. */
+    @ColumnInfo(defaultValue = "NULL") val productiveWhy: String? = null,
+    /** The owner's own rating, 1–5. */
+    @ColumnInfo(defaultValue = "NULL") val rating: Int? = null,
 )
 
 @Entity(tableName = "chat_threads", indices = [Index("updatedAt")])

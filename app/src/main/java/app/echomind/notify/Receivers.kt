@@ -71,6 +71,19 @@ class NudgeReceiver : BroadcastReceiver() {
     }
 }
 
+/** An event's reminder time: the heads-up with who you're meeting. */
+class EventReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val id = intent.getLongExtra(EXTRA_ID, -1)
+        if (id < 0) return
+        async { App.graph.agenda.remind(id) }
+    }
+
+    companion object {
+        const val EXTRA_ID = "id"
+    }
+}
+
 /** Morning brief and evening recap alarms hand off to a worker (which may need the AI). */
 class DailyReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -97,6 +110,7 @@ class BootReceiver : BroadcastReceiver() {
         async {
             val s = g.settings.awaitLoaded()
             g.tasks.rescheduleAll()
+            g.agenda.rescheduleAll()
             g.reminders.scheduleDaily(s.morningBriefAt, s.eveningRecapAt)
             if (s.captureWanted && intent.action != Intent.ACTION_TIME_CHANGED && intent.action != Intent.ACTION_TIMEZONE_CHANGED) {
                 g.notifier.resumePrompt(if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) "EchoMind was updated." else "Your phone restarted.")

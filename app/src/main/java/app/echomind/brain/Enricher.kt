@@ -46,6 +46,8 @@ class Enricher(
     private val tasks: Tasks,
     private val embedder: Embedder,
     private val nudges: () -> Nudges,
+    private val people: () -> People,
+    private val agenda: () -> Agenda,
 ) {
     data class Result(val tasks: Int, val facts: Int, val notes: Int)
 
@@ -78,8 +80,10 @@ class Enricher(
         for ((i, part) in parts.withIndex()) {
             val purpose = (if (c.source == "call") "Call notes" else "Notes") + " · ${Prompts.time(c.startAt)}" + if (parts.size > 1) " (part ${i + 1}/${parts.size})" else ""
             val user = Prompts.extractUser(ctx, c.startAt, c.endAt, c.source, c.contact, part.joinToString("\n"), (i + 1) to parts.size)
-            outputs.add(ai.json(LlmRequest(Feature.NOTES, purpose, Prompts.extractSystem(lang), user, Schemas.extract, maxTokens = if (local) 900 else 2_500)))
+            outputs.add(ai.json(LlmRequest(Feature.NOTES, purpose, Prompts.extractSystem(lang), user, Schemas.extract, maxTokens = if (local) 900 else 2_500, deep = true)))
         }
+
+        if (ai.bestQuality) runCatching { review(numbered, outputs, llm.promptBudgetChars) }.onFailure { Log.w(TAG, "review failed", it) }
 
         val idOf = { n: Int -> utts.getOrNull(n - 1)?.id }
         fun sources(o: JsonObject): List<Long> = ((o["lines"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.intOrNull?.let(idOf) }).orEmpty()
@@ -112,9 +116,22 @@ class Enricher(
         var factCount = 0
         var taskCount = 0
         var noteIds = emptyList<Long>()
-        val people = outputs.flatMap { it.objects("people") }.mapNotNull { p -> p.str("name")?.let { it to p.str("who") } }.distinctBy { it.first.lowercase() }
+        val found = outputs.flatMap { it.objects("people") }.mapNotNull { p ->
+            p.str("name")?.trim()?.takeIf { it.length >= 2 }?.let { People.Info(it, p.str("who"), p.str("role"), p.str("org"), p.str("circle")) }
+        }.distinctBy { it.name.lowercase() }
+        val people = found.map { it.name to it.who }
         if (!media) {
-            for ((name, who) in people) memory.link("person", name, who, at)
+            val links = outputs.flatMap { it.objects("relations") }.mapNotNull { r ->
+                val from = r.str("from")?.trim().orEmpty(); val to = r.str("to")?.trim().orEmpty(); val type = r.str("type")?.trim().orEmpty()
+                if (from.isEmpty() || to.isEmpty() || type.isEmpty()) null else People.Link(from, type, to)
+            }
+            runCatching { people().absorb(found, links, c.id, title.ifBlank { "a conversation" }, at) }.onFailure { Log.w(TAG, "people failed", it) }
+            val events = outputs.flatMap { it.objects("events") }.mapNotNull { e ->
+                val start = When.resolve(e.str("start_iso"), null, c.startAt) ?: return@mapNotNull null
+                Agenda.Found(e.str("title").orEmpty(), start.at, When.resolve(e.str("end_iso"), null, c.startAt)?.at, !start.hasTime, e.str("location")?.takeIf { it.isNotBlank() },
+                    e.strings("people"), (e.dbl("confidence") ?: 0.6).toFloat(), e.str("quote"))
+            }
+            runCatching { agenda().addFound(events, c.id, at) }.onFailure { Log.w(TAG, "events failed", it) }
             val candidates = outputs.flatMap { it.objects("facts") }.mapNotNull { f ->
                 val st = f.str("statement")?.trim().orEmpty()
                 if (st.length < 6) null
@@ -137,7 +154,8 @@ class Enricher(
             taskCount = tasks.addFound(found, c.id, at)
 
             val updates = outputs.flatMap { it.objects("note_updates") }.groupBy { it.str("topic").orEmpty().trim() }.mapNotNull { (topic, list) ->
-                if (topic.isBlank()) null else Notes.Update(topic, list.flatMap { it.strings("points") }.distinct(), list.flatMap { sources(it) })
+                if (topic.isBlank()) null else Notes.Update(topic, list.flatMap { it.strings("points") }.distinct(), list.flatMap { sources(it) },
+                    list.firstNotNullOfOrNull { it.str("folder")?.takeIf { f -> f.isNotBlank() } }, list.flatMap { it.strings("tags") })
             }
             noteIds = notes.apply(updates, c.id, title.ifBlank { "a conversation" }, at)
         }
@@ -163,6 +181,40 @@ class Enricher(
             runCatching { nudges().fromConversation(done, questions, taskCount) }
         }
         return Result(taskCount, factCount, noteIds.size)
+    }
+
+    /** "Best" quality: a second, careful pass drops tasks, events and facts the transcript doesn't support. */
+    private suspend fun review(numbered: List<String>, outputs: MutableList<JsonObject>, budget: Int) {
+        val kinds = listOf("tasks" to "T", "events" to "E", "facts" to "F")
+        val items = kinds.associate { (k, _) -> k to outputs.flatMapIndexed { part, o -> o.objects(k).indices.map { part to it } } }
+        if (items.values.all { it.isEmpty() }) return
+        val user = buildString {
+            append("Transcript:\n")
+            var size = 0
+            for (l in numbered) { if (size + l.length > budget - 4_000) { append("…\n"); break }; append(l).append('\n'); size += l.length + 1 }
+            for ((k, p) in kinds) {
+                val list = items[k].orEmpty()
+                if (list.isEmpty()) continue
+                append("\n${k.replaceFirstChar { it.uppercase() }}:\n")
+                list.forEachIndexed { i, (part, idx) ->
+                    val o = outputs[part].objects(k)[idx]
+                    val text = o.str("title") ?: o.str("statement") ?: ""
+                    append("$p${i + 1}. $text${o.str("quote")?.takeIf { it.isNotBlank() }?.let { q -> " — “$q”" } ?: ""}\n")
+                }
+            }
+        }
+        val r = ai.json(LlmRequest(Feature.NOTES, "Double-checking the notes", Prompts.reviewSystem(), user, Schemas.review, maxTokens = 300, deep = true))
+        for ((k, _) in kinds) {
+            val list = items[k].orEmpty()
+            if (list.isEmpty()) continue
+            val keep = (r["keep_$k"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.intOrNull?.minus(1) }?.toSet() ?: continue
+            val keepByPart = list.withIndex().filter { it.index in keep }.groupBy({ it.value.first }, { it.value.second })
+            for (part in outputs.indices) {
+                val arr = outputs[part].objects(k)
+                val kept = keepByPart[part].orEmpty().toSet()
+                outputs[part] = JsonObject(outputs[part] + (k to JsonArray(arr.filterIndexed { i, _ -> i in kept })))
+            }
+        }
     }
 
     suspend fun markFailed(c: Conversation, e: Throwable) {

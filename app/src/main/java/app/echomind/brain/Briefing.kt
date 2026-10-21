@@ -20,7 +20,7 @@ import java.time.ZoneId
  * the player highlights the part being read and you can skip between them.
  * Written to be heard, not read: counts first, then the items, no symbols.
  */
-class Briefing(private val db: Db, private val settings: SettingsStore) {
+class Briefing(private val db: Db, private val settings: SettingsStore, private val agenda: () -> Agenda) {
     data class Script(val title: String, val parts: List<String>)
 
     private val zone get() = ZoneId.systemDefault()
@@ -56,9 +56,14 @@ class Briefing(private val db: Db, private val settings: SettingsStore) {
         val yesterday = db.days().get(today.minusDays(1).toString())
         val carry = yesterday?.tomorrow?.let { runCatching { Js.json.decodeFromString(ListSerializer(String.serializer()), it) }.getOrNull() }.orEmpty()
 
+        val events = runCatching { agenda().range(start(today), end) }.getOrDefault(emptyList()).filter { it.status == "confirmed" && (it.allDay || it.startAt >= now - 30 * 60_000L) }
         val parts = ArrayList<String>()
         parts.add("$greet${name()?.let { ", $it" } ?: ""}. It's ${Prompts.day(now)}.")
-        if (due.isEmpty() && overdue.isEmpty() && reminders.isEmpty()) parts.add("Nothing is scheduled for today.")
+        if (events.isNotEmpty()) {
+            parts.add("On your calendar: ${count(events.size, "event")}.")
+            events.take(6).forEach { parts.add(if (it.allDay) "${it.title}, all day." else "${it.title} at ${Prompts.time(it.startAt)}${it.location?.let { l -> ", at $l" } ?: ""}.") }
+        }
+        if (due.isEmpty() && overdue.isEmpty() && reminders.isEmpty()) { if (events.isEmpty()) parts.add("Nothing is scheduled for today.") }
         else {
             if (due.isNotEmpty()) {
                 parts.add("You have ${count(due.size, "thing")} planned today.")

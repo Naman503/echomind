@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Alarm
+import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.AddTask
 import androidx.compose.material.icons.rounded.EditNote
@@ -53,6 +54,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -109,6 +111,11 @@ fun TodayScreen() {
     val hour = LocalTime.now().hour
     val greet = when { hour < 5 -> "Good night"; hour < 12 -> "Good morning"; hour < 17 -> "Good afternoon"; else -> "Good evening" }
 
+    val ownEvents by remember { g.db.events().observeRange(System.currentTimeMillis() - 3_600_000L, System.currentTimeMillis() + 2 * 86_400_000L) }.collectAsStateWithLifecycle(emptyList())
+    val nextEvents by produceState(emptyList<app.echomind.data.EventRow>(), ownEvents, s.showPhoneCalendar) {
+        val now = System.currentTimeMillis()
+        value = g.agenda.range(now - 30 * 60_000L, now + 36 * 3_600_000L).filter { it.status == "confirmed" && if (it.allDay) it.startAt >= from else (it.endAt ?: it.startAt) > now }.take(3)
+    }
     LazyColumn(
         Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Sp.gutter, vertical = Sp.s),
@@ -140,6 +147,21 @@ fun TodayScreen() {
                 }
             }
         }
+        if (nextEvents.isNotEmpty()) {
+            item(key = "ev_h") { SectionHeader("Next on your calendar", action = "Calendar", onAction = { nav.tab(app.echomind.ui.CalendarRoute) }) }
+            items(nextEvents, key = { "ev${it.id}_${it.deviceId}_${it.startAt}" }) { e ->
+                EchoCard(onClick = { if (e.id > 0) nav.go(app.echomind.ui.EventRoute(e.id)) else nav.tab(app.echomind.ui.CalendarRoute) }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Event, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(Sp.m))
+                        Column(Modifier.weight(1f)) {
+                            Text(e.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(if (e.allDay) Fmt.day(e.startAt) else Fmt.dayTime(e.startAt) + (e.location?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
         if (upcoming.isNotEmpty()) {
             item(key = "up_h") { SectionHeader("Coming up", action = "All reminders", onAction = { nav.go(app.echomind.ui.RemindersRoute) }) }
             items(upcoming, key = { "r${it.id}" }) { t ->
@@ -156,7 +178,7 @@ fun TodayScreen() {
             }
         }
         val shown = convs.filter { it.state != "skipped" && !it.ignored }.take(8)
-        item(key = "recent_h") { SectionHeader("Latest conversations", action = "Timeline", onAction = { nav.tab(app.echomind.ui.TimelineRoute) }) }
+        item(key = "recent_h") { SectionHeader("Latest conversations", action = "Timeline", onAction = { nav.go(app.echomind.ui.TimelineRoute) }) }
         if (shown.isEmpty()) item(key = "recent_empty") {
             Text(
                 if (s.captureWanted) "Conversations appear here a few minutes after they happen." else "Start listening and your day will appear here.",

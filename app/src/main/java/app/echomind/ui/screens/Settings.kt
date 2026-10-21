@@ -191,6 +191,22 @@ fun ProvidersScreen() {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = Sp.s),
             )
         }
+        item(key = "quality") {
+            SectionHeader("How hard the AI thinks")
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                listOf("fast" to "Fast", "balanced" to "Balanced", "best" to "Best").forEachIndexed { i, (k, l) ->
+                    SegmentedButton(s.aiQuality == k, { update { it.copy(aiQuality = k) } }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
+                }
+            }
+            Text(
+                when (s.aiQuality) {
+                    "fast" -> "Answers straight away. Quickest and lightest on battery; notes may miss nuance."
+                    "best" -> "Thinks deeply before writing notes, memories, people and the journal, then double-checks what it found against the transcript. Slowest — on the phone a conversation can take a few minutes; with a cloud model it costs more."
+                    else -> "Thinks before the jobs that need judgement (notes, memory, the journal, organising) and answers questions straight away. Recommended."
+                },
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = Sp.s),
+            )
+        }
         for (f in Feature.entries) {
             item(key = f.id) {
                 SectionHeader(f.label)
@@ -359,6 +375,7 @@ fun ModelsScreen() {
 @Composable
 fun RecordingScreen() {
     val g = App.graph
+    val nav = LocalNav.current
     val ctx = LocalContext.current
     val s by g.settings.flow.collectAsStateWithLifecycle()
     val inputs = remember { AudioInputs.list(ctx) }
@@ -432,9 +449,9 @@ fun RecordingScreen() {
             var win by remember { mutableFloatStateOf(s.windowMinutes.toFloat()) }
             Text("Recording chunk: ${win.toInt()} min (shorter = notes sooner)", style = MaterialTheme.typography.bodyMedium)
             Slider(win, { win = it }, valueRange = 1f..5f, steps = 3, onValueChangeFinished = { update { it.copy(windowMinutes = win.toInt()) } })
-            var keep by remember { mutableFloatStateOf(s.keepAudioHours.toFloat()) }
-            Text(if (keep.toInt() == 0) "Audio: deleted as soon as it's transcribed" else "Audio: kept ${keep.toInt()} h after transcription", style = MaterialTheme.typography.bodyMedium)
-            Slider(keep, { keep = it }, valueRange = 0f..48f, steps = 7, onValueChangeFinished = { update { it.copy(keepAudioHours = keep.toInt()) } })
+            Spacer(Modifier.height(Sp.s))
+            SettingRow("Recordings", "Kept ${retentionLabel(s.keepRecordingsDays)} · listen back, keep or delete", Icons.Rounded.Mic, onClick = { nav.go(app.echomind.ui.RecordingsRoute) })
+            SwitchRow("Newest lines first in transcripts", "Off = read from the start of the conversation", s.transcriptNewestFirst) { v -> update { it.copy(transcriptNewestFirst = v) } }
         }
         item {
             SectionHeader("Quiet hours")

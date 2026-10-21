@@ -53,6 +53,7 @@ class Brain(
     private val calls: CallImporter,
     private val ai: Ai,
     private val notifier: Notifier,
+    private val nightlyExtras: suspend () -> Unit,
 ) {
     enum class Phase { IDLE, TRANSCRIBING, THINKING, JOURNAL, WAITING }
 
@@ -208,6 +209,7 @@ class Brain(
         markAttempt(today)
         if (journal.nightly(today)) recap(today)
         tasks.expireOld()
+        nightlyExtras()
         return true
     }
 

@@ -51,5 +51,22 @@ class Ai(
         }
     }
 
-    suspend fun json(req: LlmRequest) = track(req) { it.json(req) }
+    /**
+     * The quality setting decides how much thinking a request gets:
+     * fast — never; balanced — some, for judgement-heavy jobs; best — deep for those, some for the rest.
+     */
+    fun resolve(req: LlmRequest): LlmRequest {
+        val think = when (settings.value.aiQuality) {
+            "fast" -> Think.OFF
+            "best" -> if (req.deep) Think.DEEP else Think.SOME
+            else -> if (req.deep) Think.SOME else Think.OFF
+        }
+        return req.copy(think = think)
+    }
+
+    val bestQuality get() = settings.value.aiQuality == "best"
+
+    suspend fun json(req: LlmRequest): kotlinx.serialization.json.JsonObject = resolve(req).let { r -> track(r) { it.json(r) } }
+
+    fun stream(req: LlmRequest) = resolve(req).let { r -> llm(r.feature).stream(r) }
 }

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.automirrored.rounded.ViewList
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CheckBox
 import androidx.compose.material.icons.rounded.CheckBoxOutlineBlank
 import androidx.compose.material.icons.rounded.Edit
@@ -183,7 +184,11 @@ fun NotesScreen() {
     var sortMenu by remember { mutableStateOf(false) }
     var newMenu by remember { mutableStateOf(false) }
 
-    val folders = remember(notes) { notes.mapNotNull { it.folder }.distinct().sorted() }
+    // Folders are paths ("Work/Eazeebox/Clients"): every prefix is a folder in the tree.
+    val folders = remember(notes) { notes.mapNotNull { it.folder }.flatMap { p -> p.split('/').indices.map { i -> p.split('/').take(i + 1).joinToString("/") } }.distinct() }
+    fun parentOf(f: String) = f.substringBeforeLast('/', "").ifEmpty { null }
+    val children = folders.filter { parentOf(it) == folder }.sorted()
+    fun inFolder(n: Note, f: String) = n.folder == f || n.folder?.startsWith("$f/") == true
     val tags = remember(notes) { notes.flatMap { strings(it.tags) }.distinct().sorted() }
     val shown = notes.filter { n ->
         val f = when (filter) {
@@ -194,7 +199,7 @@ fun NotesScreen() {
             Filter.AI -> !n.archived && n.origin == "ai"
             Filter.ARCHIVED -> n.archived
         }
-        f && (folder == null || n.folder == folder) && (tag == null || tag in strings(n.tags)) &&
+        f && (folder == null || inFolder(n, folder!!)) && (tag == null || tag in strings(n.tags)) &&
             (query.isBlank() || n.title.contains(query, true) || n.body.contains(query, true))
     }.let { l ->
         when (sort) {
@@ -215,6 +220,7 @@ fun NotesScreen() {
                         listOf("updated" to "Sort by last edited", "created" to "Sort by created", "title" to "Sort by title").forEach { (k, l) ->
                             DropdownMenuItem(text = { Text(l + if (sort == k) "  ✓" else "") }, onClick = { sort = k; sortMenu = false })
                         }
+                        DropdownMenuItem(text = { Text("Organise with AI…") }, leadingIcon = { Icon(Icons.Rounded.AutoAwesome, null) }, onClick = { sortMenu = false; nav.go(app.echomind.ui.OrganizeRoute) })
                     }
                 }
             }
@@ -236,7 +242,12 @@ fun NotesScreen() {
             if (searching) OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = Sp.gutter), placeholder = { Text("Search notes") }, singleLine = true, shape = MaterialTheme.shapes.extraLarge)
             LazyRow(contentPadding = PaddingValues(horizontal = Sp.gutter, vertical = Sp.s), horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
                 items(Filter.entries.toList(), key = { it.name }) { f -> FilterChip(filter == f && folder == null && tag == null, { filter = f; folder = null; tag = null }, label = { Text(f.label) }) }
-                items(folders, key = { "f$it" }) { f -> FilterChip(folder == f, { folder = if (folder == f) null else f; tag = null }, label = { Text("📁 $f") }) }
+                folder?.let { cur ->
+                    item(key = "up") { FilterChip(true, { folder = parentOf(cur) }, label = { Text("📂 ${cur.replace("/", " › ")}") }, trailingIcon = { Icon(Icons.Rounded.Close, "Up a level", Modifier.size(16.dp)) }) }
+                }
+                items(children, key = { "f$it" }) { f ->
+                    FilterChip(false, { folder = f; tag = null }, label = { Text("📁 ${f.substringAfterLast('/')} · ${notes.count { n -> !n.archived && inFolder(n, f) }}") })
+                }
                 items(tags, key = { "t$it" }) { t -> FilterChip(tag == t, { tag = if (tag == t) null else t; folder = null }, label = { Text("#$t") }) }
             }
             if (shown.isEmpty()) {

@@ -167,6 +167,25 @@ class Notifier(private val context: Context) {
         nm.notify(NUDGE_BASE + (n.id % 1000).toInt(), b.build())
     }
 
+    fun eventSoon(e: app.echomind.data.EventRow, prep: List<String>) {
+        if (!can()) return
+        val mins = ((e.startAt - System.currentTimeMillis()) / 60_000).coerceAtLeast(0)
+        val title = if (mins <= 1) "Now: ${e.title}" else "In $mins min: ${e.title}"
+        val body = prep.joinToString("\n").ifBlank { "At ${app.echomind.ai.Prompts.time(e.startAt)}${e.location?.let { " · $it" } ?: ""}" }
+        val code = ((e.deviceId ?: e.id) % 1000).toInt()
+        nm.notify(EVENT_BASE + code, NotificationCompat.Builder(context, REMINDERS)
+            .setSmallIcon(R.drawable.ic_stat_idle)
+            .setContentTitle(title)
+            .setContentText(prep.firstOrNull() ?: body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(open("calendar", 800 + code))
+            .addAction(0, "Listen", speak(title, "$title. $body", 900 + code))
+            .build())
+    }
+
     fun cancelNudge(id: Long) = nm.cancel(NUDGE_BASE + (id % 1000).toInt())
 
     fun brief(title: String, lines: List<String>) {
@@ -233,6 +252,7 @@ class Notifier(private val context: Context) {
         const val ATTENTION = "attention"
         const val NUDGES = "nudges"
         const val NUDGE_BASE = 4600
+        const val EVENT_BASE = 5600
         const val CAPTURE_ID = 4107
         const val SUGGESTIONS_ID = 4200
         const val BRIEF_ID = 4201

@@ -10,12 +10,12 @@ import androidx.room.RoomDatabase
     entities = [
         AudioItem::class, Gap::class, Utterance::class, UtteranceFts::class, Conversation::class,
         EntityRow::class, Fact::class, Note::class, NoteFts::class, NoteRevision::class, TaskRow::class,
-        DayEntry::class, ChatThread::class, ChatMessage::class, VectorRow::class, Egress::class, Kv::class, Project::class, Nudge::class,
+        DayEntry::class, ChatThread::class, ChatMessage::class, VectorRow::class, Egress::class, Kv::class, Project::class, Nudge::class, Relation::class, EventRow::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
     // Additive changes only, so existing transcripts, notes and tasks are kept.
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun audio(): AudioDao
@@ -31,6 +31,8 @@ abstract class Db : RoomDatabase() {
     abstract fun egress(): EgressDao
     abstract fun projects(): ProjectDao
     abstract fun nudges(): NudgeDao
+    abstract fun relations(): RelationDao
+    abstract fun events(): EventDao
 
     companion object {
         fun open(context: Context): Db =

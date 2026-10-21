@@ -11,6 +11,7 @@ import app.echomind.data.DayEntry
 import app.echomind.data.Db
 import app.echomind.util.Js
 import app.echomind.util.dbl
+import app.echomind.util.int
 import app.echomind.util.objects
 import app.echomind.util.str
 import app.echomind.util.strings
@@ -109,8 +110,15 @@ class Journal(private val db: Db, private val ai: Ai, private val settings: Sett
             if (m.lateNightMinutes > 10) append(", ${m.lateNightMinutes} min talking after 11 pm")
             append(".\n")
         }
+        val done = db.tasks().completedIn(from, to)
+        val events = db.events().range(from, to)
+        val user2 = buildString {
+            append(user)
+            if (done.isNotEmpty()) append("\nFinished today: ").append(done.take(20).joinToString(" | ") { it.title }).append('\n')
+            if (events.isNotEmpty()) append("\nOn the calendar: ").append(events.joinToString(" | ") { "${Prompts.time(it.startAt)} ${it.title}" }).append('\n')
+        }
         val r = runCatching {
-            ai.json(LlmRequest(Feature.JOURNAL, "Writing today's journal", Prompts.journalSystem(settings.value.notesLanguage), user, Schemas.journal, maxTokens = 1_100, temperature = 0.4))
+            ai.json(LlmRequest(Feature.JOURNAL, "Writing today's journal", Prompts.journalSystem(settings.value.notesLanguage), user2, Schemas.journal, maxTokens = 1_100, temperature = 0.4, deep = true))
         }.onFailure { Log.w("EchoJournal", "journal failed", it) }.getOrNull() ?: return false
         fun list(k: String) = Js.json.encodeToString(ListSerializer(String.serializer()), r.strings(k))
         val improve = r.objects("improve").mapNotNull { o ->
@@ -128,6 +136,8 @@ class Journal(private val db: Db, private val ai: Ai, private val settings: Sett
                 tomorrow = list("tomorrow"),
                 improve = Js.json.encodeToString(ListSerializer(Improvement.serializer()), improve),
                 metrics = metricsJson,
+                productivity = r.int("productivity")?.coerceIn(0, 100),
+                productiveWhy = r.str("productive_why")?.trim()?.takeIf { it.isNotEmpty() },
                 generatedAt = System.currentTimeMillis(),
                 provider = ai.llm(Feature.JOURNAL).id,
             ),

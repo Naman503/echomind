@@ -38,8 +38,10 @@ data class Settings(
     /** Do not record between these minutes of the day (-1 = off), e.g. sleep. */
     val quietFrom: Int = -1,
     val quietTo: Int = -1,
-    /** Keep audio this many hours after transcription for playback (0 = delete at once). */
-    val keepAudioHours: Int = 0,
+    /** Keep a compressed copy of each recording this many days after transcription (0 = delete at once, -1 = forever). */
+    val keepRecordingsDays: Int = 7,
+    /** small (16 kbps, ~1 MB per 8 min) | clear (32 kbps) */
+    val recordingQuality: String = "small",
 
     // Speech
     val speechLanguages: List<String> = listOf("en-IN", "hi-IN"),
@@ -68,6 +70,8 @@ data class Settings(
     val openaiBaseUrl: String = "https://api.openai.com/v1",
     val openaiModel: String = "gpt-6-luna",
     val notesLanguage: String = "English",
+    /** fast | balanced | best — how much the AI thinks before it writes (see Ai.resolve). */
+    val aiQuality: String = "balanced",
     val session: AiSession = AiSession(),
     /** Suggested tasks the AI is very sure of (yours, with a time) go straight to the to-do list. */
     val autoAcceptConfident: Boolean = false,
@@ -102,6 +106,17 @@ data class Settings(
     val nudgesPerDay: Int = 4,
     /** Read nudges aloud — only when headphones are connected. */
     val speakNudges: Boolean = false,
+
+    /** Transcript order: newest line at the top. */
+    val transcriptNewestFirst: Boolean = true,
+
+    // Calendar
+    /** Show the phone's own calendars next to EchoMind's events (needs calendar permission). */
+    val showPhoneCalendar: Boolean = false,
+    /** Confirmed events are also written to the phone's main calendar. */
+    val writeToPhoneCalendar: Boolean = false,
+    /** A heads-up before events: who you're meeting and what's open with them. */
+    val eventPrep: Boolean = true,
 
     // Look
     /** system | light | dark */

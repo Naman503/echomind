@@ -25,7 +25,7 @@ import kotlinx.serialization.builtins.serializer
  */
 class Notes(private val db: Db, private val ai: Ai, private val settings: SettingsStore, private val embedder: Embedder) {
 
-    data class Update(val topic: String, val points: List<String>, val sourceIds: List<Long>)
+    data class Update(val topic: String, val points: List<String>, val sourceIds: List<Long>, val folder: String? = null, val tags: List<String> = emptyList())
 
     suspend fun titles(): List<String> = db.notes().all().sortedByDescending { it.updatedAt }.take(30).map { it.title }
 
@@ -51,7 +51,8 @@ class Notes(private val db: Db, private val ai: Ai, private val settings: Settin
                 // A new topic needs at least two things worth noting, or it is just a stray fact.
                 if (points.size < 2) continue
                 val body = points.joinToString("\n") { "- $it" }
-                val note = Note(title = u.topic.trim().take(80), body = body, createdAt = at, updatedAt = at)
+                val note = Note(title = u.topic.trim().take(80), body = body, createdAt = at, updatedAt = at, folder = Organizer.cleanFolder(u.folder),
+                    tags = Js.json.encodeToString(ListSerializer(String.serializer()), u.tags.map { it.trim().lowercase().removePrefix("#").replace(' ', '-') }.filter { it.length in 2..24 }.distinct().take(4)))
                 val id = db.notes().insert(note)
                 db.notes().insertRevision(NoteRevision(noteId = id, version = 1, createdAt = at, reason = "Started from “$conversationTitle”",
                     conversationId = conversationId, sources = ids(u.sourceIds), before = "", after = body))

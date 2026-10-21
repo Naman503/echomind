@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Edit
@@ -98,7 +100,9 @@ fun LibraryScreen() {
         item { Text("Library", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(vertical = Sp.s)) }
         item { LibraryEntry(Icons.Rounded.StickyNote2, "Notes", "${notes.size} living notes that update themselves") { nav.go(NotesRoute) } }
         item { LibraryEntry(Icons.Rounded.Psychology, "Memory", "${facts.size} things it remembers about your life") { nav.go(MemoryRoute) } }
-        item { LibraryEntry(Icons.Rounded.Groups, "People", "${people.count { it.kind == "person" }} people from your conversations") { nav.go(PeopleRoute) } }
+        item { LibraryEntry(Icons.Rounded.Groups, "People", "${people.count { it.kind == "person" }} people · who does what, circles, names to remember") { nav.go(PeopleRoute) } }
+        item { LibraryEntry(Icons.Rounded.Mic, "Recordings", "Listen back · kept ${retentionLabel(App.graph.settings.value.keepRecordingsDays)}") { nav.go(app.echomind.ui.RecordingsRoute) } }
+        item { LibraryEntry(Icons.Rounded.AutoAwesome, "Organise with AI", "Folders and tags for notes, circles for people") { nav.go(app.echomind.ui.OrganizeRoute) } }
         item { LibraryEntry(Icons.Rounded.AutoStories, "Journal", "${days.count { it.generatedAt != null }} days written · things to improve") { nav.go(JournalRoute) } }
         item { LibraryEntry(Icons.Rounded.Shield, "Data ledger", "Every time anything left this phone") { nav.go(LedgerRoute) } }
         val recent = notes.take(4)
@@ -217,85 +221,6 @@ private fun FactRow(f: Fact) {
 }
 
 @Composable
-fun PeopleScreen() {
-    val g = App.graph
-    val nav = LocalNav.current
-    val all by remember { g.db.memory().observeEntities() }.collectAsStateWithLifecycle(emptyList())
-    var kind by remember { mutableStateOf("person") }
-    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
-        ScreenTopBar("People & things", onBack = { nav.back() })
-        Row(Modifier.padding(horizontal = Sp.gutter), horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
-            listOf("person" to "People", "project" to "Projects", "place" to "Places", "topic" to "Topics").forEach { (k, l) -> FilterChip(kind == k, { kind = k }, label = { Text(l) }) }
-        }
-        val list = all.filter { it.kind == kind || (kind == "topic" && it.kind == "org") }
-        LazyColumn(contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
-            if (list.isEmpty()) item { EmptyState("Nobody yet", "People appear as they come up in your conversations.") }
-            items(list, key = { it.id }) { e ->
-                EchoCard(onClick = { nav.go(PersonRoute(e.id)) }) {
-                    Text(e.name, style = MaterialTheme.typography.titleMedium)
-                    if (e.summary.isNotBlank()) Text(e.summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text("Mentioned ${e.mentions}× · last ${Fmt.ago(e.lastSeenAt)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun PersonScreen(id: Long) {
-    val g = App.graph
-    val nav = LocalNav.current
-    val scope = rememberCoroutineScope()
-    val e by remember(id) { g.db.memory().observeEntity(id) }.collectAsStateWithLifecycle(null)
-    val facts by remember(id) { g.db.memory().observeFactsFor(id) }.collectAsStateWithLifecycle(emptyList())
-    val convs by produceState(emptyList<app.echomind.data.Conversation>(), e?.name) {
-        val name = e?.name?.lowercase() ?: return@produceState
-        value = g.db.conversations().inRangeOnce(0, Long.MAX_VALUE).filter { (it.people ?: "").lowercase().contains(name) || it.contact?.lowercase()?.contains(name) == true }.sortedByDescending { it.startAt }.take(20)
-    }
-    val p = e ?: return
-    var editing by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
-        ScreenTopBar(p.name, onBack = { nav.back() }) { IconButton(onClick = { editing = true }) { Icon(Icons.Rounded.Edit, "Edit") } }
-        LazyColumn(contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
-            item {
-                Text(p.summary.ifBlank { "No summary yet." }, style = MaterialTheme.typography.bodyLarge)
-                Text("First heard ${Fmt.day(p.firstSeenAt)} · ${p.mentions} mentions", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
-                Spacer(Modifier.height(Sp.s))
-                Button(onClick = { nav.go(app.echomind.ui.AskRoute(question = "What's going on with ${p.name}?")) }) { Text("Ask about ${p.name.substringBefore(' ')}") }
-            }
-            if (facts.isNotEmpty()) {
-                item { SectionHeader("What it knows") }
-                items(facts, key = { it.id }) { f ->
-                    Text("•  ${f.statement}${if (f.status != "active") "  (no longer current)" else ""}", style = MaterialTheme.typography.bodyLarge,
-                        color = if (f.status == "active") MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline)
-                }
-            }
-            if (convs.isNotEmpty()) {
-                item { SectionHeader("Conversations") }
-                items(convs, key = { "c${it.id}" }) { c -> ConversationRow(c) { nav.go(ConversationRoute(c.id)) } }
-            }
-            item {
-                Spacer(Modifier.height(Sp.l))
-                TextButton(onClick = { scope.launch { g.db.memory().deleteEntity(p.id); nav.back() } }) { Text("Remove ${p.name}", color = MaterialTheme.colorScheme.error) }
-            }
-        }
-    }
-    if (editing) {
-        var name by remember { mutableStateOf(p.name) }
-        var summary by remember { mutableStateOf(p.summary) }
-        AlertDialog(onDismissRequest = { editing = false }, title = { Text("Edit") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(Sp.s)) {
-                    OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
-                    OutlinedTextField(summary, { summary = it }, label = { Text("Who they are") }, minLines = 2)
-                }
-            },
-            confirmButton = { TextButton(onClick = { scope.launch { g.db.memory().updateEntity(p.copy(name = name.trim(), summary = summary.trim(), pinned = true)) }; editing = false }) { Text("Save") } },
-            dismissButton = { TextButton(onClick = { editing = false }) { Text("Cancel") } })
-    }
-}
-
-@Composable
 fun JournalScreen() {
     val g = App.graph
     val nav = LocalNav.current
@@ -336,6 +261,10 @@ fun DayScreen(day: String) {
     var editing by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val date = LocalDate.parse(day)
+    val dayEvents by produceState(emptyList<app.echomind.data.EventRow>(), day) {
+        val (from, to) = g.journal.bounds(date)
+        value = g.agenda.range(from, to).filter { it.status == "confirmed" }
+    }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         ScreenTopBar(Fmt.dayLong(date), onBack = { nav.back() }) {
             app.echomind.ui.components.ListenButton("Read this day") { g.briefing.day(date) }
@@ -345,6 +274,14 @@ fun DayScreen(day: String) {
         LazyColumn(contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
             item {
                 Text(e?.headline ?: "Not written yet", style = MaterialTheme.typography.headlineSmall)
+                val sc = e?.rating?.let { it * 20 } ?: e?.productivity
+                if (sc != null) {
+                    Spacer(Modifier.height(Sp.s))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Pill("Productivity $sc", LocalSemantic.current.positive.copy(alpha = 0.15f), LocalSemantic.current.positive)
+                        e?.productiveWhy?.let { Spacer(Modifier.width(Sp.s)); Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                }
                 Spacer(Modifier.height(Sp.s))
                 Text(e?.diary ?: "", style = MaterialTheme.typography.bodyLarge)
                 if (e?.userEdited == true) Pill("Edited by you")
@@ -364,6 +301,12 @@ fun DayScreen(day: String) {
                         Text(i.observation, style = MaterialTheme.typography.bodyLarge)
                         if (i.suggestion.isNotBlank()) Text("Try: ${i.suggestion}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                }
+            }
+            if (dayEvents.isNotEmpty()) {
+                item { SectionHeader("On the calendar") }
+                items(dayEvents, key = { "ev${it.id}_${it.deviceId}" }) { ev ->
+                    Text("${if (ev.allDay) "All day" else Fmt.time(ev.startAt)}  ·  ${ev.title}", style = MaterialTheme.typography.bodyLarge)
                 }
             }
             val m = e?.metrics?.let { runCatching { Js.json.decodeFromString(DayMetrics.serializer(), it) }.getOrNull() }

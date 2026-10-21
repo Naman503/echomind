@@ -120,7 +120,7 @@ class Memory(private val db: Db, private val ai: Ai, private val settings: Setti
                 }
             }
             val result = runCatching {
-                ai.json(LlmRequest(Feature.MEMORY, "Updating memory", Prompts.reconcileSystem(lang), user, Schemas.reconcile, maxTokens = 600))
+                ai.json(LlmRequest(Feature.MEMORY, "Updating memory", Prompts.reconcileSystem(lang), user, Schemas.reconcile, maxTokens = 600, deep = true))
             }.onFailure { Log.w(TAG, "reconcile failed", it) }.getOrNull()
             val decided = HashSet<Int>()
             for (d in result?.objects("decisions").orEmpty()) {
@@ -219,7 +219,7 @@ class Memory(private val db: Db, private val ai: Ai, private val settings: Setti
             listed.forEachIndexed { i, f -> append("[${i + 1}] ${f.subject}: ${f.statement}\n") }
         }
         val r = runCatching {
-            ai.json(LlmRequest(Feature.MEMORY, "Reviewing memory", Prompts.profileSystem(settings.value.notesLanguage), user, Schemas.profile, maxTokens = 900))
+            ai.json(LlmRequest(Feature.MEMORY, "Reviewing memory", Prompts.profileSystem(settings.value.notesLanguage), user, Schemas.profile, maxTokens = 900, deep = true))
         }.onFailure { Log.w(TAG, "consolidate failed", it) }.getOrNull() ?: return false
         r.str("profile")?.takeIf { it.length > 20 }?.let { setProfile(it) }
         for (p in r.objects("people")) {

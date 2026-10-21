@@ -41,7 +41,7 @@ data class Citation(
  * embedding model is installed, plus memory facts and notes — fused with
  * reciprocal-rank fusion and a mild preference for recent things.
  */
-class Ask(private val db: Db, private val ai: Ai, private val settings: SettingsStore, private val embedder: Embedder) {
+class Ask(private val db: Db, private val ai: Ai, private val settings: SettingsStore, private val embedder: Embedder, private val agenda: () -> Agenda, private val people: () -> People) {
 
     sealed interface Event {
         data class Searching(val text: String) : Event
@@ -207,8 +207,21 @@ class Ask(private val db: Db, private val ai: Ai, private val settings: Settings
             emit(Event.Delta(text)); emit(Event.Done(id, thread.id)); return@flow
         }
 
+        val schedule = Regex("\\b(when|calendar|meeting|appointment|schedule|week|today|tomorrow|kal|aaj|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next|upcoming|free|busy)\\b", RegexOption.IGNORE_CASE)
+        val calendar = if (schedule.containsMatchIn(question)) runCatching { agenda().range(now - 3 * 86_400_000L, now + 14 * 86_400_000L) }.getOrDefault(emptyList()).filter { it.status == "confirmed" } else emptyList()
+        // Who's who for anyone the question names, so "who is Ankit?" works even when no excerpt says it outright.
+        val q = question.lowercase()
+        val named = db.memory().allEntities().filter { it.kind == "person" && it.name.length > 2 && Regex("\\b${Regex.escape(it.name.lowercase().substringBefore(' '))}\\b").containsMatchIn(q) }.take(4)
         val user = buildString {
             append("Now: ").append(Prompts.day(now)).append(", ").append(Prompts.time(now)).append("\n")
+            if (calendar.isNotEmpty()) {
+                append("\nCalendar (can be cited as [cal]):\n")
+                calendar.take(30).forEach { append("- ${Prompts.day(it.startAt)}${if (it.allDay) "" else " ${Prompts.time(it.startAt)}"}: ${it.title}${it.location?.let { l -> " at $l" } ?: ""}\n") }
+            }
+            if (named.isNotEmpty()) {
+                append("\nPeople mentioned (can be cited as [people]):\n")
+                for (p in named) append("- ${p.name}: ${people().clue(p)}${p.story?.let { " — ${it.take(300)}" } ?: ""}\n")
+            }
             if (history.isNotEmpty()) {
                 append("\nEarlier in this chat:\n")
                 history.forEach { append(if (it.role == "user") "Q: " else "A: ").append(it.text.take(300)).append('\n') }
@@ -219,10 +232,8 @@ class Ask(private val db: Db, private val ai: Ai, private val settings: Settings
         }
         val sb = StringBuilder()
         try {
-            ai.track(LlmRequest(Feature.ASK, "Answering your question", Prompts.askSystem(settings.value.notesLanguage), user, maxTokens = 600, temperature = 0.2)) { m ->
-                m.stream(LlmRequest(Feature.ASK, "Answering your question", Prompts.askSystem(settings.value.notesLanguage), user, maxTokens = 600, temperature = 0.2))
-                    .collect { sb.append(it); emit(Event.Delta(it)) }
-            }
+            val req = ai.resolve(LlmRequest(Feature.ASK, "Answering your question", Prompts.askSystem(settings.value.notesLanguage), user, maxTokens = 600, temperature = 0.2))
+            ai.track(req) { m -> m.stream(req).collect { sb.append(it); emit(Event.Delta(it)) } }
         } catch (e: Exception) {
             emit(Event.Failed(e.message ?: "The answer failed"))
             if (sb.isEmpty()) sb.append("Sorry — I couldn't answer that just now (${e.message?.take(120)}).")

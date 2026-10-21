@@ -14,6 +14,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Reminders are the point of the app; a personal sideloaded build may use the auto-granted permission. -->
@@ -125,6 +127,7 @@
         <receiver android:name=".notify.ReminderReceiver" android:exported="false" />
         <receiver android:name=".notify.DailyReceiver" android:exported="false" />
         <receiver android:name=".notify.NudgeReceiver" android:exported="false" />
+        <receiver android:name=".notify.EventReceiver" android:exported="false" />
         <receiver android:name=".capture.ResumeReceiver" android:exported="false" />
         <receiver android:name=".notify.BootReceiver" android:exported="false">
             <intent-filter>

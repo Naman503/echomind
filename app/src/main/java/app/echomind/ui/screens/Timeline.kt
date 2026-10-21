@@ -70,7 +70,7 @@ fun TimelineScreen() {
     }
 
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
-        Text("Timeline", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(horizontal = Sp.gutter, vertical = Sp.s))
+        app.echomind.ui.components.ScreenTopBar("Timeline", onBack = { nav.back() })
         OutlinedTextField(
             value = query, onValueChange = { query = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = Sp.gutter),

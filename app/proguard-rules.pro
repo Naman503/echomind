@@ -22,3 +22,10 @@
 -dontwarn java.lang.reflect.AnnotatedType
 -dontwarn com.github.victools.jsonschema.**
 -dontwarn io.opentelemetry.**
+
+# Optional dependencies of the Anthropic SDK / OkHttp that are not used on Android
+# Anthropic SDK (Jackson-based models)
+-keep class com.anthropic.** { *; }
+-keepattributes Signature, *Annotation*, EnclosingMethod, InnerClasses
+-dontwarn com.fasterxml.jackson.**
+-keep class com.fasterxml.jackson.** { *; }

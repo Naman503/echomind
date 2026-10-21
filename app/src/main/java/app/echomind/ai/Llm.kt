@@ -15,7 +15,14 @@ data class LlmRequest(
     val schema: JsonObject? = null,
     val maxTokens: Int = 1024,
     val temperature: Double = 0.2,
+    /** A judgement-heavy job (reading a conversation, the journal, organising): worth thinking about first. */
+    val deep: Boolean = false,
+    /** How long the model may think before answering; set by [Ai] from the quality setting. */
+    val think: Think = Think.OFF,
 )
+
+/** OFF answers straight away; SOME and DEEP let the model reason first (slower, better judgement). */
+enum class Think { OFF, SOME, DEEP }
 
 interface Llm {
     val id: String

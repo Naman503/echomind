@@ -38,6 +38,12 @@ import kotlinx.serialization.Serializable
 @Serializable data object DataRoute : Route
 @Serializable data object VoiceRoute : Route
 @Serializable data object ReadingRoute : Route
+@Serializable data object RecordingsRoute : Route
+@Serializable data object CalendarRoute : Route
+@Serializable data class EventRoute(val id: Long) : Route
+@Serializable data class NewEventRoute(val day: String? = null) : Route
+@Serializable data object CirclesRoute : Route
+@Serializable data object OrganizeRoute : Route
 
-val tabs: List<Route> = listOf(TodayRoute, TimelineRoute, AskRoute(), TasksRoute, LibraryRoute)
-fun Route.isTab() = this == TodayRoute || this == TimelineRoute || this is AskRoute && threadId == null && question == null || this == TasksRoute || this == LibraryRoute
+val tabs: List<Route> = listOf(TodayRoute, CalendarRoute, AskRoute(), TasksRoute, LibraryRoute)
+fun Route.isTab() = this == TodayRoute || this == CalendarRoute || this is AskRoute && threadId == null && question == null || this == TasksRoute || this == LibraryRoute

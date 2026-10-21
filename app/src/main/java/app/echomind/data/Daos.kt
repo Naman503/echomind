@@ -41,7 +41,12 @@ interface AudioDao {
     @Query("SELECT EXISTS(SELECT 1 FROM audio WHERE path = :path)") suspend fun hasPath(path: String): Boolean
     @Query("SELECT path FROM audio WHERE state IN ('pending','working')") suspend fun livePaths(): List<String>
     @Query("SELECT * FROM audio WHERE state = 'done' AND endedAt < :before AND path != ''") suspend fun doneBefore(before: Long): List<AudioItem>
-    @Query("DELETE FROM audio WHERE state IN ('done','skipped') AND endedAt < :before") suspend fun pruneDone(before: Long)
+    @Query("SELECT * FROM audio WHERE (state != 'done' AND state != 'skipped' AND path != '') OR keptPath IS NOT NULL ORDER BY startedAt DESC LIMIT :n") fun observeRecordings(n: Int): Flow<List<AudioItem>>
+    /** keepUntil NULL follows the retention setting (ended before :before); a set value is the user's own choice. */
+    @Query("SELECT * FROM audio WHERE keptPath IS NOT NULL AND ((keepUntil IS NULL AND endedAt < :before) OR keepUntil < :now)") suspend fun expiredKeeps(before: Long, now: Long): List<AudioItem>
+    @Query("SELECT * FROM audio WHERE id = :id") fun observe(id: Long): Flow<AudioItem?>
+    @Query("SELECT * FROM audio WHERE keptPath IS NOT NULL AND startedAt <= :at AND endedAt >= :at LIMIT 1") suspend fun keptAt(at: Long): AudioItem?
+    @Query("DELETE FROM audio WHERE state IN ('done','skipped') AND endedAt < :before AND keptPath IS NULL") suspend fun pruneDone(before: Long)
     @Query("SELECT * FROM audio WHERE state = 'failed' ORDER BY startedAt DESC LIMIT 50") fun failed(): Flow<List<AudioItem>>
     @Query("UPDATE audio SET state = 'pending', attempts = 0, retryAt = 0, error = NULL WHERE state = 'failed'") suspend fun retryFailed()
     @Query("SELECT * FROM audio WHERE startedAt < :to AND endedAt > :from") suspend fun overlapping(from: Long, to: Long): List<AudioItem>
@@ -64,6 +69,8 @@ interface UtteranceDao {
     @Update suspend fun update(item: Utterance)
     @Query("SELECT * FROM utterances WHERE id = :id") suspend fun get(id: Long): Utterance?
     @Query("SELECT * FROM utterances WHERE id IN (:ids) ORDER BY startAt") suspend fun byIds(ids: List<Long>): List<Utterance>
+    @Query("SELECT conversationId FROM utterances WHERE audioId = :audioId AND conversationId IS NOT NULL LIMIT 1") suspend fun conversationOfAudio(audioId: Long): Long?
+    @Query("SELECT * FROM utterances WHERE audioId = :audioId ORDER BY startAt") suspend fun forAudio(audioId: Long): List<Utterance>
     @Query("SELECT * FROM utterances WHERE conversationId = :id ORDER BY startAt") suspend fun forConversation(id: Long): List<Utterance>
     @Query("SELECT * FROM utterances WHERE conversationId = :id ORDER BY startAt") fun observeConversation(id: Long): Flow<List<Utterance>>
     @Query("SELECT * FROM utterances WHERE conversationId IS NULL ORDER BY startAt LIMIT 2000") suspend fun unassigned(): List<Utterance>
@@ -173,6 +180,9 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE status IN ('open','done') AND parentId IS NULL AND (title LIKE '%' || :q || '%' OR detail LIKE '%' || :q || '%') ORDER BY status = 'done', updatedAt DESC LIMIT 60")
     suspend fun search(q: String): List<TaskRow>
     @Query("SELECT * FROM tasks WHERE status = 'done' ORDER BY completedAt DESC LIMIT 100") fun observeDone(): Flow<List<TaskRow>>
+    /** Tasks due, or finished, between two times — what a calendar month shows. */
+    @Query("SELECT * FROM tasks WHERE status IN ('open','done') AND parentId IS NULL AND ((dueAt >= :from AND dueAt < :to) OR (completedAt >= :from AND completedAt < :to))")
+    fun observeCalendar(from: Long, to: Long): Flow<List<TaskRow>>
     @Query("SELECT * FROM tasks WHERE status IN ('open','suggested')") suspend fun live(): List<TaskRow>
     @Query("SELECT * FROM tasks WHERE status = 'open' AND remindAt IS NOT NULL AND remindAt > :now ORDER BY remindAt") suspend fun upcomingReminders(now: Long): List<TaskRow>
     @Query("SELECT * FROM tasks WHERE status = 'open' AND remindAt IS NOT NULL AND remindAt > :now ORDER BY remindAt LIMIT :n") fun observeUpcoming(now: Long, n: Int): Flow<List<TaskRow>>
@@ -210,6 +220,30 @@ interface NudgeDao {
     @Query("UPDATE nudges SET state = 'expired' WHERE state = 'pending' AND createdAt < :before") suspend fun expire(before: Long)
 }
 
+@Dao
+interface RelationDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insert(r: Relation): Long
+    @Update suspend fun update(r: Relation)
+    @Query("SELECT * FROM relations WHERE fromId = :id OR toId = :id") fun observeFor(id: Long): Flow<List<Relation>>
+    @Query("SELECT * FROM relations") fun observeAll(): Flow<List<Relation>>
+    @Query("SELECT * FROM relations") suspend fun all(): List<Relation>
+    @Query("DELETE FROM relations WHERE id = :id") suspend fun delete(id: Long)
+    @Query("DELETE FROM relations WHERE fromId = :id OR toId = :id") suspend fun deleteFor(id: Long)
+}
+
+@Dao
+interface EventDao {
+    @Insert suspend fun insert(e: EventRow): Long
+    @Update suspend fun update(e: EventRow)
+    @Query("SELECT * FROM events WHERE id = :id") suspend fun get(id: Long): EventRow?
+    @Query("SELECT * FROM events WHERE id = :id") fun observe(id: Long): Flow<EventRow?>
+    @Query("SELECT * FROM events WHERE status != 'cancelled' AND startAt >= :from AND startAt < :to ORDER BY startAt") fun observeRange(from: Long, to: Long): Flow<List<EventRow>>
+    @Query("SELECT * FROM events WHERE status != 'cancelled' AND startAt >= :from AND startAt < :to ORDER BY startAt") suspend fun range(from: Long, to: Long): List<EventRow>
+    @Query("SELECT * FROM events WHERE status = 'suggested' ORDER BY startAt") fun observeSuggested(): Flow<List<EventRow>>
+    @Query("SELECT * FROM events WHERE deviceId = :deviceId LIMIT 1") suspend fun byDevice(deviceId: Long): EventRow?
+    @Query("DELETE FROM events WHERE id = :id") suspend fun delete(id: Long)
+}
+
 data class SubtaskCount(val id: Long, val total: Int, val done: Int)
 
 @Dao
@@ -219,6 +253,7 @@ interface DayDao {
     @Query("SELECT * FROM days WHERE day = :day") fun observe(day: String): Flow<DayEntry?>
     @Query("SELECT * FROM days ORDER BY day DESC LIMIT :n") fun observeRecent(n: Int): Flow<List<DayEntry>>
     @Query("SELECT * FROM days WHERE day >= :from ORDER BY day") suspend fun since(from: String): List<DayEntry>
+    @Query("SELECT * FROM days WHERE day >= :from AND day <= :to") fun observeRange(from: String, to: String): Flow<List<DayEntry>>
 }
 
 @Dao

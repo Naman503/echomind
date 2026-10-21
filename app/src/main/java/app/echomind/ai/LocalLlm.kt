@@ -11,6 +11,7 @@ import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.ResponseFormat
 import com.google.ai.edge.litertlm.SamplerConfig
+import com.google.ai.edge.litertlm.ThinkingConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -98,6 +99,12 @@ class LocalLlm(
             idleJob?.cancel()
             try {
                 val e = engine()
+                // Thinking first: a free run that reasons, then answers in JSON. If that answer
+                // doesn't parse, the usual grammar-constrained run (no thinking) is the fallback.
+                if (req.think != Think.OFF && req.schema != null) {
+                    runCatching { Js.parseLenient(generate(e, req, constrained = false, think = true)) }
+                        .onFailure { Log.w(TAG, "thinking run failed: ${it.message}") }.getOrNull()?.let { return@withLock it }
+                }
                 val text = runCatching { generate(e, req, constrained = req.schema != null) }.getOrElse { first ->
                     Log.w(TAG, "constrained run failed: ${first.message}")
                     // Grammar-constrained decoding occasionally stalls on a schema;
@@ -114,15 +121,18 @@ class LocalLlm(
         }
     }
 
-    private suspend fun generate(e: Engine, req: LlmRequest, constrained: Boolean): String {
+    private suspend fun generate(e: Engine, req: LlmRequest, constrained: Boolean, think: Boolean = false): String {
         val system = if (constrained || req.schema == null) req.system
         else req.system + "\n\nReply with only a JSON object matching this schema:\n" + req.schema
+        val budget = thinkBudget(req)
         val conversation = e.createConversation(
             ConversationConfig(
                 systemInstruction = Contents.of(system),
                 samplerConfig = SamplerConfig(topK = 40, topP = 0.95, temperature = req.temperature),
                 enableResponseFormat = constrained,
-                maxOutputToken = req.maxTokens,
+                maxOutputToken = req.maxTokens + if (think) budget else 0,
+                // Gemma 4 reasons in its own channel first; the reply holds only the answer.
+                thinkingConfig = if (think) ThinkingConfig(true, budget) else null,
             ),
         )
         return conversation.use { c ->
@@ -146,11 +156,14 @@ class LocalLlm(
             idleJob?.cancel()
             try {
                 val e = engine()
+                // Answers are read as they stream, so on the phone only a deep job waits for thinking.
+                val think = req.think == Think.DEEP
                 val conversation = e.createConversation(
                     ConversationConfig(
                         systemInstruction = Contents.of(req.system),
                         samplerConfig = SamplerConfig(topK = 40, topP = 0.95, temperature = req.temperature),
-                        maxOutputToken = req.maxTokens,
+                        maxOutputToken = req.maxTokens + if (think) thinkBudget(req) else 0,
+                        thinkingConfig = if (think) ThinkingConfig(true, thinkBudget(req)) else null,
                     ),
                 )
                 conversation.use { c ->
@@ -200,5 +213,8 @@ class LocalLlm(
         private const val TAG = "EchoLocalLlm"
         const val IDLE_RELEASE_MS = 3 * 60_000L
         const val TIMEOUT_MS = 8 * 60_000L
+
+        /** A phone generates ~10–25 tokens a second, so thinking is kept to what pays off. */
+        fun thinkBudget(req: LlmRequest) = when (req.think) { Think.OFF -> 0; Think.SOME -> 384; Think.DEEP -> 1_024 }
     }
 }

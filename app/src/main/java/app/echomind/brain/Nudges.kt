@@ -138,7 +138,7 @@ class Nudges(
             append("\nOpen tasks:\n"); open.forEach { append("- ${it.title}${it.dueAt?.let { d -> " (due ${Prompts.time(d)})" } ?: ""}\n") }
         }
         val system = """You are a thoughtful personal assistant who has been listening to the owner's day. Suggest at most two short nudges that would genuinely help right now: something they promised and may forget, a decision left open, a follow-up someone is waiting for, a conflict in their plans, or a pattern worth noticing. Only what the input supports. If nothing is genuinely useful, return an empty list — silence is better than noise. Write in ${settings.value.notesLanguage}."""
-        val r = runCatching { ai.json(LlmRequest(Feature.JOURNAL, "Looking for anything you might be missing", system, user, reflectSchema, maxTokens = 400)) }
+        val r = runCatching { ai.json(LlmRequest(Feature.JOURNAL, "Looking for anything you might be missing", system, user, reflectSchema, maxTokens = 400, deep = true)) }
             .onFailure { Log.w("EchoNudges", "reflect failed", it) }.getOrNull() ?: return
         for (o in r.objects("nudges").take(2)) {
             val title = o.str("title")?.trim().orEmpty()

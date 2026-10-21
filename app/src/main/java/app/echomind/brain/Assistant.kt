@@ -19,8 +19,10 @@ class Assistant(
     private val notes: Notes,
     private val briefing: Briefing,
     private val speaker: Speaker,
+    private val actions: () -> Actions,
+    private val agenda: () -> Agenda,
 ) {
-    data class Result(val reply: String, val script: Briefing.Script? = null, val taskId: Long? = null)
+    data class Result(val reply: String, val script: Briefing.Script? = null, val taskId: Long? = null, val changes: List<String> = emptyList())
 
     private fun has(t: String, vararg words: String) = words.any { Regex("\\b${Regex.escape(it)}\\b").containsMatchIn(t) }
 
@@ -46,6 +48,17 @@ class Assistant(
         if (has(t, "summary", "summarise", "summarize", "recap", "journal", "diary")) {
             val day = when { has(t, "yesterday", "kal") -> java.time.LocalDate.now().minusDays(1); else -> java.time.LocalDate.now() }
             return briefing.day(day).let { Result(it.parts.joinToString(" "), it) }
+        }
+        if (has(t, "week ahead", "my week", "this week", "next week", "is hafte", "iss hafte"))
+            return agenda().weekAhead().let { Result(it.parts.joinToString(" "), it) }
+        if (has(t, "my calendar", "calendar", "meetings today", "any meetings", "my meetings", "schedule today")) {
+            val z = java.time.ZoneId.systemDefault()
+            val d = if (has(t, "tomorrow", "kal")) java.time.LocalDate.now().plusDays(1) else java.time.LocalDate.now()
+            val ev = agenda().range(d.atStartOfDay(z).toInstant().toEpochMilli(), d.plusDays(1).atStartOfDay(z).toInstant().toEpochMilli()).filter { it.status == "confirmed" }
+            val day = if (d == java.time.LocalDate.now()) "today" else "tomorrow"
+            val parts = if (ev.isEmpty()) listOf("Nothing on your calendar $day.") else
+                listOf("${ev.size} on your calendar $day.") + ev.map { if (it.allDay) "${it.title}, all day." else "${it.title} at ${Prompts.time(it.startAt)}." }
+            return Result(parts.joinToString(" "), Briefing.Script("Calendar", parts))
         }
         if (has(t, "reminders", "my reminders") && !t.startsWith("remind me"))
             return briefing.reminders().let { Result(it.parts.joinToString(" "), it) }
@@ -83,12 +96,21 @@ class Assistant(
         }
 
         // Add a task / reminder
-        if (Regex("^(remind me|reminder|yaad dila|add( a)? (task|todo|reminder)|todo|task:|add)\\b").containsMatchIn(t)) {
+        // "add … to my calendar / folder / tags" is not a task; the action planner below handles it.
+        val elsewhere = has(t, "calendar", "meeting", "appointment", "event", "folder", "tag", "tags", "note")
+        if (Regex("^(remind me|reminder|yaad dila|add( a)? (task|todo|reminder)|todo|task:|add)\\b").containsMatchIn(t) && !(elsewhere && !t.startsWith("remind"))) {
             val body = raw.replace(Regex("^(add( a)? (task|todo|reminder)( to)?|todo:?|task:)\\s*", RegexOption.IGNORE_CASE), "")
             val id = tasks.addQuick(body) ?: return null
             val task = db.tasks().get(id) ?: return null
             val whenText = (task.remindAt ?: task.dueAt)?.let { " for ${Prompts.day(it).substringBefore(',')} at ${Prompts.time(it)}" }.orEmpty()
             return Result(if (task.remindAt != null) "I'll remind you to ${task.title.replaceFirstChar { it.lowercase() }}$whenText." else "Added “${task.title}”$whenText.", taskId = id)
+        }
+
+        // Anything else that sounds like "change something": the AI picks from a fixed set of safe actions.
+        if (Actions.looksLikeInstruction(raw)) {
+            val done = actions().run(raw) ?: return null
+            val reply = if (done.changes.isEmpty()) done.reply else done.reply + "\n" + done.changes.joinToString("\n") { "• $it" }
+            return Result(reply, Briefing.Script("EchoMind", listOf(done.reply)), changes = done.changes)
         }
         return null
     }

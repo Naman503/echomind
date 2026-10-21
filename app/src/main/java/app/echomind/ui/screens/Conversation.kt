@@ -15,12 +15,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -87,10 +90,14 @@ fun ConversationScreen(id: Long, lineId: Long?) {
     var menu by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf<String?>(null) }
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    var noAudio by remember { mutableStateOf(false) }
+    val playing by g.playback.state.collectAsStateWithLifecycle()
+    val settings by g.settings.flow.collectAsStateWithLifecycle()
     val conv = c ?: return
 
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
+        bottomBar = { if (playing.item != null) PlayerBar() },
         topBar = {
             LargeTopBar(
                 title = if (conv.state == "done") conv.title ?: "Conversation" else if (conv.source == "call") "Call${conv.contact?.let { " with $it" } ?: ""}" else "Conversation",
@@ -172,10 +179,24 @@ fun ConversationScreen(id: Long, lineId: Long?) {
                     item { Spacer(Modifier.height(Sp.xl)) }
                 }
             } else {
-                Transcript(lines, lineId) { rename = it }
+                val newestFirst = settings.transcriptNewestFirst
+                Row(Modifier.fillMaxWidth().padding(horizontal = Sp.gutter), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text(if (newestFirst) "Newest first" else "From the start", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { scope.launch { g.settings.update { it.copy(transcriptNewestFirst = !newestFirst) } } }) {
+                        Icon(Icons.Rounded.SwapVert, null); Spacer(Modifier.width(4.dp)); Text(if (newestFirst) "Oldest first" else "Newest first")
+                    }
+                }
+                Transcript(if (newestFirst) lines.asReversed() else lines, lineId, onPlay = { at -> scope.launch { if (!g.playback.playAt(at)) noAudio = true } }) { rename = it }
             }
         }
     }
+
+    if (noAudio) AlertDialog(
+        onDismissRequest = { noAudio = false },
+        title = { Text("No recording for this moment") },
+        text = { Text("Its audio was already deleted. Choose how long recordings are kept in Settings → Listening → Recordings.") },
+        confirmButton = { TextButton(onClick = { noAudio = false }) { Text("OK") } },
+    )
 
     rename?.let { from ->
         var name by remember(from) { mutableStateOf(if (from.startsWith("S") && from.length <= 3) "" else from) }
@@ -196,7 +217,7 @@ fun ConversationScreen(id: Long, lineId: Long?) {
 }
 
 @Composable
-private fun Transcript(lines: List<Utterance>, focus: Long?, onSpeaker: (String) -> Unit) {
+private fun Transcript(lines: List<Utterance>, focus: Long?, onPlay: (Long) -> Unit, onSpeaker: (String) -> Unit) {
     val state = rememberLazyListState()
     LaunchedEffect(focus, lines.size) {
         val i = lines.indexOfFirst { it.id == focus }
@@ -223,7 +244,11 @@ private fun Transcript(lines: List<Utterance>, focus: Long?, onSpeaker: (String)
                     Text(if (speaker == "me") "You" else speaker, style = MaterialTheme.typography.labelLarge, color = color, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.clickable(enabled = speaker != "me") { onSpeaker(speaker) })
                     Spacer(Modifier.width(Sp.s))
-                    Text(Fmt.time(u.startAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    // Tapping the time plays the recording from that moment, while it's kept.
+                    Row(Modifier.clickable { onPlay(u.startAt) }, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text(Fmt.time(u.startAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                        Icon(Icons.Rounded.PlayArrow, "Play from here", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.outline)
+                    }
                 }
                 Text(u.text, style = MaterialTheme.typography.bodyLarge, color = if (u.source == "typed") MaterialTheme.colorScheme.tertiary else Color.Unspecified)
             }

@@ -36,6 +36,7 @@ class Transcriber(
     private val android: AndroidSpeech,
     private val sherpa: SherpaSpeech,
     private val voice: VoiceId,
+    private val recordings: app.echomind.capture.Recordings,
 ) {
     data class Status(
         val active: Boolean = false,
@@ -198,9 +199,9 @@ class Transcriber(
     private suspend fun finish(item: AudioItem, file: File) {
         val latest = db.audio().get(item.id) ?: item
         db.audio().update(latest.copy(state = "done", progressMs = latest.durationMs, error = null))
-        // The audio is gone the moment its words are safe, unless the user keeps it for playback.
-        // Imported call recordings are copies; the dialer's original is never touched.
-        if (settings.value.keepAudioHours <= 0) file.delete()
+        // The working WAV goes once its words are safe; a small compressed copy stays as the record
+        // for as long as the user chose. Imported call recordings are copies; the dialer's original is never touched.
+        recordings.keep(latest, file)
         _status.value = _status.value.copy(active = false)
     }
 

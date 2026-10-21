@@ -22,7 +22,7 @@ import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Today
-import androidx.compose.material.icons.rounded.ViewTimeline
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -133,6 +133,7 @@ fun AppRoot(pending: MutableState<String?>) {
             "tasks" -> nav.tab(TasksRoute)
             "reminders" -> { nav.tab(TasksRoute); nav.go(RemindersRoute) }
             "journal" -> { nav.tab(LibraryRoute); nav.go(JournalRoute) }
+            "calendar" -> nav.tab(CalendarRoute)
             "note:new" -> { nav.tab(LibraryRoute); nav.go(NotesRoute); nav.go(NewNoteRoute()) }
             "settings" -> { nav.tab(TodayRoute); nav.go(SettingsRoute) }
             else -> if (r.startsWith("conversation:")) { nav.tab(TodayRoute); r.removePrefix("conversation:").toLongOrNull()?.let { nav.go(ConversationRoute(it)) } } else nav.tab(TodayRoute)
@@ -154,7 +155,7 @@ fun AppRoot(pending: MutableState<String?>) {
                     AnimatedVisibility(showBar, enter = slideInVertically(tween(220, easing = Ease)) { it } + fadeIn(tween(150)), exit = slideOutVertically(tween(180, easing = Ease)) { it } + fadeOut(tween(120))) {
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                         Tab(top == TodayRoute, "Today", Icons.Rounded.Today) { nav.tab(TodayRoute) }
-                        Tab(top == TimelineRoute, "Timeline", Icons.Rounded.ViewTimeline) { nav.tab(TimelineRoute) }
+                        Tab(top == CalendarRoute, "Calendar", Icons.Rounded.CalendarMonth) { nav.tab(CalendarRoute) }
                         Tab(top is AskRoute, "Ask", Icons.Rounded.Forum) { nav.tab(AskRoute()) }
                         Tab(top == TasksRoute, "Tasks", Icons.Rounded.CheckCircle, badge = suggested) { nav.tab(TasksRoute) }
                         Tab(top == LibraryRoute, "Library", Icons.Rounded.AutoStories) { nav.tab(LibraryRoute) }
@@ -172,7 +173,12 @@ fun AppRoot(pending: MutableState<String?>) {
                     predictivePopTransitionSpec = { pop() },
                     entryProvider = entryProvider {
                         entry<TodayRoute>(metadata = TabSwitch) { TodayScreen() }
-                        entry<TimelineRoute>(metadata = TabSwitch) { TimelineScreen() }
+                        entry<CalendarRoute>(metadata = TabSwitch) { app.echomind.ui.screens.CalendarScreen() }
+                        entry<TimelineRoute> { TimelineScreen() }
+                        entry<EventRoute> { app.echomind.ui.screens.EventScreen(it.id) }
+                        entry<NewEventRoute> { app.echomind.ui.screens.EventScreen(null, it.day) }
+                        entry<CirclesRoute> { app.echomind.ui.screens.CirclesScreen() }
+                        entry<OrganizeRoute> { app.echomind.ui.screens.OrganizeScreen() }
                         entry<AskRoute>(metadata = TabSwitch) { AskScreen(it.threadId, it.question) }
                         entry<TasksRoute>(metadata = TabSwitch) { TasksScreen() }
                         entry<LibraryRoute>(metadata = TabSwitch) { LibraryScreen() }
@@ -202,6 +208,7 @@ fun AppRoot(pending: MutableState<String?>) {
                         entry<DataRoute> { DataScreen() }
                         entry<VoiceRoute> { VoiceScreen() }
                         entry<ReadingRoute> { app.echomind.ui.screens.ReadingScreen() }
+                        entry<RecordingsRoute> { app.echomind.ui.screens.RecordingsScreen() }
                     },
                 )
             }

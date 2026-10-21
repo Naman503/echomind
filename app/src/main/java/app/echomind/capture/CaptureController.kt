@@ -82,9 +82,8 @@ class CaptureController(
             Log.i("EchoCapture", "recovered ${f.name} (${ms / 1000}s)")
             db.audio().insert(AudioItem(path = f.absolutePath, startedAt = started, endedAt = started + ms, durationMs = ms, voicedMs = ms, source = "mic"))
         }
-        // Audio kept for playback is deleted once its time is up.
-        val keep = settings.value.keepAudioHours
-        for (a in db.audio().doneBefore(System.currentTimeMillis() - keep * 3_600_000L)) File(a.path).delete()
+        // Working WAVs of finished recordings (left by a crash between transcription and compression).
+        for (a in db.audio().doneBefore(System.currentTimeMillis() - 3_600_000L)) File(a.path).takeIf { it.exists() }?.delete()
         // A gap for time the app was not alive although the user wanted it listening.
         val beat = prefs.getLong("heartbeat", 0)
         val t = java.time.LocalTime.now()
@@ -132,6 +131,7 @@ class CaptureController(
         if (Recorder.isRunning()) Recorder.rotate("forget")
         for (a in db.audio().overlapping(from, Long.MAX_VALUE)) {
             File(a.path).delete()
+            a.keptPath?.let { File(it).delete() }
             db.audio().delete(a)
         }
         db.utterances().deleteSince(from)

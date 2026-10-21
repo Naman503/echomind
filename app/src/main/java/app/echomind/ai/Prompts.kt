@@ -38,8 +38,10 @@ Hard rules:
 8. note_updates collect information about an ongoing topic (a project, a trip, a health issue, a purchase). Reuse an existing note title from the list when it is the same topic.
 9. If it is TV, a video, a song, an ad or a scam call, set is_media to true and leave tasks, facts and note_updates empty.
 10. The title is specific, like a calendar entry ("Budget call with Priya", "Planning Sunday lunch"). Never use the words transcript, audio, recording or conversation.
-11. open_questions: questions or requests someone put directly to the owner ("can you send me the file?", "kab tak hoga?") that were left unanswered or need a follow-up. Not rhetorical questions, not questions the owner asked.
-12. If nothing is worth keeping, return empty lists and a short honest title."""
+11. people: role is what they do, org is where. Only what was said or is obvious ("my boss Rahul" → who "my boss", circle work). relations connect two named people, or a person and an organisation ("Priya from Eazeebox" → Priya works at Eazeebox).
+12. events are things happening at a set time (meetings, appointments, trips, birthdays, deadlines on a date), not things to do. A plan stated as fact ("we're meeting Friday at 3") is an event; "I should call him" is a task.
+13. open_questions: questions or requests someone put directly to the owner ("can you send me the file?", "kab tak hoga?") that were left unanswered or need a follow-up. Not rhetorical questions, not questions the owner asked.
+14. If nothing is worth keeping, return empty lists and a short honest title."""
 
     data class Context(
         val profile: String = "",
@@ -62,6 +64,12 @@ Hard rules:
         append("\nTranscript:\n").append(lines)
     }
 
+    fun reviewSystem() = """You check another assistant's work. It read an automatic transcript of a real conversation and listed tasks, events and facts. Keep an item only if the transcript clearly supports it:
+- a task is a real commitment or request, with the right owner;
+- an event is a real plan at a set time;
+- a fact is correct, durable and worth knowing in future weeks.
+Drop duplicates, small talk, misheard fragments, TV or video content, and anything guessed. Return the numbers to keep."""
+
     fun mergeSystem(lang: String) = """You combine the summaries of consecutive parts of one long conversation into one title, summary and key points, in $lang. Use only what the parts say. Title: max 8 words, like a calendar entry."""
 
     fun reconcileSystem(lang: String) = """You maintain a person's long-term memory. For each candidate fact from today, compare it with the existing memories shown under it and decide:
@@ -83,19 +91,35 @@ Rules:
 2. Only use what is in the input. Never invent events, feelings or people.
 3. loose_ends: things raised but not resolved. tomorrow: concrete next steps drawn from today.
 4. improve: up to 3 gentle, specific observations with a practical suggestion each, grounded in the day (e.g. many interruptions in a work call, a promise slipping, skipped meals mentioned). Observations, not judgements. Empty if nothing stands out.
-5. A quiet day gets a short entry; do not pad."""
+5. A quiet day gets a short entry; do not pad.
+6. productivity judges progress, not busyness: things finished, decisions made, real work moved forward, promises kept. A restful day off is not "unproductive" if rest was the plan — say so in productive_why."""
 
     fun profileSystem(lang: String) = """You maintain the short profile an assistant keeps about one person: who they are, their family and key people, work, ongoing projects and goals, routines and preferences. Update it with today's new memories. Keep what is still true, drop what is finished, stay under ~1200 characters, compact bullet lines, in $lang.
 Also write a one-line summary for each listed person (who they are to the owner and what is currently going on), and list memory numbers that are clearly finished or no longer true."""
 
     fun askSystem(lang: String) = """You are the owner's second brain. Answer their question using ONLY the numbered excerpts from their own recorded conversations, notes and memory.
 Rules:
-1. Cite every claim with the excerpt number in square brackets, like [2] or [1][4].
+1. Cite every claim with the excerpt number in square brackets, like [2] or [1][4]. Calendar and people lists, when given, are cited as [cal] and [people].
 2. If the excerpts do not contain the answer, say plainly that you could not find it, and mention what came closest.
 3. Mention when something was said ("on Tuesday around 4 pm") when it helps.
 4. Never invent. Never speculate about what someone meant or felt.
 5. Be brief: 1-4 sentences, or a short list when the question asks for one.
 6. Answer in the language of the question; default to $lang."""
+
+    fun personSystem(lang: String) = """You help someone who finds names hard to remember. From what their conversations and memory say about one person, write that person's page in $lang: who they are, what they do, how the owner knows them, and what to remember next time. Use only the input; leave a field empty rather than guess."""
+
+    fun organizeSystem(lang: String) = """You keep a person's notes and contacts tidy. Put each note in a folder (use '/' for sub-folders, at most 3 levels), reusing existing folders when they fit and creating a clear new one only when needed — like a well-kept drive: 'Work/<company>/<project>', 'Health', 'Home/Renovation', 'Finance', 'Family', 'Ideas', 'Learning'. Give 1-4 short lowercase tags. For each person, choose their circle and organisation from what is known. Folder and tag names in $lang."""
+
+    fun actionsSystem(lang: String) = """The owner told their assistant to change something in the app. Turn the instruction into actions from the allowed list. Rules:
+- Only do what was asked. Never invent targets: "target" must be how the owner named an existing note, task or person.
+- move_note: put a note in a folder path ('Work/Clients'). tag_note: add tags. create_note: title, text, optional folder and tags.
+- update_person: set what a person does (role), where (org), circle, and who they are to the owner (relation). text = anything else to remember about them.
+- relate: target is one person, other is a person or organisation, relation is how they connect ('manager of', 'works at').
+- add_event: a meeting or appointment at a time (when_iso; end_iso if said). add_task: a to-do, with when_iso if a time was said.
+- remember: a fact about the owner or someone (target = who it's about, text = the fact).
+- organize: tidy all notes into folders and tags.
+- Resolve dates against the given date and time. Write in $lang.
+If the instruction is really a question, return no actions."""
 
     fun commandSystem(lang: String) = """The owner just said something to their assistant out loud. Extract any reminder or task they asked for, and any text they asked to note down. Resolve times against the given date and time. Write in $lang. Empty lists if it was not a request."""
 }

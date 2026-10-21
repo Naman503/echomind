@@ -14,6 +14,7 @@ import com.anthropic.errors.RateLimitException
 import com.anthropic.models.messages.JsonOutputFormat
 import com.anthropic.models.messages.MessageCreateParams
 import com.anthropic.models.messages.OutputConfig
+import com.anthropic.models.messages.ThinkingConfigAdaptive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.channels.trySendBlocking
@@ -85,14 +86,20 @@ class GeminiLlm(cloud: Cloud, secrets: Secrets, private val model: () -> String)
             })
         }
         putJsonObject("generationConfig") {
-            put("maxOutputTokens", req.maxTokens * 2)
+            // Thinking tokens count against the output limit.
+            put("maxOutputTokens", req.maxTokens * when (req.think) { Think.OFF -> 2; Think.SOME -> 6; Think.DEEP -> 12 })
             put("temperature", req.temperature)
             if (json && req.schema != null) {
                 put("responseMimeType", "application/json")
                 put("responseJsonSchema", req.schema)
             }
             // Lite models think "minimal" by default; larger ones take "low" as the cheapest level.
-            putJsonObject("thinkingConfig") { put("thinkingLevel", if ("lite" in model()) "minimal" else "low") }
+            val level = when (req.think) {
+                Think.OFF -> if ("lite" in model()) "minimal" else "low"
+                Think.SOME -> "medium"
+                Think.DEEP -> "high"
+            }
+            putJsonObject("thinkingConfig") { put("thinkingLevel", level) }
         }
     }.toString()
 
@@ -128,8 +135,8 @@ class OpenAiLlm(cloud: Cloud, secrets: Secrets, private val baseUrl: () -> Strin
                 add(buildJsonObject { put("role", "user"); put("content", req.user) })
             }
             if (isOpenAi) {
-                put("max_completion_tokens", req.maxTokens * 2)
-                put("reasoning_effort", "low")
+                put("max_completion_tokens", req.maxTokens * when (req.think) { Think.OFF -> 2; Think.SOME -> 6; Think.DEEP -> 12 })
+                put("reasoning_effort", when (req.think) { Think.OFF -> "low"; Think.SOME -> "medium"; Think.DEEP -> "high" })
             } else {
                 put("max_tokens", req.maxTokens * 2)
                 put("temperature", req.temperature)
@@ -188,20 +195,36 @@ class AnthropicLlm(cloud: Cloud, secrets: Secrets, private val model: () -> Stri
         return AnthropicOkHttpClient.builder().apiKey(k).maxRetries(2).build().also { client = it; clientKey = k }
     }
 
-    private fun params(req: LlmRequest, json: Boolean): MessageCreateParams {
-        val output = OutputConfig.builder().effort(OutputConfig.Effort.LOW)
+    /** Models that turned down adaptive thinking once are asked without it from then on. */
+    @Volatile private var noThinking = emptySet<String>()
+
+    private fun params(req: LlmRequest, json: Boolean, thinking: Boolean = req.think != Think.OFF && model() !in noThinking): MessageCreateParams {
+        val effort = when (req.think) { Think.OFF -> OutputConfig.Effort.LOW; Think.SOME -> OutputConfig.Effort.MEDIUM; Think.DEEP -> OutputConfig.Effort.HIGH }
+        val output = OutputConfig.builder().effort(effort)
         if (json && req.schema != null) {
             val schema = JsonOutputFormat.Schema.builder()
             for ((k, v) in strictSchema(req.schema)) schema.putAdditionalProperty(k, JsonValue.from(toPlain(v)))
             output.format(JsonOutputFormat.builder().schema(schema.build()).build())
         }
-        return MessageCreateParams.builder()
+        val b = MessageCreateParams.builder()
             .model(model())
-            .maxTokens((req.maxTokens * 4).toLong())
+            .maxTokens((req.maxTokens * if (thinking) 16 else 4).toLong())
             .system(req.system)
             .outputConfig(output.build())
             .addUserMessage(req.user)
-            .build()
+        // Adaptive thinking: Claude decides how much to reason, steered by the effort above.
+        if (thinking) b.thinking(ThinkingConfigAdaptive.builder().build())
+        return b.build()
+    }
+
+    /** Runs [block] with thinking, and once more without it if this model refuses thinking. */
+    private fun <T> withThinkingFallback(req: LlmRequest, json: Boolean, block: (MessageCreateParams) -> T): T = try {
+        call { block(params(req, json)) }
+    } catch (e: LlmException) {
+        val bad = (e.cause as? AnthropicServiceException)?.statusCode() == 400 && "thinking" in (e.message ?: "")
+        if (!bad || req.think == Think.OFF) throw e
+        noThinking = noThinking + model()
+        call { block(params(req, json, thinking = false)) }
     }
 
     private fun <T> call(block: () -> T): T = try {
@@ -213,10 +236,10 @@ class AnthropicLlm(cloud: Cloud, secrets: Secrets, private val model: () -> Stri
     }
 
     override suspend fun json(req: LlmRequest): JsonObject {
-        val p = params(req, json = true)
         val text = withContext(Dispatchers.IO) {
             cloud.send(req.feature, id, (req.system.length + req.user.length).toLong(), req.purpose) {
-                call {
+                withThinkingFallback(req, json = true) { p ->
+                    // Thinking blocks are skipped; only the answer's text blocks are read.
                     client().messages().create(p).content().mapNotNull { it.text().orElse(null)?.text() }.joinToString("")
                 }
             }
@@ -225,9 +248,8 @@ class AnthropicLlm(cloud: Cloud, secrets: Secrets, private val model: () -> Stri
     }
 
     override fun stream(req: LlmRequest): Flow<String> = channelFlow {
-        val p = params(req, json = false)
         cloud.send(req.feature, id, (req.system.length + req.user.length).toLong(), req.purpose) {
-            call {
+            withThinkingFallback(req, json = false) { p ->
                 client().messages().createStreaming(p).use { s ->
                     s.stream().forEach { event ->
                         event.contentBlockDelta().flatMap { it.delta().text() }.ifPresent { trySendBlocking(it.text()) }
