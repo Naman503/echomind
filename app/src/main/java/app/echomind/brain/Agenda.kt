@@ -76,7 +76,7 @@ class Agenda(
 
     data class Found(val title: String, val start: Long, val end: Long?, val allDay: Boolean, val location: String?, val people: List<String>, val confidence: Float, val quote: String?)
 
-    /** Events heard in a conversation become suggestions (or confirmed, when very clear and you allow it). */
+    /** Events heard in a conversation go on the calendar (or wait for review, if you turned Review on). */
     suspend fun addFound(found: List<Found>, conversationId: Long, at: Long): Int {
         var n = 0
         val now = System.currentTimeMillis()
@@ -85,7 +85,7 @@ class Agenda(
             val day = dayBounds(f.start)
             val sameDay = db.events().range(day.first, day.second)
             if (sameDay.any { TextNorm.keyTerms(it.title).toSet().intersect(TextNorm.keyTerms(f.title).toSet()).isNotEmpty() }) continue
-            val sure = settings.value.autoAcceptConfident && f.confidence >= 0.85f
+            val sure = (!settings.value.reviewAiTasks && f.confidence >= 0.6f) || (settings.value.autoAcceptConfident && f.confidence >= 0.85f)
             val e = EventRow(title = f.title.trim().take(90), startAt = f.start, endAt = f.end, allDay = f.allDay, location = f.location,
                 people = Js.json.encodeToString(ListSerializer(String.serializer()), f.people.take(8)), source = "ai",
                 status = if (sure) "confirmed" else "suggested", conversationId = conversationId, quote = f.quote, remindBeforeMin = settings.value.eventRemindDefault, createdAt = at, updatedAt = at)

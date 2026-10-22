@@ -33,7 +33,8 @@ Hard rules:
 3. Lines are numbered L1, L2… Every person, fact, task and note update must list the line numbers it comes from in "lines".
 4. Lines from speaker "EchoMind" are the assistant's check-in questions; the owner's answers follow them. Lines from speaker "Song" are lyrics being sung or played: never take tasks, facts or note updates from them. Speaker "me" is the phone's owner. S1, S2… are other voices. If a speaker's name is clearly used ("Rahul, can you…" answered by S1), put it in "speakers".
 5. A task is something someone commits to or asks for ("I'll send it tomorrow", "kal call karna hai", "remind me to…"). Discussion of a topic is not a task. owner is "me" if the owner commits or says "remind me", "other" if someone else must do it.
-6. Resolve dates against the date and time given. due_iso is empty if no time was said. Never invent a time.
+6. Resolve dates against the date and time given. due_iso is empty if no time was said. Never invent a due time.
+   remind_iso is different: for the owner's own tasks, choose when a reminder helps most. If they said a time, use exactly that time. If not, think about the task: an hour before a call or appointment, the evening before (around 8 PM) something early in the morning or something to pack or prepare, the morning of the due day (around 9 AM) for a dated errand, a weekend morning for a household chore, or later today or tomorrow morning for an undated task that clearly matters. Leave it empty for vague ideas and for other people's tasks. It must be after the current time.
 7. Facts are durable things worth knowing in future weeks: who someone is, plans, decisions, preferences, health advice, money owed, addresses, deadlines. Not small talk.
 8. note_updates collect information about an ongoing topic (a project, a trip, a health issue, a purchase). Reuse an existing note title from the list when it is the same topic.
 9. If it is TV, a video, a song, an ad or a scam call, set is_media to true and leave tasks, facts and note_updates empty.
@@ -141,5 +142,5 @@ Rules:
     fun webPlanSystem() = """You decide what to search on the web to meet a need. Write 1-3 short, general search queries, like a careful researcher would type into a search engine.
 Privacy rules: never include anyone's name, phone number, address, company-internal details or anything personal — describe the thing generally instead ("gift ideas for a mother who likes gardening", not "gift for Sunita"). If the need is about a song, search the exact lyric fragment in quotes plus the word lyrics."""
 
-    fun commandSystem(lang: String) = """The owner just said something to their assistant out loud. Extract any reminder or task they asked for, and any text they asked to note down. Resolve times against the given date and time. Write in $lang. Empty lists if it was not a request."""
+    fun commandSystem(lang: String) = """The owner just said something to their assistant out loud. Extract any reminder or task they asked for, and any text they asked to note down. Resolve times against the given date and time. remind_iso is the time they said; if they said none, pick the most useful moment for that task (soon, but after the current time). Write in $lang. Empty lists if it was not a request."""
 }

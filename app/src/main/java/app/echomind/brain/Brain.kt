@@ -263,7 +263,8 @@ class Brain(
                 }.getOrNull() ?: continue
                 val found = r.objects("tasks").map { t ->
                     Tasks.Found(t.str("title").orEmpty(), "me", t.str("due_text"), When.resolve(t.str("due_iso"), t.str("due_text"), u.startAt),
-                        t.bool("is_reminder") != false, 0.95f, u.text, listOf(u.id))
+                        t.bool("is_reminder") != false, 0.95f, u.text, listOf(u.id),
+                        remind = t.str("remind_iso")?.let { When.iso(it) }?.takeIf { it.hasTime })
                 }
                 tasks.addFound(found, u.conversationId ?: 0, u.startAt, origin = "voice")
                 r.str("note")?.trim()?.takeIf { it.length > 3 }?.let { notes.apply(listOf(Notes.Update("Voice notes", listOf(it, "Said at ${Prompts.time(u.startAt)}"), listOf(u.id))), 0, "a voice note", u.startAt) }

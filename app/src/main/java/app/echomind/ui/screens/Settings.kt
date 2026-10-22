@@ -502,7 +502,7 @@ fun SessionsScreen() {
             Text("Split conversations longer than ${max.toInt()} min", style = MaterialTheme.typography.bodyMedium)
             Slider(max, { max = it }, valueRange = 15f..120f, steps = 6, onValueChangeFinished = { update { it.copy(session = it.session.copy(maxConversationMinutes = max.toInt())) } })
             SectionHeader("Tasks")
-            SwitchRow("Auto-accept clear reminders", "Your own commitments with a time go straight to your list; everything else waits for review.", s.autoAcceptConfident) { v -> update { it.copy(autoAcceptConfident = v) } }
+            SwitchRow("Review before adding", "Off: tasks and events from conversations go straight onto your list", s.reviewAiTasks) { v -> update { it.copy(reviewAiTasks = v) }; if (!v) g.scope.launch { g.tasks.acceptWaiting(force = true) } }
             SwitchRow("Search by meaning", "Uses the on-device search model when installed", s.semanticSearch) { v -> update { it.copy(semanticSearch = v) } }
             Spacer(Modifier.height(Sp.m))
             Button(onClick = { g.capture.processNow(); g.brain.processNow() }) { Text("Process now") }

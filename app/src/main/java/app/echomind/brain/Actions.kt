@@ -167,6 +167,8 @@ class Actions(
             "phone_calendar" -> { s -> s.copy(showPhoneCalendar = bool()) }
             "event_headsup" -> { s -> s.copy(eventPrep = bool()) }
             "tasks_to_today" -> { s -> s.copy(undatedToToday = bool()) }
+            "review_ai_tasks" -> { s -> s.copy(reviewAiTasks = bool()) }
+            "smart_reminders" -> { s -> s.copy(smartReminders = bool()) }
             "morning_plans" -> { s -> s.copy(autoPlans = bool()) }
             "theme" -> v.takeIf { it in setOf("system", "light", "dark") }?.let { x -> { s -> s.copy(theme = x) } }
             else -> null
@@ -184,7 +186,7 @@ class Actions(
             "songs" to "on | off", "surroundings" to "on | off (activity timeline)", "nudges" to "on | off", "nudges_per_day" to "1-10",
             "voice_sensitivity" to "lenient | normal | strict", "recognise_people" to "on | off", "newest_first" to "on | off (transcript order)",
             "read_answers" to "on | off", "notes_language" to "english | hindi | hinglish", "phone_calendar" to "on | off", "event_headsup" to "on | off",
-            "tasks_to_today" to "on | off", "morning_plans" to "on | off", "theme" to "system | light | dark",
+            "tasks_to_today" to "on | off", "review_ai_tasks" to "on | off", "smart_reminders" to "on | off", "morning_plans" to "on | off", "theme" to "system | light | dark",
         )
 
         /** Cheap check before asking the model: does this sound like an instruction to change something? */

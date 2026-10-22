@@ -37,7 +37,7 @@ Cloud "AI recorders" solve that by uploading everything you hear. EchoMind does 
 | | |
 |---|---|
 | 🎙️ **Always-on capture** | Listens in the background, cuts silence, and transcribes with on-device speech models |
-| 🧠 **Notes, tasks and a journal** | Turns conversations into notes, tasks with due dates, and a day journal with a productivity rating |
+| 🧠 **Notes, tasks and a journal** | Adds notes and tasks from your conversations automatically, with smart reminders, and keeps a day journal with a productivity rating |
 | 👥 **People memory** | Remembers names, roles, how you met, and who said what. Can recognise people by their voice. |
 | 📅 **Calendar and plans** | A day/week/month calendar with your device events, event prep, and plans built from your memory |
 | 💬 **Ask anything** | Chat with your memory, with thinking modes, citations, and optional private web search |
@@ -58,7 +58,10 @@ Cloud "AI recorders" solve that by uploading everything you hear. EchoMind does 
 ### Organising
 - The AI writes notes, tasks, tags and folders, and suggests a folder tree.
 - **People:** a profile for each person: role, organisation, circle, relation to you, how you met, and a running story. Links between people are tracked too.
-- **Tasks:** shows Today, Upcoming and All, with completed tasks included. The AI can suggest "looks done" when you say you finished something.
+- **Tasks are added automatically.** Notes, tasks and events from your conversations go straight onto your lists, with no approval step. If you want one, turn on **Review before adding**.
+- **My tasks:** today's progress and your next reminder at the top, then Overdue, Today, Tomorrow, This week, Later and No date. There are also Upcoming, Reminders, Lists and Done views. Swipe right to complete a task, or left to reschedule it.
+- **Smart reminders:** if you said a time, you're reminded at that time. If not, the AI picks a useful moment: an hour before a call, the evening before an early start, the morning of an errand. Each reminder notification has Done, Snooze and Tomorrow buttons.
+- When you say you've finished something, the AI marks the task as "sounds done" so you can close it with one tap.
 - **Library:** tiles for every section, and all notes grouped by folder.
 
 ### Calendar, journal and check-ins

@@ -46,6 +46,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
@@ -192,11 +193,12 @@ fun TaskLine(t: TaskRow, projects: Map<Long, Project>, sub: SubtaskCount?, showL
                     val timeShown = Instant.ofEpochMilli(due).atZone(zone).toLocalTime().let { it.hour != 9 || it.minute != 0 } || t.remindAt != null
                     Meta(Icons.Rounded.Schedule, Fmt.day(due) + if (timeShown) " ${Fmt.time(due)}" else "", if (overdue) MaterialTheme.colorScheme.error else if (Fmt.day(due) == "Today") LocalSemantic.current.positive else null)
                 }
-                if (t.remindAt != null && t.remindAt > now) Meta(Icons.Rounded.NotificationsActive, if (t.dueAt == null) Fmt.dayTime(t.remindAt) else "")
+                if (t.remindAt != null && t.remindAt > now) Meta(Icons.Rounded.NotificationsActive, if (t.dueAt != null && Fmt.day(t.remindAt) == Fmt.day(t.dueAt)) Fmt.time(t.remindAt) else Fmt.dayTime(t.remindAt), MaterialTheme.colorScheme.primary)
                 t.recurrence?.let { Meta(Icons.Rounded.Repeat, Recurrence.label(it) ?: "") }
                 sub?.takeIf { it.total > 0 }?.let { Meta(Icons.Rounded.FormatListBulleted, "${it.done}/${it.total}") }
                 labelsOf(t).forEach { Meta(Icons.Rounded.Label, it) }
-                if (t.conversationId != null && t.origin != "user") Meta(Icons.Rounded.GraphicEq, "From a conversation")
+                if (t.conversationId != null && t.origin != "user") Meta(Icons.Rounded.GraphicEq, if (t.status == "open" && now - t.createdAt < 12 * 3_600_000L) "New · heard ${Fmt.ago(t.createdAt)}" else "From a conversation",
+                    if (t.status == "open" && now - t.createdAt < 12 * 3_600_000L) MaterialTheme.colorScheme.tertiary else null)
                 if (showList) t.projectId?.let { projects[it] }?.let { p ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(8.dp).clip(CircleShape).background(Palette.color(p.color)))
@@ -318,30 +320,36 @@ fun QuickAddBar(defaultProjectId: Long? = null, placeholder: String = "Add a tas
 
 // ───────────────────────────── Tasks tab ─────────────────────────────
 
-private enum class View(val label: String) { TODAY("Today"), UPCOMING("Upcoming"), ALL("All"), REVIEW("Review"), DONE("Done") }
+private enum class View(val label: String) { MINE("My tasks"), UPCOMING("Upcoming"), REMINDERS("Reminders"), LISTS("Lists"), DONE("Done"), REVIEW("Review") }
 
 @Composable
 fun TasksScreen() {
     val g = App.graph
     val nav = LocalNav.current
     val scope = rememberCoroutineScope()
+    val s by g.settings.flow.collectAsStateWithLifecycle()
     val open by remember { g.db.tasks().observeOpen() }.collectAsStateWithLifecycle(emptyList())
     val review by remember { g.db.tasks().observeByStatus("suggested") }.collectAsStateWithLifecycle(emptyList())
     val done by remember { g.db.tasks().observeDone() }.collectAsStateWithLifecycle(emptyList())
     val looksDone by remember { g.db.tasks().observeLooksDone() }.collectAsStateWithLifecycle(emptyList())
+    val reminders by remember { g.db.tasks().observeAllReminders() }.collectAsStateWithLifecycle(emptyList())
     val projectsList by remember { g.db.projects().observe() }.collectAsStateWithLifecycle(emptyList())
     val subCounts by remember { g.db.tasks().observeSubtaskCounts() }.collectAsStateWithLifecycle(emptyList())
     val todayStart = startOf(LocalDate.now())
     val doneToday by remember(todayStart) { g.db.tasks().observeDoneSince(todayStart) }.collectAsStateWithLifecycle(emptyList())
     val projects = remember(projectsList) { projectsList.associateBy { it.id } }
     val subs = remember(subCounts) { subCounts.associateBy { it.id } }
-    var view by rememberSaveable { mutableStateOf(if (review.isNotEmpty()) View.REVIEW else View.TODAY) }
+    var view by rememberSaveable { mutableStateOf(View.MINE) }
     var listFilter by rememberSaveable { mutableStateOf<Long?>(null) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var reschedule by remember { mutableStateOf<TaskRow?>(null) }
-    var showDone by rememberSaveable { mutableStateOf(true) }
+    var showDone by rememberSaveable { mutableStateOf(false) }
+    var showLater by rememberSaveable { mutableStateOf(false) }
+    var addingReminder by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
+    val views = View.entries.filter { it != View.REVIEW || review.isNotEmpty() || s.reviewAiTasks }
+    if (view !in views) view = View.MINE
 
     fun complete(t: TaskRow) = scope.launch {
         val nextId = g.tasks.complete(t)
@@ -358,41 +366,68 @@ fun TasksScreen() {
                 Text("Tasks", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
                 app.echomind.ui.components.ListenButton("Read what's pending") { g.briefing.pending() }
                 IconButton(onClick = { searching = !searching; if (!searching) query = "" }) { Icon(Icons.Rounded.Search, "Search") }
-                IconButton(onClick = { nav.go(RemindersRoute) }) { Icon(Icons.Rounded.NotificationsActive, "Reminders") }
                 IconButton(onClick = { nav.go(ListsRoute) }) { Icon(Icons.Rounded.FormatListBulleted, "Lists") }
             }
             if (searching) OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = Sp.gutter), placeholder = { Text("Search tasks") }, singleLine = true, shape = MaterialTheme.shapes.extraLarge)
             LazyRow(contentPadding = PaddingValues(horizontal = Sp.gutter, vertical = Sp.s), horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
-                items(View.entries.toList(), key = { it.name }) { v ->
-                    val count = when (v) { View.REVIEW -> review.size + looksDone.size; else -> 0 }
-                    FilterChip(view == v && listFilter == null, { view = v; listFilter = null }, label = { Text(v.label + if (count > 0) " · $count" else "") })
+                items(views, key = { it.name }) { v ->
+                    val count = when (v) { View.REVIEW -> review.size; View.REMINDERS -> reminders.count { it.remindAt!! >= System.currentTimeMillis() }; else -> 0 }
+                    FilterChip(view == v && listFilter == null, { view = v; listFilter = null }, label = { Text(v.label + if (count > 0) " · $count" else "") },
+                        leadingIcon = if (v == View.REMINDERS) ({ Icon(Icons.Rounded.NotificationsActive, null, Modifier.size(16.dp)) }) else null)
                 }
                 items(projectsList, key = { "p${it.id}" }) { p ->
-                    FilterChip(listFilter == p.id, { listFilter = p.id; view = View.ALL }, label = { Text(p.name) },
+                    FilterChip(listFilter == p.id, { listFilter = p.id; view = View.LISTS }, label = { Text(p.name) },
                         leadingIcon = { Box(Modifier.size(10.dp).clip(CircleShape).background(Palette.color(p.color))) })
                 }
             }
 
             val filtered = open.filter { (listFilter == null || it.projectId == listFilter) && (query.isBlank() || it.title.contains(query, true) || (it.detail ?: "").contains(query, true)) }
             LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = Sp.l), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                fun section(title: String, tasks: List<TaskRow>, showList: Boolean = true) {
+                fun section(title: String, tasks: List<TaskRow>, showList: Boolean = true, limit: Int = Int.MAX_VALUE, onMore: (() -> Unit)? = null) {
                     if (tasks.isEmpty()) return
-                    item(key = "h$title") { SectionHeader("$title · ${tasks.size}") }
-                    items(tasks, key = { "t${it.id}" }) { t ->
+                    item(key = "h$title") { SectionHeader("$title · ${tasks.size}", action = if (tasks.size > limit) "Show all" else null, onAction = onMore) }
+                    items(tasks.take(limit), key = { "t${it.id}" }) { t ->
                         SwipeTask(t, projects, subs[t.id], showList, onComplete = { complete(t) }, onReschedule = { reschedule = t }, onClick = { nav.go(TaskRoute(t.id)) })
                     }
                 }
-                val endToday = startOf(LocalDate.now().plusDays(1))
-                when (if (listFilter != null) View.ALL else view) {
-                    View.TODAY -> {
+                val day = { n: Long -> startOf(LocalDate.now().plusDays(n)) }
+                when (if (listFilter != null) View.LISTS else view) {
+                    View.MINE -> {
                         val overdue = filtered.filter { it.dueAt != null && it.dueAt < todayStart }.sortedBy { it.dueAt }
-                        val today = filtered.filter { it.dueAt != null && it.dueAt in todayStart until endToday }.sortedWith(compareBy({ it.priority }, { it.dueAt }))
-                        item(key = "progress") { TodayProgress(doneToday.count { it.parentId == null }, overdue.size + today.size) }
-                        if (overdue.isEmpty() && today.isEmpty() && filtered.none { it.dueAt == null && it.createdAt >= todayStart }) item { EmptyState("Nothing due today", "Add something below, or swipe a task left to plan it for today.") }
+                        val today = filtered.filter { (it.dueAt != null && it.dueAt in todayStart until day(1)) || (it.dueAt == null && it.remindAt != null && it.remindAt < day(1)) }
+                            .sortedWith(compareBy({ it.remindAt ?: it.dueAt }, { it.priority }))
+                        val tomorrow = filtered.filter { it.dueAt != null && it.dueAt in day(1) until day(2) }.sortedBy { it.remindAt ?: it.dueAt }
+                        val week = filtered.filter { it.dueAt != null && it.dueAt in day(2) until day(7) }.sortedBy { it.dueAt }
+                        val later = filtered.filter { it.dueAt != null && it.dueAt >= day(7) }.sortedBy { it.dueAt }
+                        val undated = filtered.filter { it.dueAt == null && it !in today }.sortedWith(compareBy({ it.priority }, { -it.createdAt }))
+                        item(key = "overview") {
+                            TasksOverview(
+                                doneToday = doneToday.count { it.parentId == null }, leftToday = overdue.size + today.size, overdue = overdue.size,
+                                next = reminders.firstOrNull { it.remindAt!! >= System.currentTimeMillis() },
+                                onNext = { view = View.REMINDERS },
+                            )
+                        }
+                        if (looksDone.isNotEmpty()) {
+                            item(key = "ld_h") { SectionHeader("Sounds finished · from your conversations") }
+                            items(looksDone, key = { "ld${it.id}" }) { t -> LooksDone(t) }
+                        }
+                        if (filtered.isEmpty()) item {
+                            EmptyState(if (query.isBlank()) "You're all clear" else "No matches",
+                                if (query.isBlank()) "Tasks you mention in conversations appear here by themselves. You can also type one below." else "Try another word.")
+                        }
                         section("Overdue", overdue)
                         section("Today", today)
-                        // Anything new without a date (e.g. with "new tasks go to Today" turned off) still shows up here.
-                        section("New · no date yet", filtered.filter { it.dueAt == null && it.createdAt >= todayStart }.sortedByDescending { it.createdAt })
+                        section("Tomorrow", tomorrow)
+                        section("This week", week)
+                        section("Later", later, limit = if (showLater) Int.MAX_VALUE else 4, onMore = { showLater = true })
+                        section("No date", undated)
+                        val finished = doneToday.filter { it.parentId == null }.sortedByDescending { it.completedAt }
+                        if (finished.isNotEmpty()) {
+                            item(key = "dt_h") { SectionHeader("Completed today · ${finished.size}", action = if (showDone) "Hide" else "Show", onAction = { showDone = !showDone }) }
+                            if (showDone) items(finished, key = { "dt${it.id}" }) { t ->
+                                TaskLine(t, projects, subs[t.id], onToggle = { scope.launch { g.tasks.reopen(t) } }, onClick = { nav.go(TaskRoute(t.id)) })
+                            }
+                        }
                     }
                     View.UPCOMING -> {
                         val days = (0..13).map { LocalDate.now().plusDays(it.toLong()) }
@@ -402,15 +437,24 @@ fun TasksScreen() {
                             if (list.isNotEmpty()) any = true
                             section(Fmt.day(d) + if (d.dayOfWeek == DayOfWeek.MONDAY && d != LocalDate.now()) " · new week" else "", list)
                         }
-                        section("Later", filtered.filter { it.dueAt != null && it.dueAt >= startOf(LocalDate.now().plusDays(14)) }.sortedBy { it.dueAt })
+                        section("After two weeks", filtered.filter { it.dueAt != null && it.dueAt >= startOf(LocalDate.now().plusDays(14)) }.sortedBy { it.dueAt })
                         if (!any) item { EmptyState("Nothing planned", "Tasks with a date in the next two weeks show here, day by day.") }
                     }
-                    View.ALL -> {
+                    View.REMINDERS -> {
+                        item(key = "rem_add") {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(if (s.smartReminders) "At the time you said, or when the AI thinks it helps most." else "At the time you said.", style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { addingReminder = true }) { Icon(Icons.Rounded.Alarm, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("New") }
+                            }
+                        }
+                        reminderItems(reminders.filter { query.isBlank() || it.title.contains(query, true) }) { nav.go(TaskRoute(it.id)) }
+                    }
+                    View.LISTS -> {
                         val byList = filtered.groupBy { it.projectId }
                         section("Inbox", byList[null].orEmpty(), showList = false)
                         projectsList.forEach { p -> section(p.name, byList[p.id].orEmpty(), showList = false) }
                         if (filtered.isEmpty()) item { EmptyState(if (listFilter != null) "Nothing open in this list" else "No open tasks", "Add one below — #list, !1 priority, @label, \"every week\" all work.") }
-                        // Finished tasks stay visible here, newest first (Done shows the full history).
                         val finished = done.filter { it.parentId == null && (listFilter == null || it.projectId == listFilter) }
                             .filter { query.isBlank() || it.title.contains(query, true) }
                         if (finished.isNotEmpty()) {
@@ -421,11 +465,7 @@ fun TasksScreen() {
                         }
                     }
                     View.REVIEW -> {
-                        if (looksDone.isNotEmpty()) {
-                            item(key = "ld_h") { SectionHeader("Sounds finished · from your conversations") }
-                            items(looksDone, key = { "ld${it.id}" }) { t -> LooksDone(t) }
-                        }
-                        if (review.isEmpty() && looksDone.isEmpty()) item { EmptyState("All reviewed", "When the AI hears a commitment or a request, it waits here for your OK — nothing notifies you until you accept it.") }
+                        if (review.isEmpty()) item { EmptyState("All reviewed", "With Review on, tasks the AI hears wait here for your OK. Turn it off in Settings → Tasks to add them automatically.") }
                         else item {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("Found in your conversations. Accept what's real.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
@@ -446,22 +486,42 @@ fun TasksScreen() {
         }
     }
     reschedule?.let { t -> RescheduleSheet(t) { reschedule = null } }
+    if (addingReminder) NewReminderDialog { title, at -> addingReminder = false; if (title != null && at != null) scope.launch { g.tasks.addByUser(title, at) } }
 }
 
+/** The top of My tasks: today's progress, what's overdue, and the next reminder. */
 @Composable
-private fun TodayProgress(done: Int, left: Int) {
-    val total = done + left
-    if (total == 0) return
-    EchoCard {
+private fun TasksOverview(doneToday: Int, leftToday: Int, overdue: Int, next: TaskRow?, onNext: () -> Unit) {
+    val total = doneToday + leftToday
+    EchoCard(color = MaterialTheme.colorScheme.primaryContainer) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(progress = { done.toFloat() / total }, modifier = Modifier.size(44.dp), strokeWidth = 5.dp, trackColor = MaterialTheme.colorScheme.surfaceContainerHighest)
-                Text("${done * 100 / total}%", style = MaterialTheme.typography.labelSmall)
+                CircularProgressIndicator(progress = { if (total == 0) 1f else doneToday.toFloat() / total }, modifier = Modifier.size(52.dp), strokeWidth = 6.dp,
+                    color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.surfaceContainerHighest)
+                Text(if (total == 0) "✓" else "$doneToday/$total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
             }
             Spacer(Modifier.width(Sp.l))
-            Column {
-                Text(if (left == 0) "All done for today 🎉" else "$left left today", style = MaterialTheme.typography.titleSmall)
-                Text("$done completed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    when { total == 0 -> "Nothing due today"; leftToday == 0 -> "All done for today 🎉"; else -> "$leftToday left today" },
+                    style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Text(listOfNotNull("$doneToday done", overdue.takeIf { it > 0 }?.let { "$it overdue" }).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall, color = if (overdue > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+        }
+        if (next != null) {
+            Spacer(Modifier.height(Sp.m))
+            Row(
+                Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)).clickable(onClick = onNext).padding(Sp.m),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.NotificationsActive, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(Sp.m))
+                Column(Modifier.weight(1f)) {
+                    Text(next.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Next reminder · ${Fmt.dayTime(next.remindAt!!)} · ${relative(next.remindAt)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
     }
@@ -597,7 +657,9 @@ fun TaskScreen(id: Long) {
                 t.quote?.let { Text("You said: “$it”", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 Text("Created ${Fmt.dayTime(t.createdAt)}${t.completedAt?.let { " · completed ${Fmt.dayTime(it)}" } ?: ""}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
                 t.conversationId?.takeIf { it > 0 }?.let { cid -> TextButton(onClick = { nav.go(ConversationRoute(cid)) }) { Text("Open the conversation") } }
+                t.aiNote?.takeIf { it.startsWith("Reminder picked") }?.let { Text("🔔 $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (t.status == "suggested") Button(onClick = { persistText(); scope.launch { g.tasks.accept(t) } }) { Text("Accept") }
+                if (t.status == "open" && t.origin == "ai") OutlinedButton(onClick = { scope.launch { g.tasks.dismiss(t, "Not a task"); nav.back() } }) { Text("Not a task — remove") }
             }
         }
     }
@@ -672,6 +734,19 @@ fun RemindersScreen() {
     val scope = rememberCoroutineScope()
     val reminders by remember { g.db.tasks().observeAllReminders() }.collectAsStateWithLifecycle(emptyList())
     var adding by remember { mutableStateOf(false) }
+    Scaffold(
+        topBar = { ScreenTopBar("Reminders", onBack = { nav.back() }) { app.echomind.ui.components.ListenButton("Read reminders") { g.briefing.reminders() } } },
+        floatingActionButton = { androidx.compose.material3.ExtendedFloatingActionButton(onClick = { adding = true }, icon = { Icon(Icons.Rounded.Alarm, null) }, text = { Text("Reminder") }) },
+    ) { pad ->
+        LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+            reminderItems(reminders) { nav.go(TaskRoute(it.id)) }
+        }
+    }
+    if (adding) NewReminderDialog { title, at -> adding = false; if (title != null && at != null) scope.launch { g.tasks.addByUser(title, at) } }
+}
+
+/** Reminders grouped Missed / Today / Tomorrow / This week / Later. */
+fun androidx.compose.foundation.lazy.LazyListScope.reminderItems(reminders: List<TaskRow>, onOpen: (TaskRow) -> Unit) {
     val now = System.currentTimeMillis()
     val today = LocalDate.now()
     val groups = listOf(
@@ -681,21 +756,13 @@ fun RemindersScreen() {
         "This week" to { r: Long -> r >= startOf(today.plusDays(2)) && r < startOf(today.plusDays(7)) },
         "Later" to { r: Long -> r >= startOf(today.plusDays(7)) },
     )
-    Scaffold(
-        topBar = { ScreenTopBar("Reminders", onBack = { nav.back() }) { app.echomind.ui.components.ListenButton("Read reminders") { g.briefing.reminders() } } },
-        floatingActionButton = { androidx.compose.material3.ExtendedFloatingActionButton(onClick = { adding = true }, icon = { Icon(Icons.Rounded.Alarm, null) }, text = { Text("Reminder") }) },
-    ) { pad ->
-        LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
-            if (reminders.isEmpty()) item { EmptyState("No reminders", "Say \"remind me…\" out loud, accept a suggestion, or tap Reminder.") }
-            for ((label, test) in groups) {
-                val list = reminders.filter { test(it.remindAt!!) }
-                if (list.isEmpty()) continue
-                item(key = "h$label") { SectionHeader("$label · ${list.size}") }
-                items(list, key = { "r${it.id}" }) { t -> ReminderCard(t, missed = label == "Missed", onOpen = { nav.go(TaskRoute(t.id)) }) }
-            }
-        }
+    if (reminders.isEmpty()) item { EmptyState("No reminders", "Say \"remind me…\" out loud, or mention a task with a time. You can also tap New.") }
+    for ((label, test) in groups) {
+        val list = reminders.filter { test(it.remindAt!!) }
+        if (list.isEmpty()) continue
+        item(key = "rh$label") { SectionHeader("$label · ${list.size}") }
+        items(list, key = { "r${it.id}" }) { t -> ReminderCard(t, missed = label == "Missed", onOpen = { onOpen(t) }) }
     }
-    if (adding) NewReminderDialog { title, at -> adding = false; if (title != null && at != null) scope.launch { g.tasks.addByUser(title, at) } }
 }
 
 @Composable

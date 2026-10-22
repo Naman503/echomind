@@ -5,6 +5,7 @@ import app.echomind.data.Db
 import app.echomind.data.TaskRow
 import app.echomind.util.Js
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.builtins.serializer
 
 /** Schedules and cancels reminder alarms; implemented by the notification layer. */
@@ -14,10 +15,9 @@ interface ReminderScheduler {
 }
 
 /**
- * Tasks and reminders. What the AI finds lands in a review inbox
- * ("suggested") — the category's biggest complaint is assistants that flood
- * people with to-dos from TV and small talk. Only accepted tasks notify;
- * unreviewed suggestions expire after three days.
+ * Tasks and reminders. What the AI hears goes straight onto your list (unless
+ * you turned on Review), and each of your tasks gets a reminder: at the time
+ * you said, or at the moment the AI judges most useful.
  */
 class Tasks(private val db: Db, private val settings: SettingsStore, private val reminders: ReminderScheduler) {
 
@@ -30,6 +30,9 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
         val confidence: Float,
         val quote: String?,
         val sourceIds: List<Long>,
+        /** The AI's pick of when to remind (already resolved), and why. */
+        val remind: When.Resolved? = null,
+        val remindWhy: String? = null,
     )
 
     private fun key(s: String) = TextNorm.keyTerms(s).toSet()
@@ -40,22 +43,27 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
         return x.intersect(y).size.toDouble() / minOf(x.size, y.size) >= 0.6
     }
 
-    /** Adds what a conversation produced; returns how many new suggestions were made. */
+    /** Adds what a conversation produced; returns how many tasks were added. */
     suspend fun addFound(found: List<Found>, conversationId: Long, at: Long, origin: String = "ai"): Int {
         val known = db.tasks().live().map { it.title }.toMutableList()
+        val s = settings.value
+        val now = System.currentTimeMillis()
         var added = 0
         for (f in found) {
             if (f.title.isBlank() || f.confidence < 0.35f) continue
             // Also catches the same task found twice in one conversation (two parts of a long one).
             if (known.any { sameTask(it, f.title) }) continue
-            known.add(f.title)
             val confident = f.owner == "me" && f.confidence >= 0.85f && f.due != null
-            val autoAccept = origin == "voice" || (settings.value.autoAcceptConfident && confident)
-            val remindAt = f.due?.let { d -> if (f.isReminder || d.hasTime || f.owner == "me") d.at else null }?.takeIf { it > System.currentTimeMillis() }
+            val review = origin != "voice" && s.reviewAiTasks && !(s.autoAcceptConfident && confident)
+            // Without a review step, only clear commitments go on the list.
+            if (!review && origin == "ai" && f.confidence < 0.5f) continue
+            known.add(f.title)
+            val remindAt = pickReminder(f.due, f.remind, f.isReminder || origin == "voice", f.owner == "me", s.smartReminders, now)
+            val aiPicked = remindAt != null && remindAt == f.remind?.at && f.due?.hasTime != true
             val row = TaskRow(
                 title = f.title.trim().take(140),
                 owner = f.owner,
-                status = if (autoAccept) "open" else "suggested",
+                status = if (review) "suggested" else "open",
                 dueAt = f.due?.at,
                 dueText = f.dueText?.takeIf { it.isNotBlank() },
                 remindAt = remindAt,
@@ -66,12 +74,22 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
                 createdAt = at,
                 updatedAt = at,
                 origin = origin,
+                aiNote = if (aiPicked) "Reminder picked by the AI${f.remindWhy?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""}" else null,
             )
             val id = db.tasks().insert(row)
             if (row.status == "open" && row.remindAt != null) reminders.schedule(row.copy(id = id))
             added++
         }
         return added
+    }
+
+    /** With Review off, anything still waiting from before goes onto the list (once). */
+    suspend fun acceptWaiting(force: Boolean = false) {
+        if (!force && settings.value.reviewAiTasks) return
+        val onList = db.tasks().live().filter { it.status == "open" }.map { it.title }
+        for (t in db.tasks().observeByStatus("suggested").first()) {
+            if (onList.any { sameTask(it, t.title) }) dismiss(t, "Already on the list") else accept(t)
+        }
     }
 
     suspend fun accept(t: TaskRow) {
@@ -197,5 +215,27 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
     suspend fun expireOld() {
         val now = System.currentTimeMillis()
         db.tasks().expireSuggestions(now - 72 * 3_600_000L, now)
+    }
+
+    companion object {
+        private val zone get() = java.time.ZoneId.systemDefault()
+
+        /**
+         * When to remind about a task. A time you said wins. Otherwise (with smart reminders on)
+         * the AI's pick is used if it is in the future and not after the due day; failing that,
+         * a dated task of yours is reminded at the next of 9 AM, 1 PM or 6 PM on its day.
+         */
+        fun pickReminder(due: When.Resolved?, ai: When.Resolved?, askedToRemind: Boolean, mine: Boolean, smart: Boolean, now: Long): Long? {
+            val soon = now + 60_000L
+            if (due != null && due.hasTime && askedToRemind) return due.at.takeIf { it > soon }
+            if (!smart) return due?.takeIf { askedToRemind || it.hasTime }?.at?.takeIf { it > soon }
+            if (!mine && !askedToRemind) return null
+            val dueDayEnd = due?.let { java.time.Instant.ofEpochMilli(it.at).atZone(zone).toLocalDate().plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() }
+            ai?.at?.takeIf { it > soon && (due == null || (if (due.hasTime) it <= due.at else it < dueDayEnd!!)) }?.let { return it }
+            if (due == null) return null
+            if (due.hasTime) return due.at.takeIf { it > soon }
+            val day = java.time.Instant.ofEpochMilli(due.at).atZone(zone).toLocalDate()
+            return listOf(9, 13, 18).map { day.atTime(it, 0).atZone(zone).toInstant().toEpochMilli() }.firstOrNull { it > now + 30 * 60_000L }
+        }
     }
 }

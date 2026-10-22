@@ -81,6 +81,10 @@ data class Settings(
     val session: AiSession = AiSession(),
     /** Suggested tasks the AI is very sure of (yours, with a time) go straight to the to-do list. */
     val autoAcceptConfident: Boolean = false,
+    /** Off: tasks and events heard in conversations go straight onto your list. On: they wait in Review. */
+    val reviewAiTasks: Boolean = false,
+    /** Tasks get a reminder: at the time you said, or when the AI thinks it is most useful. */
+    val smartReminders: Boolean = true,
     /** Tasks you type without a date go on Today's list. */
     val undatedToToday: Boolean = true,
     val semanticSearch: Boolean = true,

@@ -152,6 +152,8 @@ class Enricher(
                     confidence = (t.dbl("confidence") ?: 0.6).toFloat(),
                     quote = t.str("quote"),
                     sourceIds = sources(t),
+                    remind = t.str("remind_iso")?.let { When.iso(it) }?.takeIf { it.hasTime },
+                    remindWhy = t.str("remind_why"),
                 )
             }.filter { it.owner != "other" || it.isReminder }
             taskCount = tasks.addFound(found, c.id, at)

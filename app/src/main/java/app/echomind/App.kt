@@ -149,6 +149,7 @@ class App : Application() {
             g.reminders.scheduleDaily(s.morningBriefAt, s.eveningRecapAt)
             g.checkIns.schedule()
             reindexSearch(g)
+            runCatching { g.tasks.acceptWaiting() }
             logExitReasons()
         }
         app.echomind.surfaces.WidgetUpdater.start(this, g.scope)

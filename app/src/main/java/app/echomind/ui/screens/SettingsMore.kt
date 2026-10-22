@@ -300,13 +300,15 @@ fun TasksSettingsScreen() {
         }
         item {
             SectionHeader("From conversations")
-            SwitchRow("Add sure ones directly", "Clear commitments of yours with a time skip the review list", s.autoAcceptConfident) { v -> set { it.copy(autoAcceptConfident = v) } }
+            SwitchRow("Review before adding", "Off: notes, tasks and events from conversations are added automatically. On: tasks and events wait in Review for your OK.", s.reviewAiTasks) { v -> set { it.copy(reviewAiTasks = v) }; if (!v) g.scope.launch { g.tasks.acceptWaiting(force = true) } }
+            if (s.reviewAiTasks) SwitchRow("Add sure ones directly", "Clear commitments of yours with a time skip the review list", s.autoAcceptConfident) { v -> set { it.copy(autoAcceptConfident = v) } }
             SwitchRow("Follow up on tasks", "Done, moved, stuck — what conversations say about tasks on your list", s.taskFollowUps) { v -> set { it.copy(taskFollowUps = v) } }
             SwitchRow("Morning plans", "Today / week / month plans, with what you might be missing", s.autoPlans) { v -> set { it.copy(autoPlans = v) } }
             SettingRow("Open today's plan", null, onClick = { nav.go(app.echomind.ui.PlanRoute) })
         }
         item {
             SectionHeader("Reminders")
+            SwitchRow("Smart reminders", "Remind at the time you said; if you didn't say one, the AI picks the most useful moment (an hour before a call, the evening before an early start, the morning of an errand)", s.smartReminders) { v -> set { it.copy(smartReminders = v) } }
             SettingRow("Notifications", "Morning brief, evening recap, suggestions", onClick = { nav.go(app.echomind.ui.NotificationsRoute) })
             SettingRow("Assistant nudges", if (s.nudges) "Up to ${s.nudgesPerDay} a day" else "Off", onClick = { nav.go(app.echomind.ui.ReadingRoute) })
         }
