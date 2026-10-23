@@ -44,6 +44,8 @@ import androidx.compose.material.icons.rounded.MicOff
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -124,6 +126,9 @@ fun TodayScreen() {
         val now = System.currentTimeMillis()
         value = g.agenda.range(now - 30 * 60_000L, now + 36 * 3_600_000L).filter { it.status == "confirmed" && if (it.allDay) it.startAt >= from else (it.endAt ?: it.startAt) > now }.take(3)
     }
+    var customising by remember { mutableStateOf(false) }
+    fun on(k: String) = k !in s.todayHidden
+    val nightOrMorning = hour < 12 || hour >= 20
     LazyColumn(
         Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Sp.gutter, vertical = Sp.s),
@@ -138,10 +143,18 @@ fun TodayScreen() {
                 IconButton(onClick = { nav.go(SettingsRoute) }) { Icon(Icons.Rounded.Settings, "Settings") }
             }
         }
+        // Ask is a bar, not a tab: the quickest way into everything you've said.
+        item(key = "ask") { AskBar() }
         // One column: a card with nothing to show adds no gap.
         item(key = "top") {
             Column(verticalArrangement = Arrangement.spacedBy(Sp.m)) {
-                QuickActions(); ListeningCard(); app.echomind.ui.screens.StatusCard(); DayGlance(); DaySummaryCard(); SetupHealth(); WorkCard(); ForYou()
+                if (on("quick")) QuickActions()
+                ListeningCard()
+                if (on("status")) { app.echomind.ui.screens.StatusCard(); SetupHealth(); WorkCard() }
+                // The one main card changes with the time of day: last night's diary in the morning
+                // and late evening, today's focus during the day.
+                if (on("hero")) { if (nightOrMorning) { DaySummaryCard(); DayGlance() } else { DayGlance(); DaySummaryCard() } }
+                if (on("noticed")) ForYou()
             }
         }
         if (suggested > 0) item(key = "review") {
@@ -151,15 +164,15 @@ fun TodayScreen() {
                     Spacer(Modifier.width(Sp.m))
                     Column(Modifier.weight(1f)) {
                         Text("$suggested ${if (suggested == 1) "thing" else "things"} to review", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        Text("Tasks and reminders found in your conversations", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text("Tasks and events found in your conversations", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
                 }
             }
         }
-        item(key = "todaytasks") { TodayTasks() }
-        if (nextEvents.isNotEmpty()) {
+        if (on("tasks")) item(key = "todaytasks") { TodayTasks() }
+        if (on("calendar") && nextEvents.isNotEmpty()) {
             item(key = "ev_h") { SectionHeader("Next on your calendar", action = "Calendar", onAction = { nav.tab(app.echomind.ui.CalendarRoute) }) }
-            items(nextEvents, key = { "ev${it.id}_${it.deviceId}_${it.startAt}" }) { e ->
+            items(nextEvents.take(2), key = { "ev${it.id}_${it.deviceId}_${it.startAt}" }) { e ->
                 EchoCard(onClick = { if (e.id > 0) nav.go(app.echomind.ui.EventRoute(e.id)) else nav.tab(app.echomind.ui.CalendarRoute) }) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Rounded.Event, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
@@ -172,47 +185,50 @@ fun TodayScreen() {
                 }
             }
         }
-        if (upcoming.isNotEmpty()) {
-            item(key = "up_h") { SectionHeader("Coming up", action = "All reminders", onAction = { nav.go(app.echomind.ui.RemindersRoute) }) }
-            items(upcoming, key = { "r${it.id}" }) { t ->
-                EchoCard(onClick = { nav.tab(TasksRoute) }) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Alarm, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(Sp.m))
-                        Column(Modifier.weight(1f)) {
-                            Text(t.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text(Fmt.dayTime(t.remindAt!!), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
+        if (on("conversations")) {
+            val shown = convs.filter { it.state != "skipped" && !it.ignored }.take(4)
+            item(key = "recent_h") { SectionHeader("Latest conversations", action = "Timeline", onAction = { nav.go(app.echomind.ui.TimelineRoute) }) }
+            if (shown.isEmpty()) item(key = "recent_empty") {
+                Text(
+                    if (s.captureWanted) "Conversations appear here a few minutes after they happen." else "Start listening and your day will appear here.",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = Sp.s),
+                )
             }
+            items(shown, key = { "c${it.id}" }, contentType = { "conv" }) { c -> ConversationRow(c) { nav.go(ConversationRoute(c.id)) } }
         }
-        val shown = convs.filter { it.state != "skipped" && !it.ignored }.take(8)
-        item(key = "recent_h") { SectionHeader("Latest conversations", action = "Timeline", onAction = { nav.go(app.echomind.ui.TimelineRoute) }) }
-        if (shown.isEmpty()) item(key = "recent_empty") {
-            Text(
-                if (s.captureWanted) "Conversations appear here a few minutes after they happen." else "Start listening and your day will appear here.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = Sp.s),
-            )
-        }
-        items(shown, key = { "c${it.id}" }, contentType = { "conv" }) { c -> ConversationRow(c) { nav.go(ConversationRoute(c.id)) } }
-        val journal = day.firstOrNull { it.generatedAt != null }
-        if (journal != null) {
-            item(key = "journal") {
-                SectionHeader("Journal")
-                EchoCard(onClick = { nav.go(DayRoute(journal.day)) }) {
-                    Text(Fmt.day(LocalDate.parse(journal.day)), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(journal.headline ?: "Your day", style = MaterialTheme.typography.titleMedium)
-                    journal.diary?.let { Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    val m = runCatching { Js.json.decodeFromString(DayMetrics.serializer(), journal.metrics) }.getOrNull()
-                    if (m != null && m.conversations > 0) {
-                        Spacer(Modifier.height(Sp.s))
-                        Text("${m.conversations} conversations · ${m.talkMinutes} min talk · ${m.people} people", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                    }
-                }
+        item(key = "customise") {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                TextButton(onClick = { customising = true }) { Icon(Icons.Rounded.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Customise Today") }
             }
         }
         item(key = "bottom") { Spacer(Modifier.height(Sp.xl)) }
+    }
+    if (customising) androidx.compose.material3.ModalBottomSheet(onDismissRequest = { customising = false }) {
+        Column(Modifier.padding(bottom = Sp.xl)) {
+            Text("Show on Today", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = Sp.xl, vertical = Sp.s))
+            listOf(
+                "quick" to "Quick actions", "status" to "Processing and phone status", "hero" to "Your day (diary and focus)",
+                "noticed" to "Noticed for you", "tasks" to "Today's tasks", "calendar" to "Next on your calendar", "conversations" to "Latest conversations",
+            ).forEach { (k, label) ->
+                app.echomind.ui.components.SwitchRow(label, null, k !in s.todayHidden) { v ->
+                    g.scope.launch { g.settings.update { it.copy(todayHidden = if (v) it.todayHidden - k else (it.todayHidden + k).distinct()) } }
+                }
+            }
+        }
+    }
+}
+
+/** "Ask about your day…": opens Ask; the mic starts it by voice. */
+@Composable
+private fun AskBar() {
+    val nav = LocalNav.current
+    androidx.compose.material3.Surface(onClick = { nav.go(app.echomind.ui.AskRoute()) }, shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(start = Sp.l, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(Sp.m))
+            Text("Ask about your day, people, anything…", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            IconButton(onClick = { nav.go(app.echomind.ui.AskRoute(voice = true)) }) { Icon(Icons.Rounded.Mic, "Ask by voice", tint = MaterialTheme.colorScheme.primary) }
+        }
     }
 }
 
@@ -224,10 +240,11 @@ private fun ForYou() {
     val scope = rememberCoroutineScope()
     val since = remember { System.currentTimeMillis() - 24 * 3_600_000L }
     val list by remember { g.db.nudges().observeOpen(since) }.collectAsStateWithLifecycle(emptyList())
+    var all by remember { mutableStateOf(false) }
     if (list.isEmpty()) return
-    SectionHeader("For you")
+    SectionHeader("Noticed for you", action = if (list.size > 1) (if (all) "Less" else "All ${list.size}") else null, onAction = { all = !all })
     Column(verticalArrangement = Arrangement.spacedBy(Sp.s)) {
-        list.take(3).forEach { n ->
+        app.echomind.brain.Dedup.distinct(list) { it.title + " " + it.body }.take(if (all) 5 else 1).forEach { n ->
             EchoCard(onClick = n.conversationId?.let { { nav.go(ConversationRoute(it)) } }, color = if (n.urgency >= 3) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceContainerLow) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
@@ -254,7 +271,6 @@ private fun QuickActions() {
         QuickButton(Icons.Rounded.AddTask, "Task", Modifier.weight(1f)) { adding = true }
         QuickButton(Icons.Rounded.RecordVoiceOver, "Check-in", Modifier.weight(1f)) { nav.go(app.echomind.ui.CheckInRoute()) }
         QuickButton(Icons.Rounded.EditNote, "Note", Modifier.weight(1f)) { nav.go(app.echomind.ui.NewNoteRoute()) }
-        QuickButton(Icons.Rounded.QuestionAnswer, "Ask", Modifier.weight(1f)) { nav.go(app.echomind.ui.AskRoute()) }
         val scope = rememberCoroutineScope()
         QuickButton(Icons.AutoMirrored.Rounded.VolumeUp, "Brief me", Modifier.weight(1f)) {
             scope.launch { val b = App.graph.briefing.morning(); App.graph.speaker.speak(b.title, b.parts) }

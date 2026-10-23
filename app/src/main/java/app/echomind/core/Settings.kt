@@ -106,6 +106,8 @@ data class Settings(
     val journalVoice: String = "first",
     /** short | medium | long */
     val journalLength: String = "medium",
+    /** Today sections you hid: quick, status, hero, noticed, tasks, calendar, conversations. */
+    val todayHidden: List<String> = emptyList(),
     /** Reading size for the book, 0.85 … 1.4. */
     val bookFontScale: Float = 1f,
     val geminiModel: String = "gemini-3.5-flash-lite",
