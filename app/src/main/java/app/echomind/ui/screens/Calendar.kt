@@ -124,6 +124,10 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import java.time.DayOfWeek
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import app.echomind.ui.components.EmptyState
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -145,9 +149,10 @@ private enum class Shade(val label: String) { PRODUCTIVITY("Productivity"), MOOD
 private fun score(d: DayEntry?): Int? = d?.rating?.let { it * 20 } ?: d?.productivity
 
 /**
- * The calendar: a month of days coloured by how they went, with what's
- * planned (yours, found in conversations, and the phone's calendars) and the
- * journal of each day underneath.
+ * The calendar: a calm month (or one week) on top, and the chosen day below as
+ * one timeline — events, tasks and conversations in time order — under its
+ * diary page. Swipe the month to change months, the day to change days.
+ * Agenda lists what's coming in the next 30 days.
  */
 @Composable
 fun CalendarScreen() {
@@ -158,7 +163,10 @@ fun CalendarScreen() {
     val s by g.settings.flow.collectAsStateWithLifecycle()
     var month by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
     var selectedStr by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
-    var shade by rememberSaveable { mutableStateOf(Shade.PRODUCTIVITY) }
+    var shade by rememberSaveable { mutableStateOf(Shade.MOOD) }
+    var agenda by rememberSaveable { mutableStateOf(false) }
+    var weekOnly by rememberSaveable { mutableStateOf(false) }
+    var filter by rememberSaveable { mutableStateOf("all") }
     var menu by remember { mutableStateOf(false) }
     val ym = YearMonth.parse(month)
     val selected = LocalDate.parse(selectedStr)
@@ -182,40 +190,54 @@ fun CalendarScreen() {
     val perms = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
         if (r[Manifest.permission.READ_CALENDAR] == true) scope.launch { g.settings.update { it.copy(showPhoneCalendar = true) } }
     }
+    fun pick(d: LocalDate) { selectedStr = d.toString(); if (YearMonth.from(d) != ym) month = YearMonth.from(d).toString() }
+    fun openEvent(e: EventRow) {
+        if (e.source == "device" && e.deviceId != null) runCatching {
+            ctx.startActivity(Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, e.deviceId)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } else nav.go(EventRoute(e.id))
+    }
 
     Scaffold(
         modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars),
-        topBar = {
-            ScreenTopBar("Calendar") {
-                IconButton(onClick = { nav.go(TimelineRoute) }) { Icon(Icons.Rounded.Search, "Search what was said") }
-                ListenButton("Read my week") { g.agenda.weekAhead() }
-                IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More") }
-                DropdownMenu(menu, { menu = false }) {
-                    Shade.entries.forEach { sh -> DropdownMenuItem(text = { Text("Colour by ${sh.label.lowercase()}${if (shade == sh) "  ✓" else ""}") }, onClick = { shade = sh; menu = false }) }
-                    DropdownMenuItem(text = { Text(if (s.showPhoneCalendar) "Hide phone calendars" else "Show phone calendars") }, onClick = {
-                        menu = false
-                        if (s.showPhoneCalendar) scope.launch { g.settings.update { it.copy(showPhoneCalendar = false) } }
-                        else if (g.agenda.canRead()) scope.launch { g.settings.update { it.copy(showPhoneCalendar = true) } }
-                        else perms.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR))
-                    })
-                }
-            }
-        },
         floatingActionButton = { ExtendedFloatingActionButton(onClick = { nav.go(NewEventRoute(selectedStr)) }, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("Event") }) },
     ) { pad ->
         LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 104.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
-            item(key = "month") {
-                MonthHeader(ym, onPrev = { month = ym.minusMonths(1).toString() }, onNext = { month = ym.plusMonths(1).toString() },
-                    onToday = { month = YearMonth.now().toString(); selectedStr = LocalDate.now().toString() })
-                AnimatedContent(ym, transitionSpec = {
-                    val dir = if (targetState > initialState) 1 else -1
-                    (slideInHorizontally(tween(240)) { it / 5 * dir } + fadeIn(tween(200))) togetherWith (slideOutHorizontally(tween(200)) { -it / 5 * dir } + fadeOut(tween(120)))
-                }, label = "month") { shown ->
-                    MonthGrid(shown, gridStart, selected, shade, byDay, eventsByDay, tasksByDay, convsByDay,
-                        onPick = { d -> selectedStr = d.toString(); if (YearMonth.from(d) != shown) month = YearMonth.from(d).toString() },
-                        onSwipe = { dir -> month = if (dir > 0) ym.plusMonths(1).toString() else ym.minusMonths(1).toString() })
+            item(key = "head") {
+                Row(Modifier.fillMaxWidth().padding(top = Sp.s), verticalAlignment = Alignment.CenterVertically) {
+                    Text(ym.format(DateTimeFormatter.ofPattern(if (ym.year == LocalDate.now().year) "MMMM" else "MMMM yyyy")), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+                    if (ym != YearMonth.now() || selected != LocalDate.now()) TextButton(onClick = { month = YearMonth.now().toString(); selectedStr = LocalDate.now().toString() }) { Text("Today") }
+                    IconButton(onClick = { nav.go(TimelineRoute) }) { Icon(Icons.Rounded.Search, "Search what was said") }
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More") }
+                    DropdownMenu(menu, { menu = false }) {
+                        Shade.entries.forEach { sh -> DropdownMenuItem(text = { Text("Colour days by ${sh.label.lowercase()}${if (shade == sh) "  ✓" else ""}") }, onClick = { shade = sh; menu = false }) }
+                        DropdownMenuItem(text = { Text("Read my week aloud") }, onClick = { menu = false; scope.launch { val w = g.agenda.weekAhead(); g.speaker.speak(w.title, w.parts) } })
+                        DropdownMenuItem(text = { Text(if (s.showPhoneCalendar) "Hide phone calendars" else "Show phone calendars") }, onClick = {
+                            menu = false
+                            if (s.showPhoneCalendar) scope.launch { g.settings.update { it.copy(showPhoneCalendar = false) } }
+                            else if (g.agenda.canRead()) scope.launch { g.settings.update { it.copy(showPhoneCalendar = true) } }
+                            else perms.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR))
+                        })
+                    }
                 }
-                MonthStats(ym, byDay, eventsByDay, shade)
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    SegmentedButton(!agenda, { agenda = false }, SegmentedButtonDefaults.itemShape(0, 2)) { Text("Month") }
+                    SegmentedButton(agenda, { agenda = true }, SegmentedButtonDefaults.itemShape(1, 2)) { Text("Agenda") }
+                }
+            }
+            if (agenda) { agendaItems(nav, ::openEvent); return@LazyColumn }
+
+            item(key = "grid") {
+                AnimatedContent(ym to weekOnly, transitionSpec = {
+                    val dir = if (targetState.first > initialState.first) 1 else -1
+                    (slideInHorizontally(tween(240)) { it / 5 * dir } + fadeIn(tween(200))) togetherWith (slideOutHorizontally(tween(200)) { -it / 5 * dir } + fadeOut(tween(120)))
+                }, label = "month") { (shown, week) ->
+                    MonthGrid(shown, gridStart, selected, shade, byDay, eventsByDay, tasksByDay, weekOnly = week,
+                        onPick = ::pick,
+                        onSwipe = { dir -> if (week) pick(selected.plusWeeks(dir.toLong())) else month = if (dir > 0) ym.plusMonths(1).toString() else ym.minusMonths(1).toString() })
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    TextButton(onClick = { weekOnly = !weekOnly }) { Text(if (weekOnly) "Show the month" else "Show one week") }
+                }
             }
             if (!s.showPhoneCalendar && !g.agenda.canRead()) item(key = "perm") {
                 EchoCard(onClick = { perms.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)) }, color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)) {
@@ -224,8 +246,7 @@ fun CalendarScreen() {
                         Spacer(Modifier.width(Sp.m))
                         Column(Modifier.weight(1f)) {
                             Text("Show your phone's calendar too", style = MaterialTheme.typography.titleSmall)
-                            Text("Meetings from Google Calendar and others appear here, with a heads-up about who you're meeting. Read on the phone only.",
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Meetings from Google Calendar and others appear here. Read on the phone only.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -234,59 +255,95 @@ fun CalendarScreen() {
                 item(key = "sugh") { SectionHeader("Heard in conversations · ${suggested.size}") }
                 items(suggested, key = { "s${it.id}" }) { e -> SuggestedEvent(e) }
             }
-            item(key = "dayh") { DayHeader(selected, byDay[selected.toString()]) }
+
+            // The day: swipe to move between days.
+            item(key = "dayh") { DayHeader(selected, byDay[selected.toString()], onPrev = { pick(selected.minusDays(1)) }, onNext = { pick(selected.plusDays(1)) }) }
             val dayEvents = eventsByDay[selected].orEmpty()
             val dayTasks = tasksByDay[selected].orEmpty()
             val dayConvs = convsByDay[selected].orEmpty()
-            if (dayEvents.isEmpty() && dayTasks.isEmpty() && dayConvs.isEmpty()) item(key = "empty") {
-                Text(if (selected >= LocalDate.now()) "Nothing planned. Tap + to add an event, or just mention plans in conversation." else "Nothing recorded on this day.",
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = Sp.s))
-            }
-            if (dayEvents.isNotEmpty()) {
-                item(key = "evh") { SectionHeader("Events") }
-                items(dayEvents, key = { "e${it.id}_${it.deviceId}_${it.startAt}" }) { e ->
-                    EventRowView(e) {
-                        if (e.source == "device" && e.deviceId != null) runCatching {
-                            ctx.startActivity(Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, e.deviceId)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                        } else nav.go(EventRoute(e.id))
+            item(key = "filters") {
+                Row(horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
+                    listOf("all" to "All", "events" to "Events · ${dayEvents.size}", "tasks" to "Tasks · ${dayTasks.size}", "talk" to "Talk · ${dayConvs.size}").forEach { (k, l) ->
+                        androidx.compose.material3.FilterChip(filter == k, { filter = k }, label = { Text(l) })
                     }
                 }
             }
-            if (dayTasks.isNotEmpty()) {
-                item(key = "tkh") { SectionHeader("Tasks") }
-                items(dayTasks, key = { "t${it.id}" }) { t -> CalendarTask(t) { nav.go(TaskRoute(t.id)) } }
+            // One timeline, in time order. All-day events and undated tasks go first.
+            data class Item(val at: Long, val key: String, val content: @Composable () -> Unit)
+            val timeline = buildList {
+                if (filter == "all" || filter == "events") dayEvents.forEach { e -> add(Item(if (e.allDay) 0 else e.startAt, "e${e.id}_${e.deviceId}_${e.startAt}") { TimelineRow(if (e.allDay) "All day" else Fmt.time(e.startAt), MaterialTheme.colorScheme.primary) { EventRowView(e) { openEvent(e) } } }) }
+                if (filter == "all" || filter == "tasks") dayTasks.forEach { t -> val at = t.remindAt ?: t.dueAt ?: 0; add(Item(at, "t${t.id}") { TimelineRow(timeOf(t), MaterialTheme.colorScheme.tertiary) { CalendarTask(t) { nav.go(TaskRoute(t.id)) } } }) }
+                if (filter == "all" || filter == "talk") dayConvs.forEach { c -> add(Item(c.startAt, "c${c.id}") { TimelineRow(Fmt.time(c.startAt), MaterialTheme.colorScheme.outline) { ConversationRow(c) { nav.go(ConversationRoute(c.id)) } } }) }
+            }.sortedBy { it.at }
+            if (timeline.isEmpty()) item(key = "empty") {
+                Text(if (selected >= LocalDate.now()) "Nothing planned. Tap Event to add one, or just mention plans in conversation." else "Nothing on this day.",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = Sp.s))
             }
-            item(key = "activity") { ActivityTimeline(selected) }
-            item(key = "songs") { DaySongs(selected) }
-            if (dayConvs.isNotEmpty()) {
-                item(key = "cvh") { SectionHeader("Conversations · ${dayConvs.size}") }
-                items(dayConvs.sortedBy { it.startAt }, key = { "c${it.id}" }) { c -> ConversationRow(c) { nav.go(ConversationRoute(c.id)) } }
+            timeline.forEach { it2 -> item(key = it2.key) { it2.content() } }
+            if (selected <= LocalDate.now() && filter == "all") {
+                item(key = "more") {
+                    var open by rememberSaveable(selectedStr) { mutableStateOf(false) }
+                    TextButton(onClick = { open = !open }) { Text(if (open) "Hide sounds and songs" else "Sounds and songs of this day") }
+                    if (open) Column { ActivityTimeline(selected); DaySongs(selected) }
+                }
+            }
+        }
+    }
+}
+
+private fun timeOf(t: TaskRow): String {
+    val at = t.remindAt ?: t.dueAt ?: return "Any time"
+    val lt = Instant.ofEpochMilli(at).atZone(zone).toLocalTime()
+    return if (lt.hour == 9 && lt.minute == 0 && t.remindAt == null) "Any time" else Fmt.time(at)
+}
+
+/** A time on the left, a coloured rail, the item on the right. */
+@Composable
+private fun TimelineRow(time: String, color: Color, content: @Composable () -> Unit) {
+    Row(verticalAlignment = Alignment.Top) {
+        Column(Modifier.width(58.dp).padding(top = 12.dp)) {
+            Text(time, style = MaterialTheme.typography.labelMedium, color = color, maxLines = 1)
+        }
+        Box(Modifier.padding(top = 14.dp).size(width = 3.dp, height = 22.dp).clip(CircleShape).background(color))
+        Spacer(Modifier.width(Sp.s))
+        Box(Modifier.weight(1f)) { content() }
+    }
+}
+
+/** The next 30 days: events and open tasks, under sticky day headings, empty days skipped. */
+private fun androidx.compose.foundation.lazy.LazyListScope.agendaItems(nav: app.echomind.ui.Navigator, openEvent: (EventRow) -> Unit) {
+    item(key = "agenda") {
+        val g = App.graph
+        val start = LocalDate.now()
+        val (a, b) = start.ms() to start.plusDays(30).ms()
+        val ev by produceState(emptyList<EventRow>()) { value = g.agenda.range(a, b).filter { it.status == "confirmed" } }
+        val ts by remember { g.db.tasks().observeCalendar(a, b) }.collectAsStateWithLifecycle(emptyList())
+        val evBy = ev.groupBy { Fmt.date(it.startAt) }
+        val tsBy = ts.filter { it.status == "open" }.groupBy { Fmt.date(it.dueAt ?: it.remindAt ?: 0) }
+        val daysWith = (evBy.keys + tsBy.keys).filter { !it.isBefore(start) }.sorted()
+        Column(verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+            if (daysWith.isEmpty()) EmptyState("Nothing in the next 30 days", "Events from your calendars and tasks with a date show up here.")
+            daysWith.forEach { d ->
+                Text(Fmt.day(d) + if (Fmt.day(d) != Fmt.dayLong(d)) " · " + d.format(DateTimeFormatter.ofPattern("EEE d MMM")) else "", style = MaterialTheme.typography.titleSmall,
+                    color = if (d == start) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = Sp.m))
+                evBy[d].orEmpty().sortedBy { if (it.allDay) 0 else it.startAt }.forEach { e -> TimelineRow(if (e.allDay) "All day" else Fmt.time(e.startAt), MaterialTheme.colorScheme.primary) { EventRowView(e) { openEvent(e) } } }
+                tsBy[d].orEmpty().forEach { t -> TimelineRow(timeOf(t), MaterialTheme.colorScheme.tertiary) { CalendarTask(t) { nav.go(TaskRoute(t.id)) } } }
             }
         }
     }
 }
 
 @Composable
-private fun MonthHeader(ym: YearMonth, onPrev: () -> Unit, onNext: () -> Unit, onToday: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = Sp.xs), verticalAlignment = Alignment.CenterVertically) {
-        Text(ym.format(DateTimeFormatter.ofPattern(if (ym.year == LocalDate.now().year) "MMMM" else "MMMM yyyy")), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-        if (ym != YearMonth.now()) TextButton(onClick = onToday) { Text("Today") }
-        IconButton(onClick = onPrev) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Previous month") }
-        IconButton(onClick = onNext) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Next month") }
-    }
-}
-
-@Composable
 private fun MonthGrid(
     ym: YearMonth, start: LocalDate, selected: LocalDate, shade: Shade,
-    days: Map<String, DayEntry>, events: Map<LocalDate, List<EventRow>>, tasks: Map<LocalDate, List<TaskRow>>, convs: Map<LocalDate, List<app.echomind.data.Conversation>>,
+    days: Map<String, DayEntry>, events: Map<LocalDate, List<EventRow>>, tasks: Map<LocalDate, List<TaskRow>>, weekOnly: Boolean,
     onPick: (LocalDate) -> Unit, onSwipe: (Int) -> Unit,
 ) {
     val today = LocalDate.now()
     val sem = LocalSemantic.current
-    val base = MaterialTheme.colorScheme.surfaceContainerHigh
+    val base = MaterialTheme.colorScheme.surfaceContainerLow
     var drag by remember { mutableStateOf(0f) }
-    Column(Modifier.pointerInput(ym) {
+    Column(Modifier.pointerInput(ym, weekOnly) {
         detectHorizontalDragGestures(onDragEnd = { if (drag < -80) onSwipe(1) else if (drag > 80) onSwipe(-1); drag = 0f }) { _, d -> drag += d }
     }) {
         Row(Modifier.fillMaxWidth()) {
@@ -296,45 +353,38 @@ private fun MonthGrid(
             }
         }
         Spacer(Modifier.height(Sp.xs))
-        for (w in 0 until 6) {
-            val weekStart = start.plusDays(w * 7L)
-            if (w == 5 && YearMonth.from(weekStart) != ym) break
+        val weeks = if (weekOnly) listOf(selected.minusDays(((selected.dayOfWeek.value - start.dayOfWeek.value + 7) % 7).toLong())) else (0 until 6).map { start.plusDays(it * 7L) }.filter { YearMonth.from(it) == ym || YearMonth.from(it.plusDays(6)) == ym }
+        for (weekStart in weeks) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (i in 0 until 7) {
                     val d = weekStart.plusDays(i.toLong())
-                    val inMonth = YearMonth.from(d) == ym
+                    val inMonth = weekOnly || YearMonth.from(d) == ym
                     val entry = days[d.toString()]
                     val metrics = entry?.metrics?.let { runCatching { Js.json.decodeFromString(DayMetrics.serializer(), it) }.getOrNull() }
+                    // One soft colour for how the day went…
                     val tint: Color? = when (shade) {
-                        Shade.PRODUCTIVITY -> score(entry)?.let { lerp(base, sem.positive, 0.15f + 0.75f * it / 100f) }
-                        Shade.MOOD -> (entry?.mood ?: metrics?.mood)?.let { m -> if (m >= 0) lerp(base, sem.positive, 0.2f + 0.7f * m) else lerp(base, sem.recording, 0.2f + 0.7f * -m) }
-                        Shade.TALK -> metrics?.talkMinutes?.takeIf { it > 0 }?.let { lerp(base, MaterialTheme.colorScheme.primary, 0.15f + 0.7f * minOf(1f, it / 240f)) }
+                        Shade.PRODUCTIVITY -> score(entry)?.let { lerp(base, sem.positive, 0.12f + 0.5f * it / 100f) }
+                        Shade.MOOD -> (entry?.mood ?: metrics?.mood)?.let { m -> if (m >= 0) lerp(base, sem.positive, 0.12f + 0.5f * m) else lerp(base, sem.recording, 0.12f + 0.5f * -m) }
+                        Shade.TALK -> metrics?.talkMinutes?.takeIf { it > 0 }?.let { lerp(base, MaterialTheme.colorScheme.primary, 0.1f + 0.5f * minOf(1f, it / 240f)) }
                     }
+                    // …and at most two marks: something planned, and a diary written.
+                    val planned = events[d].orEmpty().isNotEmpty() || tasks[d].orEmpty().any { it.status == "open" }
+                    val diary = !entry?.diary.isNullOrBlank()
                     Column(
-                        Modifier.weight(1f).aspectRatio(0.82f).clip(MaterialTheme.shapes.small)
-                            .background(tint ?: if (inMonth) MaterialTheme.colorScheme.surfaceContainerLow else Color.Transparent)
+                        Modifier.weight(1f).aspectRatio(0.9f).clip(MaterialTheme.shapes.small)
+                            .background(if (inMonth) (tint ?: base) else Color.Transparent)
                             .then(if (d == selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.small) else Modifier)
-                            .clickable { onPick(d) }.padding(top = 4.dp),
+                            .clickable { onPick(d) }.padding(top = 5.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Box(
-                            Modifier.size(26.dp).clip(CircleShape).background(if (d == today) MaterialTheme.colorScheme.primary else Color.Transparent),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text("${d.dayOfMonth}", style = MaterialTheme.typography.labelLarge, fontWeight = if (d == today) FontWeight.Bold else FontWeight.Normal,
+                        Box(Modifier.size(28.dp).clip(CircleShape).background(if (d == today) MaterialTheme.colorScheme.primary else Color.Transparent), contentAlignment = Alignment.Center) {
+                            Text("${d.dayOfMonth}", style = MaterialTheme.typography.labelLarge, fontWeight = if (d == today || d == selected) FontWeight.Bold else FontWeight.Normal,
                                 color = when { d == today -> MaterialTheme.colorScheme.onPrimary; inMonth -> MaterialTheme.colorScheme.onSurface; else -> MaterialTheme.colorScheme.outlineVariant })
                         }
                         Spacer(Modifier.height(3.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                            if (events[d].orEmpty().isNotEmpty()) Dot(MaterialTheme.colorScheme.primary, 5)
-                            val ts = tasks[d].orEmpty()
-                            if (ts.any { it.status == "open" }) Dot(MaterialTheme.colorScheme.tertiary, 5)
-                            if (ts.any { it.status == "done" }) Dot(sem.positive, 5)
-                            if (convs[d].orEmpty().isNotEmpty()) Dot(MaterialTheme.colorScheme.outline, 5)
-                        }
-                        if (inMonth) events[d].orEmpty().firstOrNull()?.let {
-                            Text(it.title, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.padding(horizontal = 2.dp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (inMonth && planned) Dot(MaterialTheme.colorScheme.primary, 5)
+                            if (inMonth && diary) Box(Modifier.size(width = 8.dp, height = 3.dp).clip(CircleShape).background(MaterialTheme.colorScheme.tertiary))
                         }
                     }
                 }
@@ -342,7 +392,9 @@ private fun MonthGrid(
             Spacer(Modifier.height(4.dp))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(Sp.m), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = Sp.xs)) {
-            Legend(MaterialTheme.colorScheme.primary, "event"); Legend(MaterialTheme.colorScheme.tertiary, "due"); Legend(sem.positive, "done"); Legend(MaterialTheme.colorScheme.outline, "talked")
+            Legend(MaterialTheme.colorScheme.primary, "planned")
+            Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(width = 10.dp, height = 3.dp).clip(CircleShape).background(MaterialTheme.colorScheme.tertiary)); Spacer(Modifier.width(4.dp)); Text("diary", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            Text("colour: ${shade.label.lowercase()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
         }
     }
 }
@@ -352,56 +404,36 @@ private fun Legend(c: Color, label: String) = Row(verticalAlignment = Alignment.
     Dot(c, 6); Spacer(Modifier.width(4.dp)); Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
+/** The chosen day: its name with arrows (or swipe), its diary page and your rating. */
 @Composable
-private fun MonthStats(ym: YearMonth, days: Map<String, DayEntry>, events: Map<LocalDate, List<EventRow>>, shade: Shade) {
-    val inMonth = days.values.filter { YearMonth.from(LocalDate.parse(it.day)) == ym }
-    val scores = inMonth.mapNotNull { score(it) }
-    val good = scores.count { it >= 60 }
-    val evCount = events.filterKeys { YearMonth.from(it) == ym }.values.sumOf { it.size }
-    val talk = inMonth.sumOf { d -> d.metrics.let { runCatching { Js.json.decodeFromString(DayMetrics.serializer(), it) }.getOrNull()?.talkMinutes ?: 0 } }
-    Row(horizontalArrangement = Arrangement.spacedBy(Sp.s), modifier = Modifier.padding(vertical = Sp.xs)) {
-        app.echomind.ui.components.Tile("productive days", if (scores.isEmpty()) "–" else "$good", Modifier.weight(1f), hint = if (scores.isEmpty()) "no scores yet" else "avg ${scores.average().toInt()}")
-        app.echomind.ui.components.Tile("events", "$evCount", Modifier.weight(1f))
-        app.echomind.ui.components.Tile("hours talking", if (talk == 0) "–" else "${talk / 60}", Modifier.weight(1f), hint = if (shade == Shade.TALK) "shown" else null)
-    }
-}
-
-@Composable
-private fun DayHeader(d: LocalDate, e: DayEntry?) {
+private fun DayHeader(d: LocalDate, e: DayEntry?, onPrev: () -> Unit, onNext: () -> Unit) {
     val g = App.graph
     val nav = LocalNav.current
     val scope = rememberCoroutineScope()
     var writing by remember { mutableStateOf(false) }
-    Column(Modifier.padding(top = Sp.m)) {
-        Text(Fmt.dayLong(d), style = MaterialTheme.typography.titleLarge)
-        EchoCard(onClick = { nav.go(DayRoute(d.toString())) }, modifier = Modifier.padding(top = Sp.s)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val sc = score(e)
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(56.dp)) {
-                    CircularProgressIndicator(progress = { (sc ?: 0) / 100f }, modifier = Modifier.size(56.dp), color = LocalSemantic.current.positive,
-                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest, strokeWidth = 5.dp)
-                    Text(sc?.toString() ?: "–", style = MaterialTheme.typography.titleMedium)
-                }
-                Spacer(Modifier.width(Sp.l))
-                Column(Modifier.weight(1f)) {
-                    Text(e?.headline ?: if (d > LocalDate.now()) "Not here yet" else if (d == LocalDate.now()) "Today so far" else "No journal for this day", style = MaterialTheme.typography.titleMedium)
-                    (e?.productiveWhy ?: e?.diary?.take(140))?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis) }
-                }
+    var drag by remember { mutableStateOf(0f) }
+    Column(Modifier.padding(top = Sp.m).pointerInput(d) {
+        detectHorizontalDragGestures(onDragEnd = { if (drag < -80) onNext() else if (drag > 80) onPrev(); drag = 0f }) { _, x -> drag += x }
+    }) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(Fmt.day(d).let { if (it == "Today" || it == "Yesterday" || it == "Tomorrow") it else d.format(DateTimeFormatter.ofPattern("EEEE")) }, style = MaterialTheme.typography.titleLarge)
+                Text(d.format(DateTimeFormatter.ofPattern("d MMMM yyyy")), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (d <= LocalDate.now()) {
-                Spacer(Modifier.height(Sp.s))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Your rating", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                    (1..5).forEach { n ->
-                        IconButton(onClick = { scope.launch { val cur = g.db.days().get(d.toString()) ?: DayEntry(day = d.toString()); g.db.days().upsert(cur.copy(rating = if (cur.rating == n) null else n)) } }, modifier = Modifier.size(36.dp)) {
-                            Icon(if ((e?.rating ?: 0) >= n) Icons.Rounded.Star else Icons.Rounded.StarOutline, "Rate $n", tint = if ((e?.rating ?: 0) >= n) LocalSemantic.current.warning else MaterialTheme.colorScheme.outline)
-                        }
-                    }
-                }
-                if (e?.generatedAt == null && g.ai.ready(app.echomind.core.Feature.JOURNAL)) {
-                    OutlinedButton(enabled = !writing, onClick = { writing = true; scope.launch { g.journal.write(d, force = true); writing = false } }) {
-                        Text(if (writing) "Writing…" else "Write this day's journal")
-                    }
+            IconButton(onClick = onPrev) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Previous day") }
+            IconButton(onClick = onNext) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Next day") }
+        }
+        val diary = e?.diary?.takeIf { it.isNotBlank() }
+        if (diary != null) app.echomind.ui.components.DiaryPage(diary, e.headline, null, maxLines = 4, modifier = Modifier.padding(top = Sp.s), onClick = { nav.go(app.echomind.ui.DayReviewRoute(d.toString())) })
+        if (d <= LocalDate.now()) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+            TextButton(onClick = { nav.go(app.echomind.ui.DayReviewRoute(d.toString())) }) { Text("Day review") }
+            if (diary == null && e?.generatedAt == null && g.ai.ready(app.echomind.core.Feature.JOURNAL)) {
+                TextButton(enabled = !writing, onClick = { writing = true; scope.launch { g.journal.write(d, force = true); writing = false } }) { Text(if (writing) "Writing…" else "Write the diary") }
+            }
+            Spacer(Modifier.weight(1f))
+            (1..5).forEach { n ->
+                IconButton(onClick = { scope.launch { val cur = g.db.days().get(d.toString()) ?: DayEntry(day = d.toString()); g.db.days().upsert(cur.copy(rating = if (cur.rating == n) null else n)) } }, modifier = Modifier.size(32.dp)) {
+                    Icon(if ((e?.rating ?: 0) >= n) Icons.Rounded.Star else Icons.Rounded.StarOutline, "Rate the day $n of 5", Modifier.size(20.dp), tint = if ((e?.rating ?: 0) >= n) LocalSemantic.current.warning else MaterialTheme.colorScheme.outline)
                 }
             }
         }
