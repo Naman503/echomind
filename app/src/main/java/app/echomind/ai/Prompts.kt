@@ -18,7 +18,7 @@ object Prompts {
     fun time(at: Long): String = Instant.ofEpochMilli(at).atZone(zone).format(timeFmt)
     fun iso(at: Long): String = Instant.ofEpochMilli(at).atZone(zone).format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"))
 
-    private fun languageRules(lang: String) = """Language:
+    fun languageRules(lang: String) = """Language:
 - The transcript may be English, Hindi (Devanagari or Latin letters), Hinglish, or any language, switching mid-sentence. Understand it as it is.
 - Write every title, summary, point, fact, task and note in $lang.
 - "quote" fields are the exception: copy the transcript's exact words in their original language and script."""
@@ -105,7 +105,7 @@ Also write a one-line summary for each listed person (who they are to the owner 
 
     fun askSystem(lang: String) = """You are the owner's second brain. Answer their question using ONLY the numbered excerpts from their own recorded conversations, notes and memory.
 Rules:
-1. Cite every claim with the excerpt number in square brackets, like [2] or [1][4]. Calendar, people and plan lists, when given, are cited as [cal], [people] and [plan].
+1. Cite every claim with the excerpt number in square brackets, like [2] or [1][4]. Calendar, people, plan and day-review lists, when given, are cited as [cal], [people], [plan] and [review].
 2. If the excerpts do not contain the answer, say plainly that you could not find it, and mention what came closest.
 3. Mention when something was said ("on Tuesday around 4 pm") when it helps.
 4. Never invent. Never speculate about what someone meant or felt.

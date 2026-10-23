@@ -59,6 +59,11 @@ import kotlinx.serialization.Serializable
 @Serializable data object CalendarSettingsRoute : Route
 @Serializable data object TasksSettingsRoute : Route
 @Serializable data class VoicesRoute(val lang: String = "en") : Route
+@Serializable data object InsightsRoute : Route
+@Serializable data class DayReviewRoute(val day: String) : Route
+@Serializable data object CoachRoute : Route
+@Serializable data object TopicsRoute : Route
+@Serializable data object ReviewSettingsRoute : Route
 
 val tabs: List<Route> = listOf(TodayRoute, CalendarRoute, AskRoute(), TasksRoute, LibraryRoute)
 fun Route.isTab() = this == TodayRoute || this == CalendarRoute || this is AskRoute && threadId == null && question == null || this == TasksRoute || this == LibraryRoute

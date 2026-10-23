@@ -57,7 +57,7 @@ class Memory(private val db: Db, private val ai: Ai, private val settings: Setti
     /** Finds the entity a name refers to (by name or any alias, spelling-tolerant), or creates it. */
     suspend fun link(kind: String, name: String, who: String?, at: Long): EntityRow? {
         val clean = name.trim().trim('.', ',')
-        if (clean.length < 2 || clean.equals("me", true) || clean.equals("speaker", true)) return null
+        if (clean.length < 2 || isJunkName(clean)) return null
         val k = key(clean)
         val all = db.memory().allEntities()
         val found = all.firstOrNull { e ->
@@ -264,5 +264,14 @@ class Memory(private val db: Db, private val ai: Ai, private val settings: Setti
     companion object {
         private const val TAG = "EchoMemory"
         const val PROFILE = "profile"
+
+        private val junk = setOf("me", "speaker", "owner", "user", "the owner", "the user", "unknown", "someone", "everyone", "current date/time", "date", "time", "date/time", "transcript", "assistant", "echomind", "song")
+        private val label = Regex("(?i)(s|speaker)\\s?\\d+|l\\d+")
+
+        /** Speaker labels ("S13"), the owner, and prompt words are never people or topics. */
+        fun isJunkName(name: String): Boolean {
+            val n = name.trim().lowercase()
+            return n in junk || label.matches(n) || "date/time" in n || n.startsWith("current date")
+        }
     }
 }

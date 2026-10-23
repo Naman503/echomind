@@ -84,6 +84,8 @@ fun ConversationScreen(id: Long, lineId: Long?) {
     val c by remember(id) { g.db.conversations().observe(id) }.collectAsStateWithLifecycle(null)
     val lines by remember(id) { g.db.utterances().observeConversation(id) }.collectAsStateWithLifecycle(emptyList())
     val tasks by remember(id) { g.db.tasks().observeForConversation(id) }.collectAsStateWithLifecycle(emptyList())
+    val analysisRow by remember(id) { g.db.analyses().observe("conv", id.toString()) }.collectAsStateWithLifecycle(null)
+    val analysis = analysisRow?.let { g.analyzer.decode(it.json) }
     val revisions by produceState(emptyList<Pair<Long, String>>(), id, c?.processedAt) {
         value = g.db.notes().revisionsFrom(id).mapNotNull { r -> g.db.notes().get(r.noteId)?.let { it.id to it.title } }.distinct()
     }
@@ -159,6 +161,7 @@ fun ConversationScreen(id: Long, lineId: Long?) {
                         SectionHeader("People")
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(Sp.s)) { people.forEach { AssistChip(onClick = {}, label = { Text(it) }) } }
                     }
+                    conversationInsights(conv, analysis, settings) { line -> nav.go(app.echomind.ui.ConversationRoute(conv.id, line)) }
                     if (tasks.isNotEmpty()) {
                         item { SectionHeader("Tasks from this conversation") }
                         tasks.forEach { t ->

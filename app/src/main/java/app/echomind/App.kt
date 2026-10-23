@@ -15,6 +15,8 @@ import app.echomind.ai.GeminiLlm
 import app.echomind.ai.LocalLlm
 import app.echomind.ai.OpenAiLlm
 import app.echomind.brain.Actions
+import app.echomind.brain.Analyzer
+import app.echomind.brain.DayReview
 import app.echomind.brain.Agenda
 import app.echomind.brain.Ask
 import app.echomind.brain.Assistant
@@ -96,7 +98,7 @@ class Graph(val app: Application) {
         "gemini_stt" to GeminiSpeech(cloud, secrets, { Feature.TRANSCRIBE }) { settings.value.geminiModel },
     )
 
-    val localLlm = LocalLlm(app, models, scope, { settings.value.localModel }, { settings.value.localBackend }, { governor.threads() })
+    val localLlm = LocalLlm(app, models, scope, { settings.value.localModel }, { settings.value.localBackend }, { governor.threads() }, { settings.value.localContext })
     val ai = Ai(
         settings, secrets, localLlm,
         GeminiLlm(cloud, secrets) { settings.value.geminiModel },
@@ -107,7 +109,8 @@ class Graph(val app: Application) {
     val tasks = Tasks(db, settings, reminders)
     val memory = Memory(db, ai, settings, embedder)
     val notes = Notes(db, ai, settings, embedder)
-    val enricher = Enricher(db, ai, settings, memory, notes, tasks, embedder, { nudges }, { people }, { agenda }, voicePrints, voice)
+    val analyzer = Analyzer(db, ai, settings)
+    val enricher = Enricher(db, ai, settings, memory, notes, tasks, embedder, { nudges }, { people }, { agenda }, voicePrints, voice, analyzer)
     val journal = Journal(db, ai, settings, memory)
     val ask = Ask(db, ai, settings, embedder, { agenda }, { people }, { web }) { plans }
     val sessionizer = Sessionizer(db, settings)
@@ -115,7 +118,8 @@ class Graph(val app: Application) {
     val playback = Playback(db, recordings, scope)
     val transcriber = Transcriber(db, settings, governor, speechEngines, androidSpeech, sherpa, voice, recordings) { sounds }
     val calls = CallImporter(app, db, settings)
-    val brain: Brain = Brain(app, db, settings, governor, transcriber, sessionizer, enricher, journal, tasks, notes, calls, ai, notifier) {
+    val dayReview = DayReview(db, ai, settings, analyzer, enricher, journal)
+    val brain: Brain = Brain(app, db, settings, governor, transcriber, sessionizer, enricher, journal, tasks, notes, calls, ai, notifier, dayReview) {
         // Nightly extras after the journal and memory review: file new notes, refresh people's pages.
         if (settings.value.organizeNightly) runCatching { organizer.tidyNew() }
         if (settings.value.storiesNightly) runCatching { people.refreshStories(if (ai.llm(Feature.MEMORY).local) 3 else 12) }
@@ -150,6 +154,7 @@ class App : Application() {
             g.checkIns.schedule()
             reindexSearch(g)
             runCatching { g.tasks.acceptWaiting() }
+            runCatching { cleanJunk(g) }
             logExitReasons()
         }
         app.echomind.surfaces.WidgetUpdater.start(this, g.scope)
@@ -160,6 +165,15 @@ class App : Application() {
     }
 
     /** Search keys follow the transliteration: when it improves, older lines are re-keyed once. */
+    /** Once: drops speaker labels and prompt words that older readings saved as people or facts, and placeholder due dates. */
+    private suspend fun cleanJunk(g: Graph) {
+        if (g.db.memory().kv("junkClean") == "1") return
+        for (e in g.db.memory().allEntities()) if (app.echomind.brain.Memory.isJunkName(e.name)) g.db.memory().deleteEntity(e.id)
+        for (f in g.db.memory().activeFacts()) if (app.echomind.brain.Memory.isJunkName(f.subject)) g.db.memory().deleteFact(f.id)
+        for (t in g.db.tasks().live()) if (t.dueText?.trim()?.lowercase()?.trimEnd('.') in app.echomind.brain.Tasks.PLACEHOLDERS) g.db.tasks().update(t.copy(dueText = null))
+        g.db.memory().putKv(app.echomind.data.Kv("junkClean", "1", System.currentTimeMillis()))
+    }
+
     private suspend fun reindexSearch(g: Graph) {
         if (g.db.memory().kv("searchKeys") == SEARCH_KEYS) return
         var after = 0L

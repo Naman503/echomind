@@ -325,3 +325,15 @@ interface EgressDao {
     @Query("SELECT COALESCE(SUM(bytes), 0) FROM egress WHERE at >= :from") fun bytesSince(from: Long): Flow<Long>
     @Query("DELETE FROM egress") suspend fun clear()
 }
+
+@Dao
+interface AnalysisDao {
+    @Upsert suspend fun upsert(a: Analysis)
+    @Query("SELECT * FROM analyses WHERE kind = :kind AND ref = :ref") suspend fun get(kind: String, ref: String): Analysis?
+    @Query("SELECT * FROM analyses WHERE kind = :kind AND ref = :ref") fun observe(kind: String, ref: String): Flow<Analysis?>
+    @Query("SELECT * FROM analyses WHERE kind = :kind AND ref IN (:refs)") suspend fun many(kind: String, refs: List<String>): List<Analysis>
+    @Query("SELECT * FROM analyses WHERE kind = :kind AND ref IN (:refs)") fun observeMany(kind: String, refs: List<String>): Flow<List<Analysis>>
+    /** Day rows in a date range (refs are yyyy-MM-dd, so they sort as text). */
+    @Query("SELECT * FROM analyses WHERE kind = 'day' AND ref >= :from AND ref <= :to ORDER BY ref") fun observeDays(from: String, to: String): Flow<List<Analysis>>
+    @Query("DELETE FROM analyses WHERE kind = :kind AND ref = :ref") suspend fun delete(kind: String, ref: String)
+}

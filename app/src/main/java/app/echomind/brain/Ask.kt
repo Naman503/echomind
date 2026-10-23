@@ -192,6 +192,26 @@ class Ask(private val db: Db, private val ai: Ai, private val settings: Settings
     }
 
     /** Answers in a thread (a new one when [threadId] is null), streaming. */
+    /** The night reviews of recent days, for questions about the day, topics, people or speaking. */
+    private suspend fun reviews(days: Int): String = buildString {
+        val today = java.time.LocalDate.now()
+        for (back in 0 until days) {
+            val d = today.minusDays(back.toLong())
+            val r = db.analyses().get("day", d.toString())?.let { runCatching { app.echomind.util.Js.json.decodeFromString(DayReviewData.serializer(), it.json) }.getOrNull() } ?: continue
+            val entry = db.days().get(d.toString())
+            if (isEmpty()) append("\nDay reviews (can be cited as [review]):\n")
+            append("- ${Prompts.day(d.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli())}: ${entry?.headline.orEmpty()}\n")
+            if (r.people.isNotEmpty()) append("  People: ${r.people.take(10).joinToString(", ") { it.name }}${if (r.unnamedVoices > 0) " (+${r.unnamedVoices} unnamed voices)" else ""}\n")
+            if (r.topics.isNotEmpty()) append("  Topics: ${r.topics.take(10).joinToString("; ") { it.name + if (it.detail.isNotBlank()) " — " + it.detail.take(100) else "" }}\n")
+            if (r.lessons.isNotEmpty()) append("  Lessons: ${r.lessons.joinToString("; ") { it.title }}\n")
+            append("  Speaking: ${r.speech.words} words, ${r.speech.wpm} wpm, ${"%.1f".format(r.speech.fillerPer100)} fillers/100 words, ${r.coachPoints} coach points\n")
+            val convs = db.conversations().inRangeOnce(d.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(), d.plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli())
+            val fixes = db.analyses().many("conv", convs.map { it.id.toString() }).mapNotNull { runCatching { app.echomind.util.Js.json.decodeFromString(ConvAnalysis.serializer(), it.json) }.getOrNull()?.coach }
+                .flatMap { it.englishFixes }.take(5)
+            if (fixes.isNotEmpty()) append("  English fixes: ${fixes.joinToString("; ") { "\"${it.said.take(80)}\" → \"${it.better.take(80)}\"" }}\n")
+        }
+    }
+
     fun answer(threadId: Long?, question: String, useWeb: Boolean = false): Flow<Event> = flow {
         val now = System.currentTimeMillis()
         val thread = threadId?.let { db.chat().thread(it) } ?: ChatThread(title = question.take(60), createdAt = now, updatedAt = now).let { it.copy(id = db.chat().insertThread(it)) }
@@ -236,6 +256,9 @@ class Ask(private val db: Db, private val ai: Ai, private val settings: Settings
                 for (k in listOf("day", "week", "month")) plans().get(k)?.let { p ->
                     append("\n${if (k == "day") "Today's" else "This $k's"} plan (can be cited as [plan]): ${p.focus}. Priorities: ${p.priorities.joinToString("; ") { it.title }}. Might be missing: ${p.missing.joinToString("; ") { it.title }}\n")
                 }
+            }
+            if (Regex("\\b(day|yesterday|today|week|topic|discuss|talk|english|grammar|mistake|wrong|nervous|coach|speak|said|people|met|lesson|learn|improve|kal|aaj)", RegexOption.IGNORE_CASE).containsMatchIn(question)) {
+                append(reviews(if (Regex("\\bweek\\b", RegexOption.IGNORE_CASE).containsMatchIn(question)) 7 else 3))
             }
             if (named.isNotEmpty()) {
                 append("\nPeople mentioned (can be cited as [people]):\n")

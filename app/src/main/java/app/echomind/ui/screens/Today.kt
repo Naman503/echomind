@@ -67,6 +67,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -138,7 +140,7 @@ fun TodayScreen() {
         // One column: a card with nothing to show adds no gap.
         item(key = "top") {
             Column(verticalArrangement = Arrangement.spacedBy(Sp.m)) {
-                QuickActions(); ListeningCard(); app.echomind.ui.screens.StatusCard(); DayGlance(); SetupHealth(); WorkCard(); ForYou()
+                QuickActions(); ListeningCard(); app.echomind.ui.screens.StatusCard(); DayGlance(); DaySummaryCard(); SetupHealth(); WorkCard(); ForYou()
             }
         }
         if (suggested > 0) item(key = "review") {
@@ -391,7 +393,7 @@ private fun WorkCard() {
             when (brain.phase) {
                 Brain.Phase.TRANSCRIBING -> "Transcribing${if (t.pieces > 0) " · piece ${t.piece} of ${t.pieces}" else ""}"
                 Brain.Phase.THINKING -> "Making notes · ${brain.detail}"
-                Brain.Phase.JOURNAL -> brain.detail
+                Brain.Phase.JOURNAL, Brain.Phase.REVIEW -> brain.detail
                 else -> if (!gov.allowed) "Paused for now" else "Catching up"
             },
             style = MaterialTheme.typography.titleSmall,
@@ -550,6 +552,43 @@ private fun TodayTasks() {
 }
 
 /** Today's focus and numbers, opening the plan and the dashboard. */
+/** The day in words: the latest journal and night review, one tap from the full review and all insights. */
+@Composable
+private fun DaySummaryCard() {
+    val g = App.graph
+    val nav = LocalNav.current
+    val today = java.time.LocalDate.now()
+    val days by remember { g.db.days().observeRecent(3) }.collectAsStateWithLifecycle(emptyList())
+    val reviews by remember { g.db.analyses().observeDays(today.minusDays(2).toString(), today.toString()) }.collectAsStateWithLifecycle(emptyList())
+    val progress by g.dayReview.progress.collectAsStateWithLifecycle()
+    val entry = days.firstOrNull { !it.headline.isNullOrBlank() || !it.diary.isNullOrBlank() }
+    val day = entry?.day ?: reviews.lastOrNull()?.ref ?: today.minusDays(1).toString()
+    val review = reviews.firstOrNull { it.ref == day }?.let { g.dayReview.decode(it.json) }
+    EchoCard(onClick = { nav.go(app.echomind.ui.DayReviewRoute(day)) }) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(if (entry != null) Fmt.day(java.time.LocalDate.parse(day)) + " · your day" else "Your day review", style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+            Text("All insights", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clip(CircleShape).clickable { nav.go(app.echomind.ui.InsightsRoute) }.padding(horizontal = Sp.s, vertical = 2.dp))
+        }
+        Text(entry?.headline?.takeIf { it.isNotBlank() } ?: "Tonight EchoMind reads your whole day again and writes it up", style = MaterialTheme.typography.titleMedium)
+        entry?.diary?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 4, overflow = TextOverflow.Ellipsis) }
+        if (review != null) Text(
+            listOfNotNull(
+                "${review.people.count { it.named }} people",
+                "${review.topics.size} topics",
+                review.coachPoints.takeIf { it > 0 }?.let { "$it coaching points" },
+                review.lessons.firstOrNull()?.title?.let { "Lesson: $it" },
+            ).joinToString(" · "),
+            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(top = 4.dp), maxLines = 2, overflow = TextOverflow.Ellipsis,
+        )
+        progress?.let { p ->
+            Text("Night review: ${p.label}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            androidx.compose.material3.LinearProgressIndicator(progress = { p.done.toFloat() / p.total.coerceAtLeast(1) }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+        }
+    }
+}
+
 @Composable
 private fun DayGlance() {
     val g = App.graph

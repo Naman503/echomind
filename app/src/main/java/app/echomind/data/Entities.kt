@@ -472,3 +472,18 @@ data class Nudge(
 /** Small key/value store for things like the core memory profile. */
 @Entity(tableName = "kv")
 data class Kv(@PrimaryKey val key: String, val value: String, val updatedAt: Long)
+
+/**
+ * Results of the careful pipeline, as JSON: per conversation ("conv", id) the
+ * topics and speaking-coach notes; per day ("day", yyyy-MM-dd) the day review.
+ */
+@Entity(tableName = "analyses", primaryKeys = ["kind", "ref"])
+data class Analysis(
+    val kind: String,
+    val ref: String,
+    val json: String,
+    /** Pipeline version that wrote it; older rows are redone at night. */
+    val version: Int,
+    val at: Long,
+    val provider: String? = null,
+)

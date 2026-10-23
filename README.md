@@ -37,6 +37,8 @@ Cloud "AI recorders" solve that by uploading everything you hear. EchoMind does 
 | | |
 |---|---|
 | 🎙️ **Always-on capture** | Listens in the background, cuts silence, and transcribes with on-device speech models |
+| 🌙 **Night review** | Every night it rereads your whole day, carefully: who you talked with, what about, what was decided, lessons, and a journal |
+| 🗣️ **Speaking coach** | English corrections, better ways to say things, nervous moments and slips — each linked to the exact line |
 | 🧠 **Notes, tasks and a journal** | Adds notes and tasks from your conversations automatically, with smart reminders, and keeps a day journal with a productivity rating |
 | 👥 **People memory** | Remembers names, roles, how you met, and who said what. Can recognise people by their voice. |
 | 📅 **Calendar and plans** | A day/week/month calendar with your device events, event prep, and plans built from your memory |
@@ -86,6 +88,16 @@ Cloud "AI recorders" solve that by uploading everything you hear. EchoMind does 
 - When you sing, EchoMind keeps that part of the recording as a separate clip. Song lyrics never become notes or tasks.
 - **Song naming (optional, online):** it guesses on the phone, checks candidates against the iTunes catalogue and LRCLIB lyrics, and picks a song only when the lyrics clearly match. Then it adds the album, year, poster and links.
 - Re-scan old recordings, rename songs yourself, or turn the feature off entirely.
+
+### Night review and speaking coach
+- **Night review:** from the hour you choose (11 PM by default) until 7 AM, EchoMind reads the day again, slowly and one step at a time, under the same heat and battery rules. Days it missed are caught up first. You can also tap **Review now**.
+- **Careful reading on the phone:** each conversation is read in pieces that fit the on-device model, with one focused job per pass: what it was about, then tasks and plans, then people and facts. The model's context is 8K tokens by default (it falls back to 4K if the model can't take more).
+- **Day review page:** journal, people you talked with (and for how long), topics, decisions, scores for confidence and clarity, lessons and patterns, follow-ups, and every conversation.
+- **Speaking coach:** English grammar and word-choice fixes, clearer or more confident ways to say things, moments you sounded nervous (with a tip), and things you said that were wrong. Each point opens the line it came from. Trends over two weeks show pace, filler words, confidence and your most common mistakes.
+- **Exact measures:** words per minute, filler words (English and Hindi), restarts, talk time per person and the Hindi/English mix are counted directly, without AI.
+- **Insights hub:** one page for the day review, coach, topics, people, journal, dashboard, plans, memory, check-ins and songs.
+- **Fully adjustable:** night window, charging-only, rereading older conversations, which coaching kinds to show, strictness, points per conversation, hidden sections, and the model's context size.
+- **Ask** uses the reviews too: "what did I discuss yesterday?", "what English mistakes do I keep making?"
 
 ### Insights and developer tools
 - **Dashboard:** how much you talked versus others, per person, across the day.

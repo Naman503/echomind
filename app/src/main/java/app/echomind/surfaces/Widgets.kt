@@ -163,7 +163,7 @@ class ListenWidget : GlanceAppWidget() {
             !gov.allowed && queue > 0 -> gov.reason
             b.phase == app.echomind.brain.Brain.Phase.TRANSCRIBING -> "Transcribing${if (t.pieces > 0) " ${t.piece}/${t.pieces}" else ""}"
             b.phase == app.echomind.brain.Brain.Phase.THINKING -> "AI: ${g.ai.running.value?.purpose ?: b.detail}"
-            b.phase == app.echomind.brain.Brain.Phase.JOURNAL -> b.detail
+            b.phase == app.echomind.brain.Brain.Phase.JOURNAL || b.phase == app.echomind.brain.Brain.Phase.REVIEW -> b.detail
             queue > 0 -> "$queue waiting to process"
             else -> "All caught up"
         }

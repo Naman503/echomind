@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Edit
@@ -102,6 +103,8 @@ fun LibraryScreen() {
     val songs by remember { g.db.sounds().observeSongs() }.collectAsStateWithLifecycle(emptyList())
     val live = notes.filter { !it.archived }
     val entries = listOf(
+        Triple(Icons.Rounded.AutoAwesome, "Insights", "Day review, coach, topics") to { nav.go(app.echomind.ui.InsightsRoute) },
+        Triple(Icons.Rounded.RecordVoiceOver, "Speaking coach", "English, nerves, better ways") to { nav.go(app.echomind.ui.CoachRoute) },
         Triple(Icons.Rounded.Insights, "Dashboard", "Your day in numbers") to { nav.go(app.echomind.ui.DashboardRoute) },
         Triple(Icons.Rounded.Flag, "Plan", "Today · week · month") to { nav.go(app.echomind.ui.PlanRoute) },
         Triple(Icons.Rounded.StickyNote2, "Notes", "${live.size} note${if (live.size == 1) "" else "s"}") to { nav.go(NotesRoute) },
@@ -288,6 +291,12 @@ fun DayScreen(day: String) {
         }
         val e = d
         LazyColumn(contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+            item {
+                EchoCard(onClick = { nav.go(app.echomind.ui.DayReviewRoute(day)) }, color = MaterialTheme.colorScheme.primaryContainer) {
+                    Text("Open the full day review", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("People, topics, speaking coach, lessons and follow-ups", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+            }
             item {
                 Text(e?.headline ?: "Not written yet", style = MaterialTheme.typography.headlineSmall)
                 val sc = e?.rating?.let { it * 20 } ?: e?.productivity

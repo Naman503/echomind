@@ -330,7 +330,7 @@ fun StatusCard(big: Boolean = false) {
         !gov.allowed && (pending > 0 || ready > 0) -> Level.CAUTION to gov.reason.ifBlank { "Waiting" }
         brain.phase == Brain.Phase.TRANSCRIBING -> Level.OK to "Transcribing ${if (tr.source == "call") "a call" else "speech"}${if (tr.pieces > 0) " · ${tr.piece}/${tr.pieces}" else ""}"
         brain.phase == Brain.Phase.THINKING || ai != null -> Level.OK to "AI: ${ai?.purpose ?: brain.detail}"
-        brain.phase == Brain.Phase.JOURNAL -> Level.OK to brain.detail
+        brain.phase == Brain.Phase.JOURNAL || brain.phase == Brain.Phase.REVIEW -> Level.OK to brain.detail
         pending > 0 || ready > 0 -> Level.CAUTION to "Waiting: $pending recordings, $ready conversations"
         else -> Level.SAFE to "All caught up"
     }

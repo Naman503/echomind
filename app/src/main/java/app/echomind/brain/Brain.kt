@@ -53,9 +53,10 @@ class Brain(
     private val calls: CallImporter,
     private val ai: Ai,
     private val notifier: Notifier,
+    private val dayReview: DayReview,
     private val nightlyExtras: suspend () -> Unit,
 ) {
-    enum class Phase { IDLE, TRANSCRIBING, THINKING, JOURNAL, WAITING }
+    enum class Phase { IDLE, TRANSCRIBING, THINKING, JOURNAL, REVIEW, WAITING }
 
     data class State(
         val phase: Phase = Phase.IDLE,
@@ -78,6 +79,11 @@ class Brain(
 
     /** "Process now": runs the AI regardless of the session mode. */
     fun processNow() { forceAi = true; poke() }
+
+    @Volatile private var reviewDay: LocalDate? = null
+
+    /** "Review now": the night review for [day], straight away (still under the heat and battery rules). */
+    fun reviewNow(day: LocalDate) { reviewDay = day; forceAi = true; poke() }
 
     /**
      * Runs until [keepGoing] returns false. Only one loop runs at a time: with
@@ -110,7 +116,9 @@ class Brain(
 
     /** Work that can actually run now: due audio, or conversations the AI is set up and scheduled to read. */
     suspend fun hasWork(): Boolean =
-        db.audio().dueCount() > 0 || (ai.ready(Feature.NOTES) && aiDue() && db.conversations().readyCount().first() > 0)
+        db.audio().dueCount() > 0 || (ai.ready(Feature.NOTES) && aiDue() && db.conversations().readyCount().first() > 0) || reviewDay != null ||
+            (settings.value.nightReview && LocalTime.now().let { it.hour * 60 + it.minute }.let { it >= settings.value.nightReviewAt || it < 7 * 60 } &&
+                (1..3).any { val d = LocalDate.now().minusDays(it.toLong()); dayReview.hasConversations(d) && !dayReview.isComplete(d) })
 
     private suspend fun cycle(): Boolean {
         // 1. Audio first.
@@ -159,8 +167,46 @@ class Brain(
             forceAi = false
         }
 
-        // 3. End of day.
-        return endOfDay()
+        // 3. End of day, then the careful night review.
+        if (endOfDay()) return true
+        return nightReview()
+    }
+
+    /**
+     * The slow, careful pass: from the chosen hour until 7 AM (or any time you ask for it),
+     * after all conversations are read. One step per cycle.
+     */
+    private suspend fun nightReview(): Boolean {
+        val s = settings.value
+        if (!ai.ready(Feature.JOURNAL) || !ai.ready(Feature.NOTES)) return false
+        if (db.audio().dueCount() > 0 || db.conversations().readyCount().first() > 0) return false
+        reviewDay?.let { d ->
+            governor.awaitTurn()
+            _state.value = _state.value.copy(phase = Phase.REVIEW, detail = "Reviewing ${Prompts.day(journal.bounds(d).first)}")
+            val began = System.currentTimeMillis()
+            val more = runCatching { dayReview.step(d) }.onFailure { Log.w(TAG, "review step failed", it) }.getOrDefault(false)
+            governor.workDone(System.currentTimeMillis() - began)
+            if (!more) reviewDay = null
+            return true
+        }
+        if (!s.nightReview) return false
+        val minute = LocalTime.now().let { it.hour * 60 + it.minute }
+        val inNight = minute >= s.nightReviewAt || minute < 7 * 60
+        if (!inNight) return false
+        if (s.nightNeedsCharging && !governor.read(record = false).charging) return false
+        val today = LocalDate.now()
+        // Earlier days first (oldest unfinished), then today once its evening has come.
+        val days = (3 downTo 1).map { today.minusDays(it.toLong()) } + if (minute >= s.nightReviewAt) listOf(today) else emptyList()
+        for (d in days) {
+            if (!dayReview.hasConversations(d) || dayReview.isComplete(d)) continue
+            governor.awaitTurn()
+            _state.value = _state.value.copy(phase = Phase.REVIEW, detail = "Reviewing ${Prompts.day(journal.bounds(d).first)}")
+            val began = System.currentTimeMillis()
+            val did = runCatching { dayReview.step(d) }.onFailure { Log.w(TAG, "review step failed", it) }.getOrDefault(false)
+            governor.workDone(System.currentTimeMillis() - began)
+            if (did) return true
+        }
+        return false
     }
 
     /** Whether the session mode wants the AI to run now. */

@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.QuestionAnswer
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.MusicNote
@@ -163,6 +164,7 @@ fun SettingsScreen() {
         item { SettingRow("Web search", when (s.webSearch) { "off" -> "Off"; "auto" -> "Automatic"; else -> "Asks before searching" } + " · ${App.graph.web.providerLabel()}", Icons.Rounded.Public, onClick = { nav.go(app.echomind.ui.WebSettingsRoute) }) }
         item { SettingRow("On-device models", "Download speech, AI, search, sound and voice models", Icons.Rounded.Download, onClick = { nav.go(ModelsRoute) }) }
         item { SectionHeader("Organising") }
+        item { SettingRow("Night review & coach", if (s.nightReview) "Every night after ${s.nightReviewAt / 60}:${"%02d".format(s.nightReviewAt % 60)} · coach ${s.coachStrictness}" else "Off", Icons.Rounded.Bedtime, onClick = { nav.go(app.echomind.ui.ReviewSettingsRoute) }) }
         item { SettingRow("Tasks & reminders", if (s.undatedToToday) "New tasks go on Today · follow-ups ${if (s.taskFollowUps) "on" else "off"}" else "Follow-ups ${if (s.taskFollowUps) "on" else "off"}", Icons.Rounded.CheckCircle, onClick = { nav.go(app.echomind.ui.TasksSettingsRoute) }) }
         item { SettingRow("Calendar", if (s.showPhoneCalendar) "Phone calendars shown · heads-up ${if (s.eventPrep) "on" else "off"}" else "EchoMind events only", Icons.Rounded.CalendarMonth, onClick = { nav.go(app.echomind.ui.CalendarSettingsRoute) }) }
         item { SettingRow("People & names", "Recognise voices · names to remember · people pages", Icons.Rounded.Groups, onClick = { nav.go(app.echomind.ui.PeopleSettingsRoute) }) }
@@ -719,6 +721,7 @@ fun ProcessingScreen() {
                     app.echomind.brain.Brain.Phase.TRANSCRIBING -> "Transcribing"
                     app.echomind.brain.Brain.Phase.THINKING -> "Making notes"
                     app.echomind.brain.Brain.Phase.JOURNAL -> "Writing the journal"
+                    app.echomind.brain.Brain.Phase.REVIEW -> "Night review: ${brain.detail}"
                     app.echomind.brain.Brain.Phase.WAITING -> "Waiting"
                     else -> "Idle"
                 }, style = MaterialTheme.typography.titleMedium)

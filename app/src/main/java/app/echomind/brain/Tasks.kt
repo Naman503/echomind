@@ -65,7 +65,7 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
                 owner = f.owner,
                 status = if (review) "suggested" else "open",
                 dueAt = f.due?.at,
-                dueText = f.dueText?.takeIf { it.isNotBlank() },
+                dueText = f.dueText?.trim()?.takeIf { it.isNotBlank() && it.lowercase().trimEnd('.') !in PLACEHOLDERS },
                 remindAt = remindAt,
                 confidence = f.confidence,
                 conversationId = conversationId.takeIf { it > 0 },
@@ -218,6 +218,8 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
     }
 
     companion object {
+        /** What a small model writes when there is no value. */
+        val PLACEHOLDERS = setOf("not specified", "none", "n/a", "na", "unknown", "not mentioned", "empty", "null", "-", "no date", "not said")
         private val zone get() = java.time.ZoneId.systemDefault()
 
         /**

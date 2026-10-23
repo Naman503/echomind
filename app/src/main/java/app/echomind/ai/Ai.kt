@@ -70,7 +70,7 @@ class Ai(
      * fast — never; balanced — some, for judgement-heavy jobs; best — deep for those, some for the rest.
      */
     fun resolve(req: LlmRequest): LlmRequest {
-        val think = when (settings.value.aiQuality) {
+        val think = if (req.noThink) Think.OFF else when (settings.value.aiQuality) {
             "fast" -> Think.OFF
             "best" -> if (req.deep) Think.DEEP else Think.SOME
             else -> if (req.deep) Think.SOME else Think.OFF

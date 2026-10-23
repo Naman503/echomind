@@ -50,6 +50,7 @@ class Enricher(
     private val agenda: () -> Agenda,
     private val voicePrints: VoicePrints,
     private val voice: VoiceId,
+    private val analyzer: Analyzer,
 ) {
     data class Result(val tasks: Int, val facts: Int, val notes: Int)
 
@@ -74,19 +75,21 @@ class Enricher(
             noteTitles = notes.titles().take(if (local) 12 else 30),
             earlier = earlierToday(c, if (local) 400 else 2_500),
         )
-        val fixed = Prompts.extractSystem(lang).length + Prompts.extractUser(ctx, c.startAt, c.endAt, c.source, c.contact, "").length
-        val budget = (llm.promptBudgetChars - fixed).coerceAtLeast(1_800)
-        val numbered = utts.mapIndexed { i, u -> "L${i + 1} [${Prompts.time(u.startAt)}] ${u.speaker ?: "?"}: ${u.text}" }
-        val parts = split(numbered, budget)
-
         val outputs = ArrayList<JsonObject>()
-        for ((i, part) in parts.withIndex()) {
-            val purpose = (if (c.source == "call") "Call notes" else "Notes") + " · ${Prompts.time(c.startAt)}" + if (parts.size > 1) " (part ${i + 1}/${parts.size})" else ""
-            val user = Prompts.extractUser(ctx, c.startAt, c.endAt, c.source, c.contact, part.joinToString("\n"), (i + 1) to parts.size)
-            outputs.add(ai.json(LlmRequest(Feature.NOTES, purpose, Prompts.extractSystem(lang), user, Schemas.extract, maxTokens = if (local) 900 else 2_500, deep = true)))
+        if (local) {
+            // A small model reads in focused passes sized to its context (see Analyzer).
+            outputs.addAll(analyzer.extract(c, utts, ctx.openTasks, ctx.noteTitles, ctx.people))
+        } else {
+            val fixed = Prompts.extractSystem(lang).length + Prompts.extractUser(ctx, c.startAt, c.endAt, c.source, c.contact, "").length
+            val budget = (llm.promptBudgetChars - fixed).coerceAtLeast(1_800)
+            val parts = split(analyzer.numbered(utts), budget)
+            for ((i, part) in parts.withIndex()) {
+                val purpose = (if (c.source == "call") "Call notes" else "Notes") + " · ${Prompts.time(c.startAt)}" + if (parts.size > 1) " (part ${i + 1}/${parts.size})" else ""
+                val user = Prompts.extractUser(ctx, c.startAt, c.endAt, c.source, c.contact, part.joinToString("\n"), (i + 1) to parts.size)
+                outputs.add(ai.json(LlmRequest(Feature.NOTES, purpose, Prompts.extractSystem(lang), user, Schemas.extract, maxTokens = 2_500, deep = true)))
+            }
+            if (ai.bestQuality) runCatching { review(analyzer.numbered(utts), outputs, llm.promptBudgetChars) }.onFailure { Log.w(TAG, "review failed", it) }
         }
-
-        if (ai.bestQuality) runCatching { review(numbered, outputs, llm.promptBudgetChars) }.onFailure { Log.w(TAG, "review failed", it) }
 
         val idOf = { n: Int -> utts.getOrNull(n - 1)?.id }
         fun sources(o: JsonObject): List<Long> = ((o["lines"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.intOrNull?.let(idOf) }).orEmpty()
@@ -120,7 +123,7 @@ class Enricher(
         var taskCount = 0
         var noteIds = emptyList<Long>()
         val found = outputs.flatMap { it.objects("people") }.mapNotNull { p ->
-            p.str("name")?.trim()?.takeIf { it.length >= 2 }?.let { People.Info(it, p.str("who"), p.str("role"), p.str("org"), p.str("circle")) }
+            p.str("name")?.trim()?.takeIf { it.length >= 2 && !Memory.isJunkName(it) }?.let { People.Info(it, p.str("who"), p.str("role"), p.str("org"), p.str("circle")) }
         }.distinctBy { it.name.lowercase() }
         val people = found.map { it.name to it.who }
         if (!media) {
@@ -137,7 +140,8 @@ class Enricher(
             if (settings.value.eventsFromConversations) runCatching { agenda().addFound(events, c.id, at) }.onFailure { Log.w(TAG, "events failed", it) }
             val candidates = outputs.flatMap { it.objects("facts") }.mapNotNull { f ->
                 val st = f.str("statement")?.trim().orEmpty()
-                if (st.length < 6) null
+                // The prompt's own header ("Date: … Time: …") is not a fact.
+                if (st.length < 6 || Memory.isJunkName(f.str("subject").orEmpty()) || Regex("(?i)\\d{1,2}:\\d{2}\\s?(am|pm)\\s+to\\s+\\d").containsMatchIn(st)) null
                 else Memory.Candidate(f.str("subject").orEmpty().ifBlank { "Me" }, st, f.str("kind") ?: "fact", f.int("importance") ?: 3, sources(f))
             }
             factCount = memory.reconcile(candidates, c.id, at)
@@ -167,8 +171,9 @@ class Enricher(
         }
 
         val done = c.copy(
-            title = title.ifBlank { "Conversation" }.take(90),
-            summary = summary.take(1_500),
+            // A blank answer never replaces what an earlier reading wrote.
+            title = title.ifBlank { c.title?.takeIf { it.isNotBlank() } ?: "Conversation" }.take(90),
+            summary = summary.ifBlank { c.summary.orEmpty() }.take(1_500),
             category = category,
             mood = moods.takeIf { it.isNotEmpty() }?.average()?.toFloat(),
             keyPoints = Js.json.encodeToString(ListSerializer(String.serializer()), keyPoints.take(8)),
@@ -181,6 +186,7 @@ class Enricher(
             ignored = media,
         )
         db.conversations().update(done)
+        runCatching { analyzer.saveConversation(done, utts, outputs) }.onFailure { Log.w(TAG, "analysis save failed", it) }
         if (!media) {
             if (settings.value.recognisePeople) runCatching { voicePrints.learnFromConversation(c.id, c.contact) }
             index(done, utts)

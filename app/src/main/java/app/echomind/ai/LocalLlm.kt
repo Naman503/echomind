@@ -41,10 +41,22 @@ class LocalLlm(
     private val modelId: () -> String,
     private val backend: () -> String,
     private val threads: () -> Int,
+    private val wantedContext: () -> Int = { 4096 },
 ) : Llm {
     override val id = "local"
     override val local = true
-    override val promptBudgetChars = 7_000
+
+    /** Context size the model actually loaded with; a model that refuses a bigger one runs at 4096. */
+    @Volatile var contextTokens: Int = 4096
+        private set
+    private var refusedContext = 0
+
+    /**
+     * Characters of transcript one request can carry. The context holds the prompt
+     * and the answer together, and Hindi in Devanagari costs about twice the
+     * tokens of English, so this stays well inside it.
+     */
+    override val promptBudgetChars get() = ((wantedContext().coerceAtMost(if (refusedContext > 0) 4096 else Int.MAX_VALUE).coerceAtLeast(4096) - 2_600) * 1.2).toInt()
 
     private val lock = Mutex()
     private var engine: Engine? = null
@@ -57,23 +69,29 @@ class LocalLlm(
         val id = installedModel() ?: throw LlmException("No on-device AI model is downloaded. Get one in Settings → On-device models.", retryable = false)
         val file = models.path(id)!!
         val useGpu = backend() == "gpu"
-        val key = "$id|$useGpu|${threads()}"
+        val ctx = wantedContext().coerceIn(2048, 32768).let { if (refusedContext in 1..it) 4096 else it }
+        val key = "$id|$useGpu|${threads()}|$ctx"
         engine?.let { if (loadedKey == key) return it }
         engine?.close()
         engine = null
-        val cfg = EngineConfig(
+        fun cfg(tokens: Int) = EngineConfig(
             modelPath = file.absolutePath,
             backend = if (useGpu) Backend.GPU() else Backend.CPU(threadCount = threads()),
-            maxNumTokens = 4096,
+            maxNumTokens = tokens,
             cacheDir = context.cacheDir.absolutePath,
         )
         val started = System.currentTimeMillis()
-        return Engine(cfg).also {
-            it.initialize()
-            Log.i(TAG, "loaded $id (${if (useGpu) "GPU" else "CPU×${threads()}"}) in ${System.currentTimeMillis() - started} ms")
-            engine = it
-            loadedKey = key
+        val loaded = runCatching { Engine(cfg(ctx)).also { it.initialize() } to ctx }.getOrElse { first ->
+            if (ctx <= 4096) throw first
+            Log.w(TAG, "model refused a $ctx-token context, using 4096: ${first.message}")
+            refusedContext = ctx
+            Engine(cfg(4096)).also { it.initialize() } to 4096
         }
+        contextTokens = loaded.second
+        Log.i(TAG, "loaded $id (${if (useGpu) "GPU" else "CPU×${threads()}"}, ${loaded.second} tokens) in ${System.currentTimeMillis() - started} ms")
+        engine = loaded.first
+        loadedKey = key
+        return loaded.first
     }
 
     private fun scheduleRelease() {
@@ -101,9 +119,12 @@ class LocalLlm(
                 val e = engine()
                 // Thinking first: a free run that reasons, then answers in JSON. If that answer
                 // doesn't parse, the usual grammar-constrained run (no thinking) is the fallback.
-                if (req.think != Think.OFF && req.schema != null) {
+                // The thinking run carries the schema as text and a thinking budget; only when it all fits.
+                val thinkFits = estimateTokens(req.system) + estimateTokens(req.user) + req.schema.toString().length / 3 + req.maxTokens + thinkBudget(req) < contextTokens
+                if (req.think != Think.OFF && req.schema != null && thinkFits) {
                     runCatching { Js.parseLenient(generate(e, req, constrained = false, think = true)) }
-                        .onFailure { Log.w(TAG, "thinking run failed: ${it.message}") }.getOrNull()?.let { return@withLock it }
+                        .onFailure { Log.w(TAG, "thinking run failed: ${it.message}") }.getOrNull()
+                        ?.takeIf { usable(it, req.schema) }?.let { return@withLock it }
                 }
                 val text = runCatching { generate(e, req, constrained = req.schema != null) }.getOrElse { first ->
                     Log.w(TAG, "constrained run failed: ${first.message}")
@@ -120,6 +141,16 @@ class LocalLlm(
             }
         }
     }
+
+    /** An answer counts only if it has most of the schema's fields and says something in at least one. */
+    private fun usable(o: JsonObject, schema: JsonObject): Boolean {
+        val keys = (schema["properties"] as? JsonObject)?.keys ?: return true
+        val present = keys.count { it in o }
+        val saysSomething = o.values.any { v -> v.toString().trim('"', ' ').let { it.isNotEmpty() && it != "[]" && it != "{}" && it != "null" && it != "false" && it != "0" } }
+        return present * 2 >= keys.size && saysSomething
+    }
+
+    private val debuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     private suspend fun generate(e: Engine, req: LlmRequest, constrained: Boolean, think: Boolean = false): String {
         val system = if (constrained || req.schema == null) req.system
@@ -144,7 +175,7 @@ class LocalLlm(
                 } else {
                     c.sendMessage(Contents.of(req.user))
                 }
-                reply.toString()
+                reply.toString().also { if (debuggable) Log.i(TAG, "${req.purpose} [think=$think constrained=$constrained in≈${estimateTokens(system) + estimateTokens(req.user)}t] → ${it.take(600)}") }
             } finally {
                 watchdog.cancel()
             }
@@ -212,9 +243,18 @@ class LocalLlm(
     companion object {
         private const val TAG = "EchoLocalLlm"
         const val IDLE_RELEASE_MS = 3 * 60_000L
-        const val TIMEOUT_MS = 8 * 60_000L
+        const val TIMEOUT_MS = 12 * 60_000L
+
+        /** Rough token count: about 3.5 Latin characters or 1.6 Devanagari characters per token. */
+        fun estimateTokens(s: String): Int {
+            var dev = 0
+            for (ch in s) if (ch in '\u0900'..'\u097F') dev++
+            return ((s.length - dev) / 3.5 + dev / 1.6).toInt() + 1
+        }
 
         /** A phone generates ~10–25 tokens a second, so thinking is kept to what pays off. */
-        fun thinkBudget(req: LlmRequest) = when (req.think) { Think.OFF -> 0; Think.SOME -> 384; Think.DEEP -> 1_024 }
+        // Measured on a Dimensity 7200 (CPU): ~7 tokens/s, so 1,024 thinking tokens cost over 5 minutes
+        // and rarely changed the answer. Deep jobs get a little more room than the rest, not much.
+        fun thinkBudget(req: LlmRequest) = when (req.think) { Think.OFF -> 0; Think.SOME -> 320; Think.DEEP -> 512 }
     }
 }

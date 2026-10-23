@@ -238,6 +238,11 @@ fun AppRoot(pending: MutableState<String?>) {
                         entry<CalendarSettingsRoute> { app.echomind.ui.screens.CalendarSettingsScreen() }
                         entry<TasksSettingsRoute> { app.echomind.ui.screens.TasksSettingsScreen() }
                         entry<VoicesRoute> { app.echomind.ui.screens.VoicesScreen(it.lang) }
+                        entry<InsightsRoute> { app.echomind.ui.screens.InsightsScreen() }
+                        entry<DayReviewRoute> { app.echomind.ui.screens.DayReviewScreen(it.day) }
+                        entry<CoachRoute> { app.echomind.ui.screens.CoachScreen() }
+                        entry<TopicsRoute> { app.echomind.ui.screens.TopicsScreen() }
+                        entry<ReviewSettingsRoute> { app.echomind.ui.screens.ReviewSettingsScreen() }
                     },
                 )
             }

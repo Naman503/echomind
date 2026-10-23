@@ -349,7 +349,7 @@ class CaptureService : Service() {
         val running = when (b.phase) {
             Brain.Phase.TRANSCRIBING -> "Now: transcribing ${if (t.source == "call") "a call" else "speech"}${if (t.pieces > 0) " · part ${t.piece} of ${t.pieces}" else ""} (${t.engine})"
             Brain.Phase.THINKING -> "Now: AI ${g.ai.running.value?.purpose ?: b.detail} (${g.ai.running.value?.provider ?: s.provider(app.echomind.core.Feature.NOTES)}, ${s.aiQuality})"
-            Brain.Phase.JOURNAL -> "Now: ${b.detail}"
+            Brain.Phase.JOURNAL, Brain.Phase.REVIEW -> "Now: ${b.detail}"
             Brain.Phase.WAITING -> "Waiting: ${b.waitingReason ?: "for a good moment"}"
             else -> "Now: idle"
         }
@@ -374,7 +374,7 @@ class CaptureService : Service() {
         val working = when (b.phase) {
             Brain.Phase.TRANSCRIBING -> if (t.active) "Transcribing ${if (t.source == "call") "a call" else "speech"} (${t.piece}/${t.pieces})" else "Transcribing"
             Brain.Phase.THINKING -> "Making notes: ${b.detail}"
-            Brain.Phase.JOURNAL -> b.detail
+            Brain.Phase.JOURNAL, Brain.Phase.REVIEW -> b.detail
             Brain.Phase.WAITING -> b.waitingReason ?: "Waiting"
             else -> null
         }

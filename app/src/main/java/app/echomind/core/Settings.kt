@@ -71,6 +71,27 @@ data class Settings(
     val localModel: String = "gemma-4-e2b",
     /** auto | cpu | gpu */
     val localBackend: String = "auto",
+    /** Tokens the on-device model can hold at once (prompt + answer). Falls back to 4096 if the model refuses more. */
+    val localContext: Int = 8192,
+
+    // Night review: the careful, slow pass over the whole day
+    val nightReview: Boolean = true,
+    /** Minute of the day after which the review of the day may start. */
+    val nightReviewAt: Int = 23 * 60,
+    /** Only run the review while the phone charges. */
+    val nightNeedsCharging: Boolean = false,
+    /** Read conversations again with the careful pipeline if they were read by an older one. */
+    val reReadOld: Boolean = true,
+    val coachEnglish: Boolean = true,
+    val coachBetter: Boolean = true,
+    val coachNervous: Boolean = true,
+    val coachSlips: Boolean = true,
+    /** gentle | normal | strict: how small a mistake is worth pointing out. */
+    val coachStrictness: String = "normal",
+    /** At most this many coaching points per conversation. */
+    val coachMax: Int = 8,
+    /** Day review sections you hid. */
+    val reviewHidden: List<String> = emptyList(),
     val geminiModel: String = "gemini-3.5-flash-lite",
     val anthropicModel: String = "claude-haiku-5-5",
     val openaiBaseUrl: String = "https://api.openai.com/v1",

@@ -17,6 +17,8 @@ data class LlmRequest(
     val temperature: Double = 0.2,
     /** A judgement-heavy job (reading a conversation, the journal, organising): worth thinking about first. */
     val deep: Boolean = false,
+    /** Extraction a constrained answer does well: never spend time thinking first. */
+    val noThink: Boolean = false,
     /** How long the model may think before answering; set by [Ai] from the quality setting. */
     val think: Think = Think.OFF,
 )

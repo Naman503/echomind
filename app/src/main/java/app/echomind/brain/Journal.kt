@@ -105,7 +105,7 @@ class Journal(private val db: Db, private val ai: Ai, private val settings: Sett
         val user = buildString {
             append("Day: ").append(Prompts.day(from)).append("\n\n")
             append("What happened:\n")
-            convs.take(if (local) 14 else 60).forEach { append("- ${Prompts.time(it.startAt)} ${it.title}: ${it.summary.orEmpty().take(if (local) 200 else 600)}\n") }
+            append(happened(convs, local))
             append("\nOpen tasks:\n")
             open.forEach { append("- ${it.title}${it.dueText?.let { d -> " ($d)" } ?: ""}\n") }
             append("\nMeasures: ${m.conversations} conversations, ${m.talkMinutes} minutes of talk, ${m.people} people, ${m.tasksMade} new tasks, ${m.tasksDone} done")
@@ -124,6 +124,8 @@ class Journal(private val db: Db, private val ai: Ai, private val settings: Sett
         val r = runCatching {
             ai.json(LlmRequest(Feature.JOURNAL, "Writing today's journal", Prompts.journalSystem(settings.value.notesLanguage), user2, Schemas.journal, maxTokens = 1_100, temperature = 0.4, deep = true))
         }.onFailure { Log.w("EchoJournal", "journal failed", it) }.getOrNull() ?: return false
+        // An empty answer means the model ran out of room; never save a blank journal as done.
+        if (r.str("headline").isNullOrBlank() && r.str("diary").isNullOrBlank()) { Log.w("EchoJournal", "journal came back empty"); return false }
         fun list(k: String) = Js.json.encodeToString(ListSerializer(String.serializer()), r.strings(k))
         val improve = r.objects("improve").mapNotNull { o ->
             val obs = o.str("observation")?.trim().orEmpty()
@@ -147,6 +149,26 @@ class Journal(private val db: Db, private val ai: Ai, private val settings: Sett
             ),
         )
         return true
+    }
+
+    /**
+     * The day's conversations as lines for the journal. On the phone, a busy day is first
+     * condensed a few conversations at a time, so the journal prompt fits the model.
+     */
+    private suspend fun happened(convs: List<app.echomind.data.Conversation>, local: Boolean): String {
+        fun line(c: app.echomind.data.Conversation, n: Int) = "- ${Prompts.time(c.startAt)} ${c.title}: ${c.summary.orEmpty().take(n)}\n"
+        if (!local) return convs.take(60).joinToString("") { line(it, 600) }
+        if (convs.size <= 6) return convs.joinToString("") { line(it, 320) }
+        val out = StringBuilder()
+        for (group in convs.chunked(5)) {
+            val text = group.joinToString("") { line(it, 300) }
+            val r = runCatching {
+                ai.json(LlmRequest(Feature.JOURNAL, "Condensing ${Prompts.time(group.first().startAt)}–${Prompts.time(group.last().endAt)}", app.echomind.ai.Deep.dayPartSystem(settings.value.notesLanguage), text, app.echomind.ai.Deep.dayPart, maxTokens = 450, noThink = true))
+            }.getOrNull()
+            val summary = r?.str("summary")?.takeIf { it.isNotBlank() }
+            out.append(if (summary != null) "- ${Prompts.time(group.first().startAt)}–${Prompts.time(group.last().endAt)}: $summary\n" else group.joinToString("") { line(it, 140) })
+        }
+        return out.toString()
     }
 
     /** The nightly pass for [d]: journal, then the memory review. */
