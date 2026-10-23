@@ -19,6 +19,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Forum
+import androidx.compose.material.icons.rounded.QuestionAnswer
+import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MusicNote
@@ -93,47 +97,71 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import java.time.LocalDate
 
+/** "You": everything that is yours — knowledge, what was captured, privacy — plus settings. */
 @Composable
 fun LibraryScreen() {
     val g = App.graph
     val nav = LocalNav.current
+    val s by g.settings.flow.collectAsStateWithLifecycle()
     val notes by remember { g.db.notes().observeAll() }.collectAsStateWithLifecycle(emptyList())
     val facts by remember { g.db.memory().observeActiveFacts() }.collectAsStateWithLifecycle(emptyList())
     val people by remember { g.db.memory().observeEntities() }.collectAsStateWithLifecycle(emptyList())
-    val days by remember { g.db.days().observeRecent(30) }.collectAsStateWithLifecycle(emptyList())
+    val days by remember { g.db.days().observeRecent(400) }.collectAsStateWithLifecycle(emptyList())
     val songs by remember { g.db.sounds().observeSongs() }.collectAsStateWithLifecycle(emptyList())
     val live = notes.filter { !it.archived }
-    val entries = listOf(
-        Triple(Icons.Rounded.AutoAwesome, "Insights", "Day review, coach, topics") to { nav.go(app.echomind.ui.InsightsRoute) },
-        Triple(Icons.Rounded.RecordVoiceOver, "Speaking coach", "English, nerves, better ways") to { nav.go(app.echomind.ui.CoachRoute) },
-        Triple(Icons.Rounded.Insights, "Dashboard", "Your day in numbers") to { nav.go(app.echomind.ui.DashboardRoute) },
-        Triple(Icons.Rounded.Flag, "Plan", "Today · week · month") to { nav.go(app.echomind.ui.PlanRoute) },
-        Triple(Icons.Rounded.StickyNote2, "Notes", "${live.size} note${if (live.size == 1) "" else "s"}") to { nav.go(NotesRoute) },
-        Triple(Icons.Rounded.Psychology, "Memory", "${facts.size} things") to { nav.go(MemoryRoute) },
-        Triple(Icons.Rounded.Groups, "People", "${people.count { it.kind == "person" }} people") to { nav.go(PeopleRoute) },
-        Triple(Icons.Rounded.AutoStories, "Journal", "${days.count { it.generatedAt != null }} days") to { nav.go(JournalRoute) },
-        Triple(Icons.Rounded.Mic, "Recordings", "Kept ${retentionLabel(g.settings.value.keepRecordingsDays)}") to { nav.go(app.echomind.ui.RecordingsRoute) },
-        Triple(Icons.Rounded.MusicNote, "Songs", "${songs.size} kept") to { nav.go(app.echomind.ui.SongsRoute) },
-        Triple(Icons.Rounded.AutoAwesome, "Organise", "Folders, tags, circles") to { nav.go(app.echomind.ui.OrganizeRoute) },
-        Triple(Icons.Rounded.Shield, "Data ledger", "What left the phone") to { nav.go(LedgerRoute) },
-    )
-    LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars), contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
-        item { Text("Library", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(vertical = Sp.s)) }
-        entries.chunked(2).forEach { pair ->
-            item(key = "e" + pair.first().first.second) {
-                Row(horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
-                    pair.forEach { (t, go) -> LibraryTile(t.first, t.second, t.third, Modifier.weight(1f), go) }
-                    if (pair.size == 1) Spacer(Modifier.weight(1f))
-                }
+    val persons = people.count { it.kind == "person" }
+    val streak = run {
+        var n = 0; var d = LocalDate.now()
+        val written = days.filter { !it.diary.isNullOrBlank() }.map { it.day }.toSet()
+        if (d.toString() !in written) d = d.minusDays(1)
+        while (d.toString() in written) { n++; d = d.minusDays(1) }
+        n
+    }
+    LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(Sp.m)) {
+        item {
+            app.echomind.ui.components.TabHeader(s.userName.ifBlank { "You" }, listOfNotNull(
+                "${days.count { !it.diary.isNullOrBlank() }} days written",
+                streak.takeIf { it > 1 }?.let { "$it-day streak" },
+                "$persons people",
+            ).joinToString(" · ")) {
+                IconButton(onClick = { nav.go(app.echomind.ui.SettingsRoute) }) { Icon(Icons.Rounded.Settings, "Settings") }
             }
         }
-        item { SectionHeader("All notes · ${live.size}", action = "Search & filter", onAction = { nav.go(NotesRoute) }) }
-        if (live.isEmpty()) item { EmptyState("No notes yet", "Write one from Notes, or let the AI start one when a topic keeps coming up.") }
-        live.sortedWith(compareByDescending<Note> { it.pinned }.thenByDescending { it.updatedAt }).groupBy { it.folder?.substringBefore('/') ?: "" }
-            .toSortedMap(compareBy<String> { it.isEmpty() }.thenBy { it }).forEach { (folder, list) ->
-                item(key = "f$folder") { Text(if (folder.isEmpty()) "Not in a folder" else "📁 $folder", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = Sp.s)) }
-                items(list, key = { it.id }) { n -> NoteCard(n) { nav.go(NoteRoute(n.id)) } }
+        item {
+            SectionHeader("Your knowledge")
+            app.echomind.ui.components.NavGroup {
+                app.echomind.ui.components.NavRow(Icons.Rounded.StickyNote2, "Notes", "Living notes on your projects and topics", trailing = "${live.size}") { nav.go(NotesRoute) }
+                app.echomind.ui.components.NavRow(Icons.Rounded.Groups, "People", "Who they are, how you know them", trailing = "$persons") { nav.go(PeopleRoute) }
+                app.echomind.ui.components.NavRow(Icons.Rounded.Psychology, "Memory", "Facts EchoMind remembers — fix anything wrong", trailing = "${facts.size}") { nav.go(MemoryRoute) }
+                app.echomind.ui.components.NavRow(Icons.Rounded.Forum, "Past questions", "Everything you asked") { nav.go(app.echomind.ui.ChatsRoute) }
             }
+        }
+        item {
+            SectionHeader("Captured")
+            app.echomind.ui.components.NavGroup {
+                app.echomind.ui.components.NavRow(Icons.Rounded.Mic, "Recordings", "Kept ${retentionLabel(s.keepRecordingsDays)}", tint = MaterialTheme.colorScheme.tertiary) { nav.go(app.echomind.ui.RecordingsRoute) }
+                app.echomind.ui.components.NavRow(Icons.Rounded.MusicNote, "Songs", "What you sang", tint = MaterialTheme.colorScheme.tertiary, trailing = songs.size.takeIf { it > 0 }?.toString()) { nav.go(app.echomind.ui.SongsRoute) }
+                app.echomind.ui.components.NavRow(Icons.Rounded.QuestionAnswer, "Check-ins", "Your answers to the daily questions", tint = MaterialTheme.colorScheme.tertiary) { nav.go(app.echomind.ui.CheckInsRoute) }
+            }
+        }
+        item {
+            SectionHeader("Organise & privacy")
+            app.echomind.ui.components.NavGroup {
+                app.echomind.ui.components.NavRow(Icons.Rounded.AutoAwesome, "Organise", "Folders, tags and circles", tint = MaterialTheme.colorScheme.secondary) { nav.go(app.echomind.ui.OrganizeRoute) }
+                app.echomind.ui.components.NavRow(Icons.Rounded.Shield, "Data ledger", "Everything that ever left the phone", tint = MaterialTheme.colorScheme.secondary) { nav.go(LedgerRoute) }
+            }
+        }
+        item {
+            SectionHeader("App")
+            app.echomind.ui.components.NavGroup {
+                app.echomind.ui.components.NavRow(Icons.Rounded.Settings, "Settings", "Recording, AI, journal, reminders, appearance", tint = MaterialTheme.colorScheme.outline) { nav.go(app.echomind.ui.SettingsRoute) }
+                app.echomind.ui.components.NavRow(Icons.Rounded.Thermostat, "Phone health", "Temperature, battery and work limits", tint = MaterialTheme.colorScheme.outline) { nav.go(app.echomind.ui.HealthRoute) }
+            }
+        }
+        if (live.isNotEmpty()) {
+            item { SectionHeader("Recent notes", action = "All notes", onAction = { nav.go(NotesRoute) }) }
+            items(live.sortedWith(compareByDescending<Note> { it.pinned }.thenByDescending { it.updatedAt }).take(3), key = { it.id }) { n -> NoteCard(n) { nav.go(NoteRoute(n.id)) } }
+        }
     }
 }
 

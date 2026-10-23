@@ -102,6 +102,9 @@ import app.echomind.ui.components.SectionHeader
 import app.echomind.ui.components.SettingRow
 import app.echomind.ui.components.SwitchRow
 import app.echomind.ui.components.Tile
+import app.echomind.ui.components.NavGroup
+import app.echomind.ui.components.NavRow
+import app.echomind.ui.components.TabHeader
 import app.echomind.ui.theme.LocalSemantic
 import app.echomind.ui.theme.Sp
 import app.echomind.util.Js
@@ -132,53 +135,66 @@ fun InsightsScreen() {
     val g = App.graph
     val nav = LocalNav.current
     val today = LocalDate.now()
-    val reviews by remember { g.db.analyses().observeDays(today.minusDays(6).toString(), today.toString()) }.collectAsStateWithLifecycle(emptyList())
+    val reviews by remember { g.db.analyses().observeDays(today.minusDays(13).toString(), today.toString()) }.collectAsStateWithLifecycle(emptyList())
+    val days by remember { g.db.days().observeRecent(14) }.collectAsStateWithLifecycle(emptyList())
+    val chapters by remember { g.db.analyses().observeKind("chapter") }.collectAsStateWithLifecycle(emptyList())
     val progress by g.dayReview.progress.collectAsStateWithLifecycle()
-    val latest = reviews.lastOrNull()?.let { a -> g.dayReview.decode(a.json)?.let { a.ref to it } }
-    ReviewPage("Insights") {
+    val decoded = reviews.mapNotNull { a -> g.dayReview.decode(a.json)?.let { LocalDate.parse(a.ref) to it } }
+    val weekStart = today.minusDays(6)
+    fun inWeek(d: LocalDate, back: Long) = !d.isBefore(weekStart.minusDays(7 * back)) && !d.isAfter(today.minusDays(7 * back))
+    fun talk(back: Long) = days.filter { inWeek(LocalDate.parse(it.day), back) }.sumOf { e -> runCatching { app.echomind.util.Js.json.decodeFromString(app.echomind.brain.DayMetrics.serializer(), e.metrics ?: "{}").talkMinutes }.getOrDefault(0) }
+    val people = decoded.filter { inWeek(it.first, 0) }.flatMap { it.second.people.filter { p -> p.named }.map { p -> p.name.lowercase() } }.toSet().size
+    val journals = days.count { inWeek(LocalDate.parse(it.day), 0) && !it.diary.isNullOrBlank() }
+    val coach = decoded.filter { inWeek(it.first, 0) }.sumOf { it.second.coachPoints }
+    val latest = days.firstOrNull { !it.diary.isNullOrBlank() }
+
+    LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(Sp.m)) {
+        item { TabHeader("Insights", "What your days are telling you") { IconButton(onClick = { nav.go(ReviewSettingsRoute) }) { Icon(Icons.Rounded.Settings, "Journal and review settings") } } }
+        // This week at a glance, against last week.
         item {
-            EchoCard(color = MaterialTheme.colorScheme.primaryContainer, onClick = { nav.go(DayReviewRoute((latest?.first ?: today.minusDays(1).toString()))) }) {
-                Text(if (latest != null) "Your day, reviewed" else "Your first night review", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            val now = talk(0); val before = talk(1)
+            EchoCard(color = MaterialTheme.colorScheme.primaryContainer, onClick = { nav.go(app.echomind.ui.DashboardRoute) }) {
+                Text("This week", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Row(Modifier.fillMaxWidth().padding(top = Sp.s), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Glance("${now / 60}h ${now % 60}m", "talk", if (before > 0) ((now - before) * 100 / before) else null)
+                    Glance("$people", "people", null)
+                    Glance("$journals/7", "diary days", null)
+                    Glance("$coach", "coach tips", null)
+                }
                 val p = progress
-                Text(
-                    when {
-                        p != null -> "Working now: ${p.label}"
-                        latest != null -> "${Fmt.day(LocalDate.parse(latest.first))} · ${latest.second.conversations} conversations · ${latest.second.people.count { it.named }} people · ${latest.second.coachPoints} coaching points"
-                        else -> "Runs at night after ${hm(g.settings.value.nightReviewAt)}. People, topics, a speaking coach and lessons from the whole day."
-                    },
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-                if (p != null) LinearProgressIndicator(progress = { p.done.toFloat() / p.total.coerceAtLeast(1) }, modifier = Modifier.fillMaxWidth().padding(top = Sp.s))
+                if (p != null) {
+                    Text("Night review: ${p.label}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = Sp.s))
+                    LinearProgressIndicator(progress = { p.done.toFloat() / p.total.coerceAtLeast(1) }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+                } else Text("Open the dashboard for trends, people and patterns", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(top = Sp.s))
             }
         }
-        item { SectionHeader("Your days") }
-        hubRow(
-            Triple(Icons.Rounded.Today, "Today", "Review so far") to { nav.go(DayReviewRoute(today.toString())) },
-            Triple(Icons.Rounded.Bedtime, "Yesterday", "Full review") to { nav.go(DayReviewRoute(today.minusDays(1).toString())) },
-        )
-        hubRow(
-            Triple(Icons.Rounded.AutoStories, "Journal", "Every day's entry") to { nav.go(app.echomind.ui.JournalRoute) },
-            Triple(Icons.Rounded.CalendarMonth, "Calendar", "Days and events") to { nav.tab(app.echomind.ui.CalendarRoute) },
-        )
-        item { SectionHeader("You") }
-        hubRow(
-            Triple(Icons.Rounded.RecordVoiceOver, "Speaking coach", "English, nerves, better ways") to { nav.go(CoachRoute) },
-            Triple(Icons.Rounded.Tag, "Topics", "What you talk about") to { nav.go(TopicsRoute) },
-        )
-        hubRow(
-            Triple(Icons.Rounded.Groups, "People", "Who you talk to") to { nav.go(app.echomind.ui.PeopleRoute) },
-            Triple(Icons.Rounded.Insights, "Dashboard", "Talk time, numbers") to { nav.go(app.echomind.ui.DashboardRoute) },
-        )
-        hubRow(
-            Triple(Icons.Rounded.Flag, "Plans", "Today · week · month") to { nav.go(app.echomind.ui.PlanRoute) },
-            Triple(Icons.Rounded.Psychology, "Memory", "What it knows") to { nav.go(app.echomind.ui.MemoryRoute) },
-        )
-        hubRow(
-            Triple(Icons.Rounded.Forum, "Check-ins", "Your answers") to { nav.go(app.echomind.ui.CheckInsRoute) },
-            Triple(Icons.Rounded.MusicNote, "Songs", "What you sang") to { nav.go(app.echomind.ui.SongsRoute) },
-        )
-        item { SectionHeader("Settings") }
-        item { SettingRow("Journal, review & coach", "Journal style, about you, misheard words, coach", Icons.Rounded.Settings) { nav.go(ReviewSettingsRoute) } }
+        latest?.let { e -> item { app.echomind.ui.components.DiaryPage(e.diary.orEmpty(), e.headline, LocalDate.parse(e.day), maxLines = 5, onClick = { nav.go(DayReviewRoute(e.day)) }) } }
+        item {
+            SectionHeader("Reflect")
+            NavGroup {
+                NavRow(Icons.Rounded.Today, "Day review", "People, topics, coach and lessons for any day") { nav.go(DayReviewRoute((latest?.day ?: today.minusDays(1).toString()))) }
+                NavRow(Icons.Rounded.AutoStories, "Your book", "Each week becomes a chapter", trailing = chapters.size.takeIf { it > 0 }?.let { "$it" }) { nav.go(app.echomind.ui.BookRoute) }
+                NavRow(Icons.Rounded.Bedtime, "Journal", "Every diary entry, newest first", trailing = days.count { !it.diary.isNullOrBlank() }.takeIf { it > 0 }?.toString()) { nav.go(app.echomind.ui.JournalRoute) }
+            }
+        }
+        item {
+            SectionHeader("Understand")
+            NavGroup {
+                NavRow(Icons.Rounded.Insights, "Dashboard", "Trends, people, patterns, your year", tint = MaterialTheme.colorScheme.tertiary) { nav.go(app.echomind.ui.DashboardRoute) }
+                NavRow(Icons.Rounded.RecordVoiceOver, "Speaking coach", "English, nervous moments, better ways", tint = MaterialTheme.colorScheme.tertiary) { nav.go(CoachRoute) }
+                NavRow(Icons.Rounded.Tag, "Topics", "What you talk about", tint = MaterialTheme.colorScheme.tertiary) { nav.go(TopicsRoute) }
+                NavRow(Icons.Rounded.Flag, "Plans", "Today, this week, this month", tint = MaterialTheme.colorScheme.tertiary) { nav.go(app.echomind.ui.PlanRoute) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Glance(value: String, label: String, deltaPct: Int?) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        deltaPct?.takeIf { it != 0 }?.let { Text("${if (it > 0) "▲" else "▼"} ${kotlin.math.abs(it)}%", style = MaterialTheme.typography.labelSmall, color = if (it > 0) LocalSemantic.current.positive else MaterialTheme.colorScheme.error) }
     }
 }
 
