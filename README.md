@@ -89,6 +89,19 @@ Cloud "AI recorders" solve that by uploading everything you hear. EchoMind does 
 - **Song naming (optional, online):** it guesses on the phone, checks candidates against the iTunes catalogue and LRCLIB lyrics, and picks a song only when the lyrics clearly match. Then it adds the album, year, poster and links.
 - Re-scan old recordings, rename songs yourself, or turn the feature off entirely.
 
+### Five tabs
+**Today** (ask bar, one time-aware day card, today's tasks, next events, latest talk — customisable) · **Calendar** (calm month or week, swipeable day with its diary page and one timeline of events, tasks and conversations, plus a 30-day agenda) · **Tasks** · **Insights** (day review, book, journal, dashboard, coach, topics, plans) · **You** (notes, people, memory, recordings, songs, check-ins, privacy, settings).
+
+### Your book
+Each finished week of diary entries becomes a memoir chapter, with a title, an epigraph and its days. Each month becomes a part with a short opening. The reader has a cover, "continue reading", contents, chapter openers, reading time, text size and previous/next. Chapters are written at night, or when you tap.
+
+### Dashboard
+Week, month or year: a headline, key numbers against the period before and your 30-day usual, the most unusual day, talk per day, mood and productivity, when you talk (weekday × hour), weekday pattern, who you talked with, topics, how you speak, influences ("happier on days you talk with X") with honest confidence labels and next-day effects, streaks, and a year in pixels.
+
+### Nothing twice, nothing made up
+- Read-aloud never repeats itself. The same check against near-duplicates is used for nudges, plans and tasks, and duplicate open tasks merge on their own.
+- Every task, event, fact, person and note point the AI extracts must be backed by the transcript: a real quote, real lines, and names that were actually said. The coach may only quote your real words. If the diary or a chapter names someone who isn't in the day's notes, it is rewritten.
+
 ### Night review and speaking coach
 - **Night review:** from the hour you choose (11 PM by default) until 7 AM, EchoMind reads the day again, slowly and one step at a time, under the same heat and battery rules. Days it missed are caught up first. You can also tap **Review now**.
 - **Careful reading on the phone:** each conversation is read in pieces that fit the on-device model, with one focused job per pass: what it was about, then tasks and plans, then people and facts. The model's context is 8K tokens by default (it falls back to 4K if the model can't take more).
