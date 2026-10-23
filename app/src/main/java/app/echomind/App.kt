@@ -155,6 +155,7 @@ class App : Application() {
             reindexSearch(g)
             runCatching { g.tasks.acceptWaiting() }
             runCatching { cleanJunk(g) }
+            runCatching { g.tasks.mergeDuplicates() }
             logExitReasons()
         }
         app.echomind.surfaces.WidgetUpdater.start(this, g.scope)

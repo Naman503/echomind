@@ -138,7 +138,8 @@ class Analyzer(private val db: Db, private val ai: Ai, private val settings: Set
                     ai.json(LlmRequest(Feature.NOTES, "Remembering · $label", Deep.knowledgeSystem(lang), known + head + "\nTranscript:\n" + text, Deep.knowledge, maxTokens = 750, noThink = true))
                 }.onSuccess { merged.putAll(it) }.onFailure { Log.w(TAG, "knowledge failed", it) }
             }
-            out.add(clean(JsonObject(merged)) as JsonObject)
+            // Nothing is kept that this part of the transcript doesn't back up.
+            out.add(Grounding.check(clean(JsonObject(merged)) as JsonObject, Grounding.Part(part)))
         }
         return out
     }
@@ -196,18 +197,19 @@ class Analyzer(private val db: Db, private val ai: Ai, private val settings: Set
         if (results.isEmpty() && useful.isNotEmpty()) throw IllegalStateException("The coach could not read this conversation")
         val at = { n: Int -> utts.getOrNull(n - 1) }
         fun fixes(key: String) = results.flatMap { it.objects(key) }.mapNotNull { o ->
-            val u = at(o.int("line") ?: 0) ?: return@mapNotNull null
+            val u = at(o.int("line") ?: 0)?.takeIf { it.speaker == "me" } ?: return@mapNotNull null
             val said = o.str("said")?.trim().orEmpty(); val better = o.str("better")?.trim().orEmpty()
+            if (!Grounding.ownerSaid(said, u.text)) return@mapNotNull null
             // "why" is a short reason; a copy of the sentence is no reason.
             val why = o.str("why")?.trim().orEmpty().takeIf { it.length <= 140 && !it.equals(said, true) && !said.startsWith(it.trimEnd(',', '.'), true) }.orEmpty()
             if (said.isEmpty() || better.isEmpty() || said.equals(better, ignoreCase = true)) null else Fix(u.id, u.startAt, said, better, why)
         }
         val nervous = results.flatMap { it.objects("nervous") }.mapNotNull { o ->
-            val u = at(o.int("line") ?: 0) ?: return@mapNotNull null
+            val u = at(o.int("line") ?: 0)?.takeIf { it.speaker == "me" && Grounding.ownerSaid(o.str("quote").orEmpty(), it.text) } ?: return@mapNotNull null
             NervousMoment(u.id, u.startAt, o.str("quote")?.trim().orEmpty().ifEmpty { u.text.take(160) }, o.str("sign")?.trim().orEmpty(), o.str("tip")?.trim().orEmpty())
         }
         val slips = results.flatMap { it.objects("slips") }.mapNotNull { o ->
-            val u = at(o.int("line") ?: 0) ?: return@mapNotNull null
+            val u = at(o.int("line") ?: 0)?.takeIf { it.speaker == "me" && Grounding.ownerSaid(o.str("said").orEmpty(), it.text) } ?: return@mapNotNull null
             val problem = o.str("problem")?.trim().orEmpty()
             if (problem.isEmpty()) null else Slip(u.id, u.startAt, o.str("said")?.trim().orEmpty().ifEmpty { u.text.take(160) }, problem, o.str("fix")?.trim().orEmpty())
         }

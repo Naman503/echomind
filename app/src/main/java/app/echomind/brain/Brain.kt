@@ -260,6 +260,7 @@ class Brain(
         markAttempt(today)
         if (journal.nightly(today)) recap(today)
         tasks.expireOld()
+        runCatching { tasks.mergeDuplicates() }
         nightlyExtras()
         return true
     }

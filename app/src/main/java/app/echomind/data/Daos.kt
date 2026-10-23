@@ -220,6 +220,7 @@ interface NudgeDao {
     @Query("SELECT * FROM nudges WHERE kind = :kind AND state IN ('acted','dismissed') ORDER BY createdAt DESC LIMIT 5") suspend fun recentOutcomes(kind: String): List<Nudge>
     @Query("SELECT * FROM nudges WHERE state IN ('pending','shown') AND createdAt >= :from ORDER BY urgency DESC, createdAt DESC LIMIT 5") fun observeOpen(from: Long): Flow<List<Nudge>>
     @Query("UPDATE nudges SET state = 'expired' WHERE state = 'pending' AND createdAt < :before") suspend fun expire(before: Long)
+    @Query("SELECT * FROM nudges WHERE createdAt >= :from") suspend fun since(from: Long): List<Nudge>
 }
 
 @Dao

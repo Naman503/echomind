@@ -83,6 +83,24 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
         return added
     }
 
+    /**
+     * Open tasks that say the same thing become one: the one you made yourself wins, then
+     * one with a reminder, then the oldest. The others are dismissed as duplicates.
+     */
+    suspend fun mergeDuplicates(): Int {
+        val open = db.tasks().live().filter { it.status == "open" && it.parentId == null }
+            .sortedWith(compareByDescending<TaskRow> { it.origin == "user" }.thenByDescending { it.remindAt != null }.thenBy { it.createdAt })
+        val kept = ArrayList<TaskRow>()
+        var merged = 0
+        for (t in open) {
+            val twin = kept.firstOrNull { Dedup.same(it.title, t.title, 0.8) }
+            if (twin == null) { kept.add(t); continue }
+            dismiss(t, "Duplicate of “${twin.title.take(60)}”")
+            merged++
+        }
+        return merged
+    }
+
     /** With Review off, anything still waiting from before goes onto the list (once). */
     suspend fun acceptWaiting(force: Boolean = false) {
         if (!force && settings.value.reviewAiTasks) return

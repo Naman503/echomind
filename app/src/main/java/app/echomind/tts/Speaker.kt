@@ -105,7 +105,8 @@ class Speaker(
     }
 
     fun speak(title: String, items: List<String>, startIndex: Int = 0, onSpeaker: Boolean = false) {
-        val clean = items.map { Speakable.clean(it) }.filter { it.isNotBlank() }
+        // Whatever built the list, nothing is read twice.
+        val clean = app.echomind.brain.Briefing.Script(title, items.map { Speakable.clean(it) }).tidy().parts
         if (clean.isEmpty()) return
         // No earphones: ask first (or don't read at all), as chosen in settings.
         if (!onSpeaker && previewVoice == null && !headphonesConnected()) {

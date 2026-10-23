@@ -47,6 +47,9 @@ class Nudges(
 
     private suspend fun propose(n: Nudge) {
         if (!settings.value.nudges) return
+        // The same point in other words, within two days, is not a new nudge.
+        val recent = db.nudges().since(System.currentTimeMillis() - 48 * 3_600_000L)
+        if (recent.any { Dedup.same(it.title + " " + it.body, n.title + " " + n.body, 0.75) }) return
         db.nudges().insert(n)
     }
 

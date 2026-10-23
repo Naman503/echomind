@@ -21,7 +21,18 @@ import java.time.ZoneId
  * Written to be heard, not read: counts first, then the items, no symbols.
  */
 class Briefing(private val db: Db, private val settings: SettingsStore, private val agenda: () -> Agenda, private val plans: () -> Plans) {
-    data class Script(val title: String, val parts: List<String>)
+    data class Script(val title: String, val parts: List<String>) {
+        /** Drops any part that repeats one already in the script (headings like "Overdue:" stay). */
+        fun tidy(): Script {
+            val out = ArrayList<String>()
+            for (p in parts) {
+                val t = p.trim()
+                if (t.isEmpty()) continue
+                if (t.endsWith(":") || Dedup.keys(t).size < 2 || out.none { Dedup.same(it, t, 0.75) }) out.add(t)
+            }
+            return copy(parts = out)
+        }
+    }
 
     private val zone get() = ZoneId.systemDefault()
     private fun start(d: LocalDate) = d.atStartOfDay(zone).toInstant().toEpochMilli()
@@ -48,10 +59,10 @@ class Briefing(private val db: Db, private val settings: SettingsStore, private 
         val end = start(today.plusDays(1))
         val hour = LocalTime.now().hour
         val greet = when { hour < 12 -> "Good morning"; hour < 17 -> "Good afternoon"; else -> "Good evening" }
-        val open = db.tasks().observeOpen().first()
+        val open = Dedup.distinct(db.tasks().observeOpen().first()) { it.title }
         val overdue = open.filter { it.dueAt != null && it.dueAt < start(today) }
         val due = open.filter { it.dueAt != null && it.dueAt in start(today) until end }.sortedBy { it.remindAt ?: it.dueAt }
-        val reminders = db.tasks().upcomingReminders(now).filter { (it.remindAt ?: 0) < end && it !in due }
+        val reminders = Dedup.without(db.tasks().upcomingReminders(now).filter { (it.remindAt ?: 0) < end && it.id !in due.map { d -> d.id } }, due.map { it.title }) { it.title }
         val review = db.tasks().suggestedCount().first()
         val yesterday = db.days().get(today.minusDays(1).toString())
         val carry = yesterday?.tomorrow?.let { runCatching { Js.json.decodeFromString(ListSerializer(String.serializer()), it) }.getOrNull() }.orEmpty()
@@ -74,20 +85,24 @@ class Briefing(private val db: Db, private val settings: SettingsStore, private 
                 parts.add("${count(overdue.size, "task")} ${if (overdue.size == 1) "is" else "are"} overdue: ${list(overdue.take(4).map { it.title.trimEnd('.') })}.")
             }
         }
-        if (carry.isNotEmpty()) parts.add("From yesterday, you meant to: ${list(carry.take(3))}.")
+        // Each list leaves out what an earlier part already said.
+        val said = (due + reminders + overdue).map { it.title }
+        val carryNew = Dedup.without(Dedup.strings(carry), said) { it }
+        if (carryNew.isNotEmpty()) parts.add("From yesterday, you meant to: ${list(carryNew.take(3))}.")
         runCatching { plans().get("day") }.getOrNull()?.let { p ->
-            if (p.focus.isNotBlank()) parts.add("Today's focus: ${p.focus.trimEnd('.')}.")
-            if (p.missing.isNotEmpty()) parts.add("You might be missing: ${list(p.missing.take(3).map { it.title.trimEnd('.') })}.")
+            if (p.focus.isNotBlank() && (said + carryNew).none { Dedup.same(it, p.focus) }) parts.add("Today's focus: ${p.focus.trimEnd('.')}.")
+            val missing = Dedup.without(p.missing.map { it.title.trimEnd('.') }, said + carryNew + p.focus) { it }
+            if (missing.isNotEmpty()) parts.add("You might be missing: ${list(missing.take(3))}.")
         }
         if (review > 0) parts.add("${count(review, "suggestion")} from your conversations ${if (review == 1) "is" else "are"} waiting for your OK.")
-        return Script("Your brief", parts)
+        return Script("Your brief", parts).tidy()
     }
 
     /** What's still on — for "what's pending?". */
     suspend fun pending(): Script {
         val today = LocalDate.now()
         val end = start(today.plusDays(1))
-        val open = db.tasks().observeOpen().first()
+        val open = Dedup.distinct(db.tasks().observeOpen().first()) { it.title }
         val overdue = open.filter { it.dueAt != null && it.dueAt < start(today) }
         val due = open.filter { it.dueAt != null && it.dueAt in start(today) until end }.sortedBy { it.remindAt ?: it.dueAt }
         val later = open.filter { it.dueAt == null }.sortedBy { it.priority }
@@ -97,11 +112,11 @@ class Briefing(private val db: Db, private val settings: SettingsStore, private 
         if (overdue.isNotEmpty()) { parts.add("Overdue:"); overdue.take(5).forEach { parts.add(spokenTask(it, withTime = false)) } }
         if (due.isNotEmpty()) { parts.add("Due today:"); due.take(8).forEach { parts.add(spokenTask(it)) } }
         if (later.isNotEmpty()) { parts.add("Without a date:"); later.take(5).forEach { parts.add(spokenTask(it, withTime = false)) } }
-        return Script("Pending tasks", parts)
+        return Script("Pending tasks", parts).tidy()
     }
 
     suspend fun reminders(): Script {
-        val list = db.tasks().upcomingReminders(System.currentTimeMillis()).take(10)
+        val list = Dedup.distinct(db.tasks().upcomingReminders(System.currentTimeMillis())) { it.title }.take(10)
         if (list.isEmpty()) return Script("Reminders", listOf("You have no upcoming reminders."))
         return Script("Reminders", listOf("You have ${count(list.size, "upcoming reminder")}.") + list.map { "${dayWord(it.remindAt!!)} at ${Prompts.time(it.remindAt)}: ${it.title.trimEnd('.')}." })
     }
@@ -113,24 +128,29 @@ class Briefing(private val db: Db, private val settings: SettingsStore, private 
         if (e?.diary != null) {
             val ends = runCatching { Js.json.decodeFromString(ListSerializer(String.serializer()), e.looseEnds) }.getOrDefault(emptyList())
             val tomorrow = runCatching { Js.json.decodeFromString(ListSerializer(String.serializer()), e.tomorrow) }.getOrDefault(emptyList())
+            val endsNew = Dedup.strings(ends)
+            val tomorrowNew = Dedup.without(Dedup.strings(tomorrow), endsNew) { it }
             return Script("Summary of $label", listOfNotNull(e.headline?.let { "$it." }) + Speakable.sentences(e.diary) +
-                (if (ends.isNotEmpty()) listOf("Still open: ${list(ends.take(4))}.") else emptyList()) +
-                (if (tomorrow.isNotEmpty()) listOf("For tomorrow: ${list(tomorrow.take(4))}.") else emptyList()))
+                (if (endsNew.isNotEmpty()) listOf("Still open: ${list(endsNew.take(4))}.") else emptyList()) +
+                (if (tomorrowNew.isNotEmpty()) listOf("For tomorrow: ${list(tomorrowNew.take(4))}.") else emptyList())).tidy()
         }
         val convs = db.conversations().inRangeOnce(start(d), start(d.plusDays(1))).filter { it.state == "done" && !it.ignored }
         if (convs.isEmpty()) return Script("Summary of $label", listOf("There are no conversations to summarise for $label yet."))
-        return Script("Summary of $label", listOf("${count(convs.size, "conversation")} $label.") + convs.map { "At ${Prompts.time(it.startAt)}, ${it.title}. ${it.summary.orEmpty()}" })
+        return Script("Summary of $label", listOf("${count(convs.size, "conversation")} $label.") + convs.map { "At ${Prompts.time(it.startAt)}, ${it.title}. ${it.summary.orEmpty()}" }).tidy()
     }
 
-    fun note(n: Note): Script = Script(n.title, listOf(n.title + ".") + n.body.lines().map { it.trim() }.filter { it.isNotEmpty() && it != "---" })
+    fun note(n: Note): Script = Script(n.title, listOf(n.title + ".") + n.body.lines().map { it.trim().removePrefix("- ").removePrefix("## ") }.filter { it.isNotEmpty() && it != "---" }).tidy()
 
     fun conversation(c: Conversation): Script {
         val points = c.keyPoints?.let { runCatching { Js.json.decodeFromString(ListSerializer(String.serializer()), it) }.getOrNull() }.orEmpty()
-        return Script(c.title ?: "Conversation", listOfNotNull(c.title?.let { "$it, at ${Prompts.time(c.startAt)}." }, c.summary) + points)
+        // Key points mostly restate the summary; only the new ones are read.
+        val summary = c.summary.orEmpty()
+        val fresh = Dedup.strings(points).filter { p -> Speakable.sentences(summary).none { Dedup.same(it, p, 0.6) } }
+        return Script(c.title ?: "Conversation", listOfNotNull(c.title?.let { "$it, at ${Prompts.time(c.startAt)}." }, c.summary) + fresh).tidy()
     }
 
     fun tasks(title: String, list: List<TaskRow>): Script =
-        Script(title, if (list.isEmpty()) listOf("Nothing here.") else listOf("${count(list.size, "task")}.") + list.map { spokenTask(it) })
+        Dedup.distinct(list) { it.title }.let { l -> Script(title, if (l.isEmpty()) listOf("Nothing here.") else listOf("${count(l.size, "task")}.") + l.map { spokenTask(it) }).tidy() }
 
     private fun count(n: Int, word: String) = when (n) { 1 -> "one $word"; else -> "$n ${word}s" }
     private fun dayWord(at: Long): String {
