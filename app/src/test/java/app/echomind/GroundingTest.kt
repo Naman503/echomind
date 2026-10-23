@@ -43,4 +43,10 @@ class GroundingTest {
         assertTrue(Grounding.ownerSaid("So I have this things in plant", "So, I have this things in plant."))
         assertFalse(Grounding.ownerSaid("I am working on some projects", "Hello there. Working on stops."))
     }
+
+    @Test fun inventedNamesInProse() {
+        val notes = "Talked with Rahul about the Oracle server. Booked an auto to Bel Road."
+        val diary = "It was late. I talked with Rahul about the Oracle server, then Priya called from Mumbai. On Tuesday I rested."
+        assertEquals(listOf("Priya", "Mumbai"), Grounding.unknownNames(diary, notes))
+    }
 }

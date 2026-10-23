@@ -69,4 +69,28 @@ object Grounding {
         if (said.isBlank()) return true
         return support(said, TextNorm.keyTerms(lineText).toSet()) >= 0.5
     }
+
+    private val common = setOf("i", "i'm", "i've", "i'd", "i'll", "today", "tomorrow", "yesterday", "tonight", "morning", "evening", "afternoon", "night",
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "january", "february", "march", "april", "may", "june", "july",
+        "august", "september", "october", "november", "december", "god", "ai", "english", "hindi", "hinglish")
+
+    /**
+     * Capitalised names in [text] (not at the start of a sentence) that appear nowhere in [source]:
+     * a sign the writer invented people or places.
+     */
+    fun unknownNames(text: String, source: String): List<String> {
+        val src = TextNorm.keyTerms(source).toSet() + source.lowercase().split(Regex("[^\\p{L}]+")).toSet()
+        val out = LinkedHashSet<String>()
+        for (sentence in text.split(Regex("(?<=[.!?…])\\s+|\\n+"))) {
+            val words = sentence.trim().split(Regex("\\s+"))
+            for ((i, raw) in words.withIndex()) {
+                if (i == 0) continue
+                val w = raw.trim('"', '“', '”', '‘', '’', ',', '.', '!', '?', ';', ':', '(', ')', '—', '-')
+                if (w.length < 3 || !w.first().isUpperCase() || w.lowercase() in common) continue
+                val key = TextNorm.keyTerms(w)
+                if (w.lowercase() !in src && key.none { it in src }) out.add(w)
+            }
+        }
+        return out.toList()
+    }
 }

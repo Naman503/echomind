@@ -41,6 +41,9 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.AutoStories
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.MusicNote
@@ -56,6 +59,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -72,6 +77,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -140,7 +146,25 @@ fun SettingsScreen() {
     val g = App.graph
     val nav = LocalNav.current
     val s by g.settings.flow.collectAsStateWithLifecycle()
+    var query by rememberSaveable { mutableStateOf("") }
+    val index = remember { settingsIndex() }
     SettingsPage("Settings") {
+        item {
+            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true, shape = MaterialTheme.shapes.extraLarge,
+                leadingIcon = { Icon(Icons.Rounded.Search, null) }, placeholder = { Text("Search settings — e.g. quiet hours, voices, temperature") },
+                trailingIcon = if (query.isNotEmpty()) ({ IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, "Clear") } }) else null)
+        }
+        if (query.isNotBlank()) {
+            val q = query.trim().lowercase()
+            val hits = index.filter { e -> e.title.lowercase().contains(q) || e.keywords.contains(q) || e.where.lowercase().contains(q) || q.split(' ').all { w -> e.keywords.contains(w) || e.title.lowercase().contains(w) } }
+            if (hits.isEmpty()) item { Text("Nothing matches “$query”.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(Sp.l)) }
+            else item {
+                app.echomind.ui.components.NavGroup {
+                    hits.take(30).forEach { e -> app.echomind.ui.components.NavRow(e.icon, e.title, e.where) { nav.go(e.route) } }
+                }
+            }
+            return@SettingsPage
+        }
         item {
             EchoCard(onClick = { nav.go(ProvidersRoute) }, color = if (s.privacy == Privacy.LOCAL_ONLY) LocalSemantic.current.onDevice.copy(alpha = 0.1f) else LocalSemantic.current.cloudContainer) {
                 Text(if (s.privacy == Privacy.LOCAL_ONLY) "Local only" else "Cloud allowed", style = MaterialTheme.typography.titleMedium)
@@ -149,61 +173,126 @@ fun SettingsScreen() {
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Spacer(Modifier.height(Sp.s))
         }
-        item { SectionHeader("Listening") }
-        item { SettingRow("Listening", "Microphone, languages, accuracy, quiet hours, transcript order", Icons.Rounded.Mic, onClick = { nav.go(RecordingRoute) }) }
-        item { SettingRow("Recordings", "Kept ${retentionLabel(s.keepRecordingsDays)} · quality · listen back", Icons.Rounded.GraphicEq, onClick = { nav.go(app.echomind.ui.RecordingsRoute) }) }
-        item { SettingRow("Your voice", if (g.voice.enrolled()) "Set up · ${g.voice.samples()} sample${if (g.voice.samples() == 1) "" else "s"} · ${s.voiceSensitivity}" else "Not set up — so notes know what you said", Icons.Rounded.RecordVoiceOver, onClick = { nav.go(VoiceRoute) }) }
-        item { SettingRow("Sounds: songs & surroundings", listOfNotNull(if (s.songs) "Songs kept" else null, if (s.ambient) "surroundings on" else null).joinToString(" · ").ifBlank { "Off" }, Icons.Rounded.MusicNote, onClick = { nav.go(app.echomind.ui.SoundsSettingsRoute) }) }
-        item { SettingRow("Phone calls", if (s.importCalls) "Importing call recordings" else "Off", Icons.Rounded.Call, onClick = { nav.go(CallsRoute) }) }
-        item { SectionHeader("AI") }
-        item { SettingRow("AI behaviour", "Thinking: ${s.aiQuality} · language · what it does by itself", Icons.Rounded.AutoAwesome, onClick = { nav.go(app.echomind.ui.AiSettingsRoute) }) }
-        item { SettingRow("Privacy & AI providers", "Who does transcription, notes, memory, Ask", Icons.Rounded.Shield, onClick = { nav.go(ProvidersRoute) }) }
-        item { SettingRow("AI sessions", "When the AI reads your day: ${s.session.mode.name.lowercase()}", Icons.Rounded.Timer, onClick = { nav.go(SessionsRoute) }) }
-        item { SettingRow("Web search", when (s.webSearch) { "off" -> "Off"; "auto" -> "Automatic"; else -> "Asks before searching" } + " · ${App.graph.web.providerLabel()}", Icons.Rounded.Public, onClick = { nav.go(app.echomind.ui.WebSettingsRoute) }) }
-        item { SettingRow("On-device models", "Download speech, AI, search, sound and voice models", Icons.Rounded.Download, onClick = { nav.go(ModelsRoute) }) }
-        item { SectionHeader("Organising") }
-        item { SettingRow("Journal, review & coach", if (s.nightReview) "Journal ${s.journalStyle} · every night after ${s.nightReviewAt / 60}:${"%02d".format(s.nightReviewAt % 60)} · coach ${s.coachStrictness}" else "Off", Icons.Rounded.Bedtime, onClick = { nav.go(app.echomind.ui.ReviewSettingsRoute) }) }
-        item { SettingRow("Tasks & reminders", if (s.undatedToToday) "New tasks go on Today · follow-ups ${if (s.taskFollowUps) "on" else "off"}" else "Follow-ups ${if (s.taskFollowUps) "on" else "off"}", Icons.Rounded.CheckCircle, onClick = { nav.go(app.echomind.ui.TasksSettingsRoute) }) }
-        item { SettingRow("Calendar", if (s.showPhoneCalendar) "Phone calendars shown · heads-up ${if (s.eventPrep) "on" else "off"}" else "EchoMind events only", Icons.Rounded.CalendarMonth, onClick = { nav.go(app.echomind.ui.CalendarSettingsRoute) }) }
-        item { SettingRow("People & names", "Recognise voices · names to remember · people pages", Icons.Rounded.Groups, onClick = { nav.go(app.echomind.ui.PeopleSettingsRoute) }) }
-        item { SettingRow("Notes & folders", "Organise notes into a folder tree with AI", Icons.Rounded.Folder, onClick = { nav.go(app.echomind.ui.OrganizeRoute) }) }
-        item { SectionHeader("Assistant") }
-        item { SettingRow("Check-ins", s.checkIns.filter { it.enabled }.joinToString(", ") { "%d:%02d".format(it.minute / 60, it.minute % 60) }.ifBlank { "Off" } + if (s.quickQuestions) " · quick questions on" else "", Icons.Rounded.QuestionAnswer, onClick = { nav.go(app.echomind.ui.CheckInsRoute) }) }
-        item { SettingRow("Voice & reading", "Voices, speed, earphones vs speaker, nudges", Icons.Rounded.RecordVoiceOver, onClick = { nav.go(app.echomind.ui.ReadingRoute) }) }
-        item { SettingRow("Notifications", "Morning brief, evening recap, suggestions", Icons.Rounded.Notifications, onClick = { nav.go(NotificationsRoute) }) }
-        item { SectionHeader("Phone & data") }
-        item { SettingRow("Phone health & limits", "Temperature, what's running, every limit that pauses work", Icons.Rounded.Thermostat, onClick = { nav.go(app.echomind.ui.HealthRoute) }) }
-        item { SettingRow("Background & battery", "Keep running in the background · vivo setup", Icons.Rounded.BatteryChargingFull, onClick = { nav.go(PowerRoute) }) }
-        item { SettingRow("Processing", "Queue, progress and what's running", Icons.Rounded.Timer, onClick = { nav.go(ProcessingRoute) }) }
-        item { SettingRow("Data ledger", "Everything that left the phone", Icons.Rounded.Shield, onClick = { nav.go(LedgerRoute) }) }
-        item { SettingRow("Your data", "Storage, export, delete", Icons.Rounded.Storage, onClick = { nav.go(DataRoute) }) }
-        item { SettingRow("Developer", "Pipeline, phone, AI calls, jobs on demand, data, log", Icons.Rounded.Code, onClick = { nav.go(app.echomind.ui.DeveloperRoute) }) }
-        item { SettingRow("Status notification", when (s.statusDetail) { "minimal" -> "Minimal"; "status" -> "Status and phone heat"; else -> "Full: status, heat, queue, today" }, Icons.Rounded.Notifications, trailing = {
-            SingleChoiceSegmentedButtonRow {
-                listOf("minimal" to "Min", "status" to "Status", "full" to "Full").forEachIndexed { i, (k, l) ->
-                    SegmentedButton(s.statusDetail == k, { update { it.copy(statusDetail = k) } }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
-                }
-            }
-        }) }
+        group("Recording") {
+            row(Icons.Rounded.Mic, "Listening", "Microphone, languages, accuracy, quiet hours") { nav.go(RecordingRoute) }
+            row(Icons.Rounded.GraphicEq, "Recordings", "Kept ${retentionLabel(s.keepRecordingsDays)} · quality · listen back") { nav.go(app.echomind.ui.RecordingsRoute) }
+            row(Icons.Rounded.RecordVoiceOver, "Your voice", if (g.voice.enrolled()) "Set up · ${g.voice.samples()} sample${if (g.voice.samples() == 1) "" else "s"} · ${s.voiceSensitivity}" else "Not set up — so notes know what you said") { nav.go(VoiceRoute) }
+            row(Icons.Rounded.MusicNote, "Songs & surroundings", listOfNotNull(if (s.songs) "Songs kept" else null, if (s.ambient) "surroundings on" else null).joinToString(" · ").ifBlank { "Off" }) { nav.go(app.echomind.ui.SoundsSettingsRoute) }
+            row(Icons.Rounded.Call, "Phone calls", if (s.importCalls) "Importing call recordings" else "Off") { nav.go(CallsRoute) }
+        }
+        group("AI & privacy") {
+            row(Icons.Rounded.Shield, "AI providers & privacy", "Who does transcription, notes, memory, Ask") { nav.go(ProvidersRoute) }
+            row(Icons.Rounded.AutoAwesome, "AI behaviour", "Thinking: ${s.aiQuality} · ${s.notesLanguage} · what it does by itself") { nav.go(app.echomind.ui.AiSettingsRoute) }
+            row(Icons.Rounded.Timer, "When the AI reads your day", s.session.mode.name.lowercase().replaceFirstChar { it.uppercase() }) { nav.go(SessionsRoute) }
+            row(Icons.Rounded.Public, "Web search", when (s.webSearch) { "off" -> "Off"; "auto" -> "Automatic"; else -> "Asks before searching" } + " · ${App.graph.web.providerLabel()}") { nav.go(app.echomind.ui.WebSettingsRoute) }
+            row(Icons.Rounded.Download, "On-device models", "Speech, AI, search, sound and voice models") { nav.go(ModelsRoute) }
+        }
+        group("Journal & insights") {
+            row(Icons.Rounded.AutoStories, "Journal, review & coach", (if (s.nightReview) "Journal ${s.journalStyle} · night review after ${s.nightReviewAt / 60}:${"%02d".format(s.nightReviewAt % 60)}" else "Night review off") + " · about you, misheard words") { nav.go(app.echomind.ui.ReviewSettingsRoute) }
+            row(Icons.Rounded.QuestionAnswer, "Check-ins", s.checkIns.filter { it.enabled }.joinToString(", ") { "%d:%02d".format(it.minute / 60, it.minute % 60) }.ifBlank { "Off" } + if (s.quickQuestions) " · quick questions on" else "") { nav.go(app.echomind.ui.CheckInsRoute) }
+        }
+        group("Tasks, calendar & people") {
+            row(Icons.Rounded.CheckCircle, "Tasks & reminders", (if (s.reviewAiTasks) "Review before adding" else "Added automatically") + " · smart reminders ${if (s.smartReminders) "on" else "off"}") { nav.go(app.echomind.ui.TasksSettingsRoute) }
+            row(Icons.Rounded.CalendarMonth, "Calendar", if (s.showPhoneCalendar) "Phone calendars shown · heads-up ${if (s.eventPrep) "on" else "off"}" else "EchoMind events only") { nav.go(app.echomind.ui.CalendarSettingsRoute) }
+            row(Icons.Rounded.Groups, "People & names", "Recognise voices · names to remember · people pages") { nav.go(app.echomind.ui.PeopleSettingsRoute) }
+            row(Icons.Rounded.Folder, "Notes & folders", "Organise notes into a folder tree with AI") { nav.go(app.echomind.ui.OrganizeRoute) }
+        }
+        group("Voice & notifications") {
+            row(Icons.Rounded.RecordVoiceOver, "Voice & read-aloud", "Voices, speed, earphones vs speaker, nudges") { nav.go(app.echomind.ui.ReadingRoute) }
+            row(Icons.Rounded.Notifications, "Notifications", "Morning brief, evening recap, suggestions") { nav.go(NotificationsRoute) }
+        }
         item {
-            SectionHeader("Look")
-            SettingRow("Theme", null, Icons.Rounded.Palette, trailing = {
-                SingleChoiceSegmentedButtonRow {
-                    listOf("system" to "Auto", "light" to "Light", "dark" to "Dark").forEachIndexed { i, (k, l) ->
-                        SegmentedButton(s.theme == k, { update { it.copy(theme = k) } }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
+            SectionHeader("Appearance & you")
+            app.echomind.ui.components.NavGroup {
+                SettingRow("Theme", null, Icons.Rounded.Palette, trailing = {
+                    SingleChoiceSegmentedButtonRow {
+                        listOf("system" to "Auto", "light" to "Light", "dark" to "Dark").forEachIndexed { i, (k, l) ->
+                            SegmentedButton(s.theme == k, { update { it.copy(theme = k) } }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
+                        }
                     }
-                }
-            })
-            SwitchRow("Wallpaper colours", "Use your wallpaper's colours (privacy colours never change)", s.dynamicColor) { v -> update { it.copy(dynamicColor = v) } }
+                })
+                SwitchRow("Wallpaper colours", "Use your wallpaper's colours (privacy colours never change)", s.dynamicColor) { v -> update { it.copy(dynamicColor = v) } }
+                SettingRow("Status notification", when (s.statusDetail) { "minimal" -> "Minimal"; "status" -> "Status and phone heat"; else -> "Full: status, heat, queue, today" }, Icons.Rounded.Notifications, trailing = {
+                    SingleChoiceSegmentedButtonRow {
+                        listOf("minimal" to "Min", "status" to "Status", "full" to "Full").forEachIndexed { i, (k, l) ->
+                            SegmentedButton(s.statusDetail == k, { update { it.copy(statusDetail = k) } }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
+                        }
+                    }
+                })
+                var name by remember { mutableStateOf(s.userName) }
+                OutlinedTextField(name, { name = it; update { st -> st.copy(userName = it) } }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = Sp.l, vertical = Sp.s))
+            }
         }
-        item {
-            SectionHeader("You")
-            var name by remember { mutableStateOf(s.userName) }
-            OutlinedTextField(name, { name = it; update { st -> st.copy(userName = it) } }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        group("Phone & data") {
+            row(Icons.Rounded.Thermostat, "Phone health & limits", "Temperature, what's running, every limit that pauses work") { nav.go(app.echomind.ui.HealthRoute) }
+            row(Icons.Rounded.BatteryChargingFull, "Background & battery", "Keep running in the background · vivo setup") { nav.go(PowerRoute) }
+            row(Icons.Rounded.Shield, "Data ledger", "Everything that left the phone") { nav.go(LedgerRoute) }
+            row(Icons.Rounded.Storage, "Your data", "Storage, export, delete") { nav.go(DataRoute) }
+        }
+        group("Advanced") {
+            row(Icons.Rounded.Timer, "Processing", "Queue, progress and what's running") { nav.go(ProcessingRoute) }
+            row(Icons.Rounded.Code, "Developer", "Pipeline, phone, AI calls, jobs on demand, data, log") { nav.go(app.echomind.ui.DeveloperRoute) }
         }
     }
+}
+
+/** A titled group of rows on one surface. */
+private fun androidx.compose.foundation.lazy.LazyListScope.group(title: String, rows: GroupScope.() -> Unit) {
+    val list = GroupScope().apply(rows).rows
+    item(key = "g$title") {
+        SectionHeader(title)
+        app.echomind.ui.components.NavGroup { list.forEach { r -> app.echomind.ui.components.NavRow(r.icon, r.title, r.subtitle, tint = MaterialTheme.colorScheme.onSurfaceVariant, onClick = r.onClick) } }
+    }
+}
+
+private class GroupScope {
+    data class Row(val icon: androidx.compose.ui.graphics.vector.ImageVector, val title: String, val subtitle: String?, val onClick: () -> Unit)
+    val rows = ArrayList<Row>()
+    fun row(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String?, onClick: () -> Unit) { rows.add(Row(icon, title, subtitle, onClick)) }
+}
+
+/** Every setting worth finding, with the words people search for and the screen that holds it. */
+private class SettingEntry(val title: String, val where: String, keywords: String, val route: app.echomind.ui.Route, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    val keywords = (title + " " + where + " " + keywords).lowercase()
+}
+
+private fun settingsIndex(): List<SettingEntry> {
+    val R = Icons.Rounded
+    return listOf(
+        SettingEntry("Listening", "Recording › Listening", "microphone mic languages hindi english accuracy speed quiet hours transcript order newest first", RecordingRoute, R.Mic),
+        SettingEntry("Quiet hours", "Recording › Listening", "night silent pause schedule", RecordingRoute, R.Mic),
+        SettingEntry("Recordings", "Recording › Recordings", "keep audio retention days quality listen back delete", app.echomind.ui.RecordingsRoute, R.GraphicEq),
+        SettingEntry("Your voice", "Recording › Your voice", "voiceprint enroll sensitivity recognise me", VoiceRoute, R.RecordVoiceOver),
+        SettingEntry("Songs & surroundings", "Recording › Sounds", "singing songs ambient sound tagger look up online poster", app.echomind.ui.SoundsSettingsRoute, R.MusicNote),
+        SettingEntry("Phone calls", "Recording › Calls", "call recordings import", CallsRoute, R.Call),
+        SettingEntry("AI providers & privacy", "AI › Providers", "cloud local only api key claude gemini openai privacy", ProvidersRoute, R.Shield),
+        SettingEntry("AI behaviour", "AI › Behaviour", "thinking quality fast balanced best language notes language organise nightly stories", app.echomind.ui.AiSettingsRoute, R.AutoAwesome),
+        SettingEntry("When the AI reads your day", "AI › Sessions", "session mode live interval charging manual words", SessionsRoute, R.Timer),
+        SettingEntry("Web search", "AI › Web search", "internet wikipedia privacy search provider", app.echomind.ui.WebSettingsRoute, R.Public),
+        SettingEntry("On-device models", "AI › Models", "download gemma whisper speech model voice model embedding", ModelsRoute, R.Download),
+        SettingEntry("Model context size", "Journal & insights › Journal, review & coach", "context 4k 8k 16k tokens memory on-device", app.echomind.ui.ReviewSettingsRoute, R.Download),
+        SettingEntry("Journal style", "Journal & insights › Journal, review & coach", "diary cinematic reflective simple length first person voice", app.echomind.ui.ReviewSettingsRoute, R.AutoStories),
+        SettingEntry("About me", "Journal & insights › Journal, review & coach", "context profile who i am projects", app.echomind.ui.ReviewSettingsRoute, R.AutoStories),
+        SettingEntry("Words it mishears", "Journal & insights › Journal, review & coach", "corrections misheard wrong words transcription fix", app.echomind.ui.ReviewSettingsRoute, R.AutoStories),
+        SettingEntry("Night review", "Journal & insights › Journal, review & coach", "night time charging reread review now", app.echomind.ui.ReviewSettingsRoute, R.AutoStories),
+        SettingEntry("Speaking coach", "Journal & insights › Journal, review & coach", "english grammar nervous slips strict gentle points", app.echomind.ui.ReviewSettingsRoute, R.AutoStories),
+        SettingEntry("Day review sections", "Journal & insights › Journal, review & coach", "hide sections overview people topics lessons", app.echomind.ui.ReviewSettingsRoute, R.AutoStories),
+        SettingEntry("Check-ins", "Journal & insights › Check-ins", "questions schedule journaling quick questions", app.echomind.ui.CheckInsRoute, R.QuestionAnswer),
+        SettingEntry("Tasks & reminders", "Tasks › Tasks & reminders", "review before adding automatic smart reminders today follow ups plans", app.echomind.ui.TasksSettingsRoute, R.CheckCircle),
+        SettingEntry("Calendar", "Tasks › Calendar", "phone calendar google heads up event prep reminders", app.echomind.ui.CalendarSettingsRoute, R.CalendarMonth),
+        SettingEntry("People & names", "Tasks › People", "recognise voices names people pages circles", app.echomind.ui.PeopleSettingsRoute, R.Groups),
+        SettingEntry("Notes & folders", "Tasks › Organise", "folders tags tree organise", app.echomind.ui.OrganizeRoute, R.Folder),
+        SettingEntry("Voice & read-aloud", "Voice › Read-aloud", "tts voices speed pitch speaker earphones bluetooth nudges kokoro piper", app.echomind.ui.ReadingRoute, R.RecordVoiceOver),
+        SettingEntry("Notifications", "Voice › Notifications", "morning brief evening recap suggestions", NotificationsRoute, R.Notifications),
+        SettingEntry("Theme & colours", "Settings › Appearance", "dark light wallpaper colours status notification name", app.echomind.ui.SettingsRoute, R.Palette),
+        SettingEntry("Phone health & limits", "Phone › Health", "temperature heat battery limits threads utilisation governor pause", app.echomind.ui.HealthRoute, R.Thermostat),
+        SettingEntry("Background & battery", "Phone › Background", "battery optimisation vivo autostart killed", PowerRoute, R.BatteryChargingFull),
+        SettingEntry("Data ledger", "Phone › Data ledger", "egress cloud what left", LedgerRoute, R.Shield),
+        SettingEntry("Your data", "Phone › Your data", "storage export delete backup", DataRoute, R.Storage),
+        SettingEntry("Processing", "Advanced › Processing", "queue progress running", ProcessingRoute, R.Timer),
+        SettingEntry("Developer", "Advanced › Developer", "debug pipeline log ai calls jobs", app.echomind.ui.DeveloperRoute, R.Code),
+    )
 }
 
 /** The privacy switch, a provider per feature with who can see the data, and the keys. */

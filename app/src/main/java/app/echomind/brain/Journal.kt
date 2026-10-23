@@ -142,7 +142,16 @@ class Journal(private val db: Db, private val ai: Ai, private val settings: Sett
             val words = when (st.journalLength) { "short" -> 300; "long" -> 900; else -> 600 }
             ai.stream(LlmRequest(Feature.JOURNAL, "Writing your diary", Prompts.diarySystem(st.notesLanguage, st.journalStyle, st.journalVoice, st.journalLength, st.userName), user2,
                 maxTokens = words, temperature = 0.85)).toList().joinToString("")
-        }.onFailure { Log.w("EchoJournal", "diary failed", it) }.getOrNull()?.let(::cleanProse)
+        }.onFailure { Log.w("EchoJournal", "diary failed", it) }.getOrNull()?.let(::cleanProse)?.let { first ->
+            // Names that appear nowhere in the day's notes were invented: write it again, more carefully.
+            val made = Grounding.unknownNames(first, user2)
+            if (made.size < 2) first
+            else runCatching {
+                Log.w("EchoJournal", "diary named unknown ${made.take(5)}; rewriting")
+                ai.stream(LlmRequest(Feature.JOURNAL, "Rewriting your diary", Prompts.diarySystem(st.notesLanguage, st.journalStyle, st.journalVoice, st.journalLength, st.userName) +
+                    "\n8. Use only names that appear in the notes. Do not mention: ${made.take(8).joinToString(", ")}.", user2, maxTokens = 600, temperature = 0.5)).toList().joinToString("")
+            }.getOrNull()?.let(::cleanProse)?.takeIf { it.length >= 80 } ?: first
+        }
         // Never save a blank journal as done; the night review tries again.
         if (diary.isNullOrBlank() || diary.length < 80) { Log.w("EchoJournal", "diary came back empty"); return false }
         fun strings(k: String) = r?.strings(k).orEmpty()

@@ -120,7 +120,13 @@ Rules:
 4. End on a line that carries the reader into the next week."""
         val prose = runCatching {
             ai.stream(LlmRequest(Feature.JOURNAL, "Writing the chapter for $week", system, input, maxTokens = if (local) 950 else 1_600, temperature = 0.85)).toList().joinToString("")
-        }.onFailure { Log.w(TAG, "chapter failed", it) }.getOrNull()?.trim()?.trim('"')
+        }.onFailure { Log.w(TAG, "chapter failed", it) }.getOrNull()?.trim()?.trim('"')?.let { first ->
+            val made = Grounding.unknownNames(first, input)
+            if (made.size < 2) first else runCatching {
+                ai.stream(LlmRequest(Feature.JOURNAL, "Rewriting the chapter for $week", system + "\n5. Use only names that appear in the diary. Do not mention: ${made.take(8).joinToString(", ")}.",
+                    input, maxTokens = if (local) 950 else 1_600, temperature = 0.55)).toList().joinToString("").trim().trim('"')
+            }.getOrNull()?.takeIf { it.length >= 200 } ?: first
+        }
         if (prose.isNullOrBlank() || prose.length < 200) return
         val meta = runCatching {
             ai.json(LlmRequest(Feature.JOURNAL, "Naming the chapter", "You name a memoir chapter. Write in ${s.notesLanguage}. title: 2-6 evocative words, true to the chapter. epigraph: one short line (under 20 words) taken from or faithful to the chapter, without quotation marks. summary: one sentence for the table of contents.",

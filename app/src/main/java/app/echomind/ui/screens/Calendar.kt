@@ -184,6 +184,8 @@ fun CalendarScreen() {
     val events by produceState(emptyList<EventRow>(), month, own, s.showPhoneCalendar, resume) { value = g.agenda.range(from, to) }
     val byDay = remember(days) { days.associateBy { it.day } }
     val eventsByDay = remember(events) { events.filter { it.status == "confirmed" }.groupBy { Fmt.date(it.startAt) } }
+    // Something on most days (a daily stand-up) is routine: it doesn't mark a day as planned.
+    val routine = remember(events) { events.filter { it.status == "confirmed" }.groupBy { it.title.trim().lowercase() }.filterValues { l -> l.map { Fmt.date(it.startAt) }.distinct().size >= 5 }.keys }
     val tasksByDay = remember(tasks) { tasks.groupBy { Fmt.date(it.completedAt ?: it.dueAt ?: 0) } }
     val convsByDay = remember(convs) { convs.filter { it.state == "done" && !it.ignored }.groupBy { Fmt.date(it.startAt) } }
 
@@ -231,7 +233,7 @@ fun CalendarScreen() {
                     val dir = if (targetState.first > initialState.first) 1 else -1
                     (slideInHorizontally(tween(240)) { it / 5 * dir } + fadeIn(tween(200))) togetherWith (slideOutHorizontally(tween(200)) { -it / 5 * dir } + fadeOut(tween(120)))
                 }, label = "month") { (shown, week) ->
-                    MonthGrid(shown, gridStart, selected, shade, byDay, eventsByDay, tasksByDay, weekOnly = week,
+                    MonthGrid(shown, gridStart, selected, shade, byDay, eventsByDay.mapValues { (_, l) -> l.filter { it.title.trim().lowercase() !in routine } }, tasksByDay, weekOnly = week,
                         onPick = ::pick,
                         onSwipe = { dir -> if (week) pick(selected.plusWeeks(dir.toLong())) else month = if (dir > 0) ym.plusMonths(1).toString() else ym.minusMonths(1).toString() })
                 }
@@ -271,7 +273,7 @@ fun CalendarScreen() {
             // One timeline, in time order. All-day events and undated tasks go first.
             data class Item(val at: Long, val key: String, val content: @Composable () -> Unit)
             val timeline = buildList {
-                if (filter == "all" || filter == "events") dayEvents.forEach { e -> add(Item(if (e.allDay) 0 else e.startAt, "e${e.id}_${e.deviceId}_${e.startAt}") { TimelineRow(if (e.allDay) "All day" else Fmt.time(e.startAt), MaterialTheme.colorScheme.primary) { EventRowView(e) { openEvent(e) } } }) }
+                if (filter == "all" || filter == "events") dayEvents.forEach { e -> add(Item(if (e.allDay) 0 else e.startAt, "e${e.id}_${e.deviceId}_${e.startAt}") { TimelineRow(if (e.allDay) "All day" else Fmt.time(e.startAt), MaterialTheme.colorScheme.primary) { EventRowView(e, showTime = false) { openEvent(e) } } }) }
                 if (filter == "all" || filter == "tasks") dayTasks.forEach { t -> val at = t.remindAt ?: t.dueAt ?: 0; add(Item(at, "t${t.id}") { TimelineRow(timeOf(t), MaterialTheme.colorScheme.tertiary) { CalendarTask(t) { nav.go(TaskRoute(t.id)) } } }) }
                 if (filter == "all" || filter == "talk") dayConvs.forEach { c -> add(Item(c.startAt, "c${c.id}") { TimelineRow(Fmt.time(c.startAt), MaterialTheme.colorScheme.outline) { ConversationRow(c) { nav.go(ConversationRoute(c.id)) } } }) }
             }.sortedBy { it.at }
@@ -326,7 +328,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.agendaItems(nav: app.
             daysWith.forEach { d ->
                 Text(Fmt.day(d) + if (Fmt.day(d) != Fmt.dayLong(d)) " · " + d.format(DateTimeFormatter.ofPattern("EEE d MMM")) else "", style = MaterialTheme.typography.titleSmall,
                     color = if (d == start) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = Sp.m))
-                evBy[d].orEmpty().sortedBy { if (it.allDay) 0 else it.startAt }.forEach { e -> TimelineRow(if (e.allDay) "All day" else Fmt.time(e.startAt), MaterialTheme.colorScheme.primary) { EventRowView(e) { openEvent(e) } } }
+                evBy[d].orEmpty().sortedBy { if (it.allDay) 0 else it.startAt }.forEach { e -> TimelineRow(if (e.allDay) "All day" else Fmt.time(e.startAt), MaterialTheme.colorScheme.primary) { EventRowView(e, showTime = false) { openEvent(e) } } }
                 tsBy[d].orEmpty().forEach { t -> TimelineRow(timeOf(t), MaterialTheme.colorScheme.tertiary) { CalendarTask(t) { nav.go(TaskRoute(t.id)) } } }
             }
         }
@@ -364,7 +366,7 @@ private fun MonthGrid(
                     // One soft colour for how the day went…
                     val tint: Color? = when (shade) {
                         Shade.PRODUCTIVITY -> score(entry)?.let { lerp(base, sem.positive, 0.12f + 0.5f * it / 100f) }
-                        Shade.MOOD -> (entry?.mood ?: metrics?.mood)?.let { m -> if (m >= 0) lerp(base, sem.positive, 0.12f + 0.5f * m) else lerp(base, sem.recording, 0.12f + 0.5f * -m) }
+                        Shade.MOOD -> (entry?.mood ?: metrics?.mood)?.let { m -> if (m >= 0) lerp(base, sem.positive, 0.1f + 0.4f * m) else lerp(base, MaterialTheme.colorScheme.tertiary, 0.08f + 0.3f * -m) }
                         Shade.TALK -> metrics?.talkMinutes?.takeIf { it > 0 }?.let { lerp(base, MaterialTheme.colorScheme.primary, 0.1f + 0.5f * minOf(1f, it / 240f)) }
                     }
                     // …and at most two marks: something planned, and a diary written.
@@ -441,10 +443,10 @@ private fun DayHeader(d: LocalDate, e: DayEntry?, onPrev: () -> Unit, onNext: ()
 }
 
 @Composable
-private fun EventRowView(e: EventRow, onClick: () -> Unit) {
+private fun EventRowView(e: EventRow, showTime: Boolean = true, onClick: () -> Unit) {
     EchoCard(onClick = onClick, padding = PaddingValues(Sp.m)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.width(64.dp)) {
+            if (showTime) Column(Modifier.width(64.dp)) {
                 Text(if (e.allDay) "All day" else Fmt.time(e.startAt), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 e.endAt?.takeIf { !e.allDay }?.let { Text(Fmt.time(it), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline) }
             }
