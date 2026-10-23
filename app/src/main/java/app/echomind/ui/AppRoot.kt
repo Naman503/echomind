@@ -21,6 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Forum
+import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Today
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material3.Badge
@@ -134,14 +136,14 @@ fun AppRoot(pending: MutableState<String?>) {
         val r = pending.value ?: return@LaunchedEffect
         pending.value = null
         when (r) {
-            "ask" -> nav.tab(AskRoute())
+            "ask" -> { nav.tab(TodayRoute); nav.go(AskRoute()) }
             "ask:voice" -> nav.go(AskRoute(voice = true))
             "tasks" -> nav.tab(TasksRoute)
             "reminders" -> { nav.tab(TasksRoute); nav.go(RemindersRoute) }
-            "journal" -> { nav.tab(LibraryRoute); nav.go(JournalRoute) }
+            "journal" -> { nav.tab(InsightsRoute); nav.go(JournalRoute) }
             "calendar" -> nav.tab(CalendarRoute)
             "plan" -> { nav.tab(TodayRoute); nav.go(PlanRoute) }
-            "dashboard" -> { nav.tab(TodayRoute); nav.go(DashboardRoute) }
+            "dashboard" -> { nav.tab(InsightsRoute); nav.go(DashboardRoute) }
             "notes" -> { nav.tab(LibraryRoute); nav.go(NotesRoute) }
             "songs" -> { nav.tab(LibraryRoute); nav.go(SongsRoute) }
             "checkin" -> { nav.tab(TodayRoute); nav.go(CheckInRoute()) }
@@ -171,9 +173,9 @@ fun AppRoot(pending: MutableState<String?>) {
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                         Tab(top == TodayRoute, "Today", Icons.Rounded.Today) { nav.tab(TodayRoute) }
                         Tab(top == CalendarRoute, "Calendar", Icons.Rounded.CalendarMonth) { nav.tab(CalendarRoute) }
-                        Tab(top is AskRoute, "Ask", Icons.Rounded.Forum) { nav.tab(AskRoute()) }
                         Tab(top == TasksRoute, "Tasks", Icons.Rounded.CheckCircle, badge = suggested) { nav.tab(TasksRoute) }
-                        Tab(top == LibraryRoute, "Library", Icons.Rounded.AutoStories) { nav.tab(LibraryRoute) }
+                        Tab(top == InsightsRoute, "Insights", Icons.Rounded.Insights) { nav.tab(InsightsRoute) }
+                        Tab(top == LibraryRoute, "You", Icons.Rounded.AccountCircle) { nav.tab(LibraryRoute) }
                     }
                     }
                     }
@@ -194,7 +196,7 @@ fun AppRoot(pending: MutableState<String?>) {
                         entry<NewEventRoute> { app.echomind.ui.screens.EventScreen(null, it.day) }
                         entry<CirclesRoute> { app.echomind.ui.screens.CirclesScreen() }
                         entry<OrganizeRoute> { app.echomind.ui.screens.OrganizeScreen() }
-                        entry<AskRoute>(metadata = TabSwitch) { AskScreen(it.threadId, it.question, it.voice) }
+                        entry<AskRoute> { AskScreen(it.threadId, it.question, it.voice) }
                         entry<TasksRoute>(metadata = TabSwitch) { TasksScreen() }
                         entry<LibraryRoute>(metadata = TabSwitch) { LibraryScreen() }
                         entry<ConversationRoute> { ConversationScreen(it.id, it.lineId) }
@@ -238,11 +240,13 @@ fun AppRoot(pending: MutableState<String?>) {
                         entry<CalendarSettingsRoute> { app.echomind.ui.screens.CalendarSettingsScreen() }
                         entry<TasksSettingsRoute> { app.echomind.ui.screens.TasksSettingsScreen() }
                         entry<VoicesRoute> { app.echomind.ui.screens.VoicesScreen(it.lang) }
-                        entry<InsightsRoute> { app.echomind.ui.screens.InsightsScreen() }
+                        entry<InsightsRoute>(metadata = TabSwitch) { app.echomind.ui.screens.InsightsScreen() }
                         entry<DayReviewRoute> { app.echomind.ui.screens.DayReviewScreen(it.day) }
                         entry<CoachRoute> { app.echomind.ui.screens.CoachScreen() }
                         entry<TopicsRoute> { app.echomind.ui.screens.TopicsScreen() }
                         entry<ReviewSettingsRoute> { app.echomind.ui.screens.ReviewSettingsScreen() }
+                        entry<BookRoute> { app.echomind.ui.screens.BookScreen() }
+                        entry<ChapterRoute> { app.echomind.ui.screens.ChapterScreen(it.week) }
                     },
                 )
             }

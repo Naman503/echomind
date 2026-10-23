@@ -337,4 +337,5 @@ interface AnalysisDao {
     /** Day rows in a date range (refs are yyyy-MM-dd, so they sort as text). */
     @Query("SELECT * FROM analyses WHERE kind = 'day' AND ref >= :from AND ref <= :to ORDER BY ref") fun observeDays(from: String, to: String): Flow<List<Analysis>>
     @Query("DELETE FROM analyses WHERE kind = :kind AND ref = :ref") suspend fun delete(kind: String, ref: String)
+    @Query("SELECT * FROM analyses WHERE kind = :kind ORDER BY ref") fun observeKind(kind: String): Flow<List<Analysis>>
 }

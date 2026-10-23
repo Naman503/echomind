@@ -54,6 +54,7 @@ class Brain(
     private val ai: Ai,
     private val notifier: Notifier,
     private val dayReview: DayReview,
+    private val book: Book,
     private val nightlyExtras: suspend () -> Unit,
 ) {
     enum class Phase { IDLE, TRANSCRIBING, THINKING, JOURNAL, REVIEW, WAITING }
@@ -211,7 +212,13 @@ class Brain(
             governor.workDone(System.currentTimeMillis() - began)
             if (did) return true
         }
-        return false
+        // Days are done: a finished week becomes a chapter of the book.
+        governor.awaitTurn()
+        _state.value = _state.value.copy(phase = Phase.REVIEW, detail = "Writing the book")
+        val began = System.currentTimeMillis()
+        val wrote = runCatching { book.step() }.onFailure { Log.w(TAG, "book step failed", it) }.getOrDefault(false)
+        governor.workDone(System.currentTimeMillis() - began)
+        return wrote
     }
 
     /** Whether the session mode wants the AI to run now. */

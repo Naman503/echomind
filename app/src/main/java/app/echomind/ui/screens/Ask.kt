@@ -135,7 +135,7 @@ fun AskScreen(initialThread: Long?, initialQuestion: String?, startVoice: Boolea
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).windowInsetsPadding(WindowInsets.ime)) {
         ScreenTopBar(
             "Ask",
-            onBack = if (threadId != null) ({ if (initialThread != null) nav.back() else threadId = null }) else null,
+            onBack = if (threadId != null && initialThread == null) ({ threadId = null }) else ({ nav.back() }),
         ) {
             PrivacyChip(Providers.isLocal(provider), if (Providers.isLocal(provider)) "On this phone" else Providers.get(provider)?.label, Modifier.padding(end = Sp.s))
             IconButton(onClick = { g.scope.launch { g.settings.update { it.copy(autoReadAnswers = !it.autoReadAnswers) } } }) {

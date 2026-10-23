@@ -16,6 +16,7 @@ import app.echomind.ai.LocalLlm
 import app.echomind.ai.OpenAiLlm
 import app.echomind.brain.Actions
 import app.echomind.brain.Analyzer
+import app.echomind.brain.Book
 import app.echomind.brain.DayReview
 import app.echomind.brain.Agenda
 import app.echomind.brain.Ask
@@ -119,7 +120,8 @@ class Graph(val app: Application) {
     val transcriber = Transcriber(db, settings, governor, speechEngines, androidSpeech, sherpa, voice, recordings) { sounds }
     val calls = CallImporter(app, db, settings)
     val dayReview = DayReview(db, ai, settings, analyzer, enricher, journal)
-    val brain: Brain = Brain(app, db, settings, governor, transcriber, sessionizer, enricher, journal, tasks, notes, calls, ai, notifier, dayReview) {
+    val book = Book(db, ai, settings)
+    val brain: Brain = Brain(app, db, settings, governor, transcriber, sessionizer, enricher, journal, tasks, notes, calls, ai, notifier, dayReview, book) {
         // Nightly extras after the journal and memory review: file new notes, refresh people's pages.
         if (settings.value.organizeNightly) runCatching { organizer.tidyNew() }
         if (settings.value.storiesNightly) runCatching { people.refreshStories(if (ai.llm(Feature.MEMORY).local) 3 else 12) }

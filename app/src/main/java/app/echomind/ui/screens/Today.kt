@@ -254,7 +254,7 @@ private fun QuickActions() {
         QuickButton(Icons.Rounded.AddTask, "Task", Modifier.weight(1f)) { adding = true }
         QuickButton(Icons.Rounded.RecordVoiceOver, "Check-in", Modifier.weight(1f)) { nav.go(app.echomind.ui.CheckInRoute()) }
         QuickButton(Icons.Rounded.EditNote, "Note", Modifier.weight(1f)) { nav.go(app.echomind.ui.NewNoteRoute()) }
-        QuickButton(Icons.Rounded.QuestionAnswer, "Ask", Modifier.weight(1f)) { nav.tab(app.echomind.ui.AskRoute()) }
+        QuickButton(Icons.Rounded.QuestionAnswer, "Ask", Modifier.weight(1f)) { nav.go(app.echomind.ui.AskRoute()) }
         val scope = rememberCoroutineScope()
         QuickButton(Icons.AutoMirrored.Rounded.VolumeUp, "Brief me", Modifier.weight(1f)) {
             scope.launch { val b = App.graph.briefing.morning(); App.graph.speaker.speak(b.title, b.parts) }
