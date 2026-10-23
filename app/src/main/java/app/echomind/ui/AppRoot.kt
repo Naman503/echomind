@@ -246,6 +246,7 @@ fun AppRoot(pending: MutableState<String?>) {
                         entry<TopicsRoute> { app.echomind.ui.screens.TopicsScreen() }
                         entry<ReviewSettingsRoute> { app.echomind.ui.screens.ReviewSettingsScreen() }
                         entry<BookRoute> { app.echomind.ui.screens.BookScreen() }
+                        entry<DayNumbersRoute> { app.echomind.ui.screens.DayNumbersScreen() }
                         entry<ChapterRoute> { app.echomind.ui.screens.ChapterScreen(it.week) }
                     },
                 )

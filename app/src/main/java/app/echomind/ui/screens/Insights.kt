@@ -94,9 +94,9 @@ import java.time.LocalDate
 private fun mins(m: Int) = if (m < 60) "${m}m" else "${m / 60}h ${m % 60}m"
 private fun secs(s: Int) = if (s < 60) "<1m" else mins(s / 60)
 
-/** Everything recorded, at a glance: your day (or week) in numbers. */
+/** One day (or week) in numbers: talk share, hours, people. Opened from the dashboard. */
 @Composable
-fun DashboardScreen() {
+fun DayNumbersScreen() {
     val g = App.graph
     val nav = LocalNav.current
     var dayStr by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
@@ -107,7 +107,7 @@ fun DashboardScreen() {
     val w by produceState<List<Stats.Day>>(emptyList(), dayStr, week, tick) { if (week) value = g.stats.week(day) }
     val sem = LocalSemantic.current
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
-        ScreenTopBar("Dashboard", onBack = { nav.back() }) { TextButton(onClick = { nav.go(PlanRoute) }) { Text("Plan") } }
+        ScreenTopBar("A day in numbers", onBack = { nav.back() })
         Row(Modifier.fillMaxWidth().padding(horizontal = Sp.gutter), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { dayStr = day.minusDays(if (week) 7 else 1).toString() }) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Earlier") }
             Text(if (week) "Week to ${Fmt.day(day)}" else Fmt.dayLong(day), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
