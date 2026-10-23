@@ -83,7 +83,12 @@ class Brain(
     @Volatile private var reviewDay: LocalDate? = null
 
     /** "Review now": the night review for [day], straight away (still under the heat and battery rules). */
-    fun reviewNow(day: LocalDate) { reviewDay = day; forceAi = true; poke() }
+    fun reviewNow(day: LocalDate) {
+        reviewDay = day; forceAi = true; poke()
+        // Without the listening service (e.g. the phone is locked), a background job runs it; the
+        // watchdog keeps re-queuing it every 15 minutes until the review is done.
+        if (!app.echomind.capture.CaptureService.running) app.echomind.work.ProcessWorker.enqueue(context)
+    }
 
     /**
      * Runs until [keepGoing] returns false. Only one loop runs at a time: with
@@ -313,7 +318,7 @@ class Brain(
                         remind = t.str("remind_iso")?.let { When.iso(it) }?.takeIf { it.hasTime })
                 }
                 tasks.addFound(found, u.conversationId ?: 0, u.startAt, origin = "voice")
-                r.str("note")?.trim()?.takeIf { it.length > 3 }?.let { notes.apply(listOf(Notes.Update("Voice notes", listOf(it, "Said at ${Prompts.time(u.startAt)}"), listOf(u.id))), 0, "a voice note", u.startAt) }
+                r.str("note")?.trim()?.takeIf { it.length > 12 && it.split(' ').size >= 3 }?.let { notes.apply(listOf(Notes.Update("Voice notes", listOf(it, "Said at ${Prompts.time(u.startAt)}"), listOf(u.id))), 0, "a voice note", u.startAt) }
             }
             prefs.edit().putLong("lastCommandScan", last).apply()
         }

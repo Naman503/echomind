@@ -34,7 +34,7 @@ data class PersonDay(val name: String, val seconds: Int, val words: Int, val con
 /** The careful review of one day: measures, people, topics and what to learn from it. */
 @Serializable
 data class DayReviewData(
-    val version: Int = Analyzer.VERSION,
+    val version: Int = DayReview.VERSION,
     val conversations: Int = 0,
     val people: List<PersonDay> = emptyList(),
     /** Voices that were never named, across the day's conversations. */
@@ -70,6 +70,7 @@ class DayReview(
 ) {
     data class Progress(val day: String, val label: String, val done: Int, val total: Int)
 
+    private val fails = HashMap<String, Int>()
     private val _progress = MutableStateFlow<Progress?>(null)
     val progress: StateFlow<Progress?> = _progress.asStateFlow()
 
@@ -84,7 +85,7 @@ class DayReview(
     /** True when the day has a current review covering all its conversations. */
     suspend fun isComplete(d: LocalDate): Boolean {
         val r = load(d.toString()) ?: return false
-        return r.version >= Analyzer.VERSION && r.conversations >= conversations(d).size
+        return r.version >= VERSION && r.conversations >= conversations(d).size
     }
 
     /** Whether there is anything to review on [d] at all. */
@@ -133,12 +134,20 @@ class DayReview(
 
         // 3 + 4. Journal, then the day review (once per new set of conversations).
         val existing = load(day)
-        if (existing != null && existing.version >= Analyzer.VERSION && existing.conversations >= convs.size) { _progress.value = null; return false }
+        if (existing != null && existing.version >= VERSION && existing.conversations >= convs.size) { _progress.value = null; return false }
         _progress.value = Progress(day, "Writing the journal", total - 2, total)
         runCatching { journal.write(d) }.onFailure { Log.w(TAG, "journal failed", it) }
         _progress.value = Progress(day, "Reviewing the day", total - 1, total)
         val fresh = db.analyses().many("conv", convs.map { it.id.toString() }).associateBy { it.ref.toLong() }.mapValues { analyzer.decode(it.value.json) }
         val review = review(d, convs, fresh)
+        // If the AI part failed, try again on a later step (twice at most), so a timeout never
+        // leaves the day "done" without its lessons.
+        val tries = (fails[day] ?: 0)
+        if (review.lessons.isEmpty() && review.followups.isEmpty() && review.communication == null && tries < 2 && ai.ready(Feature.JOURNAL)) {
+            fails[day] = tries + 1
+            _progress.value = null
+            return true
+        }
         db.analyses().upsert(Analysis("day", day, Js.json.encodeToString(DayReviewData.serializer(), review), review.version, System.currentTimeMillis(), ai.llm(Feature.JOURNAL).id))
         _progress.value = null
         return true
@@ -154,9 +163,10 @@ class DayReview(
         var unnamed = 0
         for ((cid, ls) in byConv) {
             for (t in SpeechStats.bySpeaker(ls.map { SpeechStats.Line(it.id, it.speaker, it.text, it.startAt, it.endAt) })) {
+                // Unnamed voices ("S1", "Other") are counted, not listed; the owner, songs and the assistant are neither.
                 if (t.speaker == "me" || t.speaker == "Song" || t.speaker == "EchoMind" || t.speaker == "?") continue
-                val named = !Regex("S\\d+").matches(t.speaker)
-                if (!named) { if (t.words >= 5) unnamed++; continue }
+                if (Regex("S\\d+").matches(t.speaker) || t.speaker.equals("other", true)) { if (t.words >= 5) unnamed++; continue }
+                if (Memory.isJunkName(t.speaker)) continue
                 val p = people[t.speaker]
                 people[t.speaker] = PersonDay(t.speaker, (p?.seconds ?: 0) + t.seconds, (p?.words ?: 0) + t.words, (p?.conversations.orEmpty() + listOfNotNull(cid)).distinct(), true)
             }
@@ -164,7 +174,7 @@ class DayReview(
         // People the AI recognised by name in conversations (mentioned or present).
         for (c in convs) for (n in runCatching { Js.json.decodeFromString(ListSerializer(String.serializer()), c.people ?: "[]") }.getOrDefault(emptyList())) {
             val name = n.trim()
-            if (name.length < 2 || name.equals("me", true) || name.equals("owner", true) || Regex("S\\d+").matches(name)) continue
+            if (name.length < 2 || name.equals("other", true) || Memory.isJunkName(name)) continue
             if (people.keys.none { it.equals(name, true) }) people[name] = PersonDay(name, 0, 0, listOf(c.id), false)
             else people.entries.first { it.key.equals(name, true) }.let { e -> people[e.key] = e.value.copy(conversations = (e.value.conversations + c.id).distinct()) }
         }
@@ -204,19 +214,30 @@ class DayReview(
             if (points.isNotEmpty()) { append("\nCoach notes:\n"); points.take(24).forEach { append("- ").append(it.take(200)).append('\n') } }
         }.let { if (ai.llm(Feature.JOURNAL).local) it.take(8_000) else it }
         val r = runCatching {
-            ai.json(LlmRequest(Feature.JOURNAL, "Reviewing ${Prompts.day(from)}", Deep.daySystem(lang), input, Deep.dayInsights, maxTokens = 1_100, temperature = 0.3, deep = true))
+            ai.json(LlmRequest(Feature.JOURNAL, "Reviewing ${Prompts.day(from)}", Deep.daySystem(lang), input, Deep.dayInsights, maxTokens = 1_100, temperature = 0.3, noThink = true))
         }.onFailure { Log.w(TAG, "day insights failed", it) }.getOrNull() ?: return base
         return base.copy(
-            lessons = r.objects("lessons").mapNotNull { o -> o.str("title")?.trim()?.takeIf { it.isNotEmpty() }?.let { Lesson(it, o.str("detail")?.trim().orEmpty()) } }.take(4),
+            lessons = r.objects("lessons").mapNotNull { o -> o.str("title")?.trim()?.takeIf { it.isNotEmpty() }?.let { Lesson(it, twoSentences(o.str("detail")?.trim().orEmpty())) } }.take(4),
             patterns = r.strings("patterns").take(5),
             peopleNotes = r.objects("people_notes").mapNotNull { o -> o.str("name")?.trim()?.takeIf { it.isNotEmpty() }?.let { PersonNote(it, o.str("note")?.trim().orEmpty()) } }.take(12),
             topics = base.topics.ifEmpty { r.objects("topics").mapNotNull { o -> o.str("name")?.trim()?.takeIf { it.isNotEmpty() }?.let { DayTopic(it, o.str("detail")?.trim().orEmpty()) } } },
             followups = r.strings("followups").take(8),
             bestMoment = r.str("best_moment")?.trim()?.takeIf { it.isNotEmpty() },
             hardMoment = r.str("hard_moment")?.trim()?.takeIf { it.isNotEmpty() },
-            communication = r.int("communication")?.coerceIn(0, 100),
+            // 0 means the model skipped it, not a score.
+            communication = r.int("communication")?.takeIf { it >= 5 }?.coerceAtMost(100),
         )
     }
 
-    companion object { private const val TAG = "EchoReview" }
+    /** Lessons read better short: the first two sentences. */
+    private fun twoSentences(t: String): String {
+        val parts = Regex("(?<=[.!?])\\s+").split(t)
+        return if (parts.size <= 2) t else parts.take(2).joinToString(" ")
+    }
+
+    companion object {
+        private const val TAG = "EchoReview"
+        /** Bump when the journal or day review improves: days are reviewed again (conversations are not reread). */
+        const val VERSION = 4
+    }
 }

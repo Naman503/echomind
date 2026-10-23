@@ -16,6 +16,7 @@ import app.echomind.util.int
 import app.echomind.util.objects
 import app.echomind.util.str
 import app.echomind.util.strings
+import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -101,55 +102,85 @@ class Journal(private val db: Db, private val ai: Ai, private val settings: Sett
             return false
         }
         val local = ai.llm(Feature.JOURNAL).local
-        val open = db.tasks().live().filter { it.status == "open" }.take(if (local) 8 else 25)
+        val st = settings.value
+        val about = st.aboutMe.trim().take(500)
+        val reviews = App.graph.analyzer.let { an -> db.analyses().many("conv", convs.map { it.id.toString() }).mapNotNull { an.decode(it.json) } }
+        val topics = reviews.flatMap { it.topics }.distinctBy { it.name.lowercase() }.take(12)
+        val decisions = reviews.flatMap { it.decisions }.distinct().take(8)
+        val people = convs.flatMap { c -> runCatching { Js.json.decodeFromString(ListSerializer(String.serializer()), c.people ?: "[]") }.getOrDefault(emptyList()) }
+            .map { it.trim() }.filter { it.length >= 2 && !Memory.isJunkName(it) && !it.equals("other", true) }.distinctBy { it.lowercase() }.take(12)
         val user = buildString {
-            append("Day: ").append(Prompts.day(from)).append("\n\n")
-            append("What happened:\n")
+            if (about.isNotEmpty()) append("About me (background only):\n").append(about).append("\n\n")
+            append("Day: ").append(Prompts.day(from)).append("\n")
+            m.firstSpeech?.let { append("First words of the day: ").append(Prompts.time(it)).append(". ") }
+            m.lastSpeech?.let { append("Last: ").append(Prompts.time(it)).append(".") }
+            append("\n\nWhat happened, in order:\n")
             append(happened(convs, local))
-            append("\nOpen tasks:\n")
-            open.forEach { append("- ${it.title}${it.dueText?.let { d -> " ($d)" } ?: ""}\n") }
-            append("\nMeasures: ${m.conversations} conversations, ${m.talkMinutes} minutes of talk, ${m.people} people, ${m.tasksMade} new tasks, ${m.tasksDone} done")
+            if (people.isNotEmpty()) append("\nPeople in the day: ").append(people.joinToString(", ")).append('\n')
+            if (topics.isNotEmpty()) append("Topics: ").append(topics.joinToString("; ") { it.name + if (it.detail.isNotBlank()) " — " + it.detail.take(120) else "" }).append('\n')
+            if (decisions.isNotEmpty()) append("Decided: ").append(decisions.joinToString("; ")).append('\n')
+            append("\nMeasures: ${m.conversations} conversations, ${m.talkMinutes} minutes of talk, ${m.tasksMade} new tasks, ${m.tasksDone} done")
             if (m.lateNightMinutes > 10) append(", ${m.lateNightMinutes} min talking after 11 pm")
             append(".\n")
         }
         val done = db.tasks().completedIn(from, to)
+        val open = db.tasks().live().filter { it.status == "open" }.take(if (local) 8 else 25)
         val events = db.events().range(from, to)
         val user2 = buildString {
             append(user)
             if (done.isNotEmpty()) append("\nFinished today: ").append(done.take(20).joinToString(" | ") { it.title }).append('\n')
-            val answers = runCatching { App.graph.checkIns.answersToday() }.getOrDefault(emptyList())
-            if (answers.isNotEmpty()) { append("\nWhat they told you in today's check-in (their own words, the best source):\n"); answers.forEach { append("- ${it.question} → ${it.answer}\n") } }
+            val answers = if (d == LocalDate.now()) runCatching { App.graph.checkIns.answersToday() }.getOrDefault(emptyList()) else emptyList()
+            if (answers.isNotEmpty()) { append("\nWhat I said in today's check-in (my own words, the best source):\n"); answers.forEach { append("- ${it.question} → ${it.answer}\n") } }
             if (events.isNotEmpty()) append("\nOn the calendar: ").append(events.joinToString(" | ") { "${Prompts.time(it.startAt)} ${it.title}" }).append('\n')
         }
+        // 1. The structure: title, highlights, loose ends, plans (constrained JSON, quick).
         val r = runCatching {
-            ai.json(LlmRequest(Feature.JOURNAL, "Writing today's journal", Prompts.journalSystem(settings.value.notesLanguage), user2, Schemas.journal, maxTokens = 1_100, temperature = 0.4, deep = true))
-        }.onFailure { Log.w("EchoJournal", "journal failed", it) }.getOrNull() ?: return false
-        // An empty answer means the model ran out of room; never save a blank journal as done.
-        if (r.str("headline").isNullOrBlank() && r.str("diary").isNullOrBlank()) { Log.w("EchoJournal", "journal came back empty"); return false }
-        fun list(k: String) = Js.json.encodeToString(ListSerializer(String.serializer()), r.strings(k))
-        val improve = r.objects("improve").mapNotNull { o ->
+            ai.json(LlmRequest(Feature.JOURNAL, "Shaping the day", Prompts.journalSystem(st.notesLanguage), user2, Schemas.journal, maxTokens = 800, temperature = 0.4, noThink = true))
+        }.onFailure { Log.w("EchoJournal", "journal structure failed", it) }.getOrNull()
+        // 2. The diary: free prose in my voice, which models write far better than prose inside JSON.
+        val diary = runCatching {
+            val words = when (st.journalLength) { "short" -> 300; "long" -> 900; else -> 600 }
+            ai.stream(LlmRequest(Feature.JOURNAL, "Writing your diary", Prompts.diarySystem(st.notesLanguage, st.journalStyle, st.journalVoice, st.journalLength, st.userName), user2,
+                maxTokens = words, temperature = 0.85)).toList().joinToString("")
+        }.onFailure { Log.w("EchoJournal", "diary failed", it) }.getOrNull()?.let(::cleanProse)
+        // Never save a blank journal as done; the night review tries again.
+        if (diary.isNullOrBlank() || diary.length < 80) { Log.w("EchoJournal", "diary came back empty"); return false }
+        fun strings(k: String) = r?.strings(k).orEmpty()
+        val loose = strings("loose_ends")
+        val tomorrow = strings("tomorrow").filter { t -> loose.none { it.equals(t, true) } }
+        fun list(l: List<String>) = Js.json.encodeToString(ListSerializer(String.serializer()), l)
+        val improve = r?.objects("improve").orEmpty().mapNotNull { o ->
             val obs = o.str("observation")?.trim().orEmpty()
             if (obs.isEmpty()) null else Improvement(obs, o.str("suggestion")?.trim().orEmpty())
         }.take(3)
+        // Small models sometimes answer on a 0-10 scale.
+        val productivity = r?.int("productivity")?.let { if (it in 1..10) it * 10 else it }?.coerceIn(0, 100)
         db.days().upsert(
             (existing ?: DayEntry(day = key)).copy(
-                headline = r.str("headline"),
-                diary = r.str("diary"),
-                mood = r.dbl("mood")?.toFloat() ?: m.mood,
-                highlights = list("highlights"),
-                wins = list("wins"),
-                looseEnds = list("loose_ends"),
-                tomorrow = list("tomorrow"),
+                headline = r?.str("headline")?.trim()?.trim('"')?.takeIf { it.isNotBlank() } ?: diary.substringBefore('.').take(60),
+                diary = diary,
+                mood = r?.dbl("mood")?.toFloat() ?: m.mood,
+                highlights = list(strings("highlights")),
+                wins = list(strings("wins")),
+                looseEnds = list(loose),
+                tomorrow = list(tomorrow),
                 improve = Js.json.encodeToString(ListSerializer(Improvement.serializer()), improve),
                 metrics = metricsJson,
-                productivity = r.int("productivity")?.coerceIn(0, 100),
-                productiveWhy = r.str("productive_why")?.trim()?.takeIf { it.isNotEmpty() },
+                productivity = productivity,
+                productiveWhy = r?.str("productive_why")?.trim()?.takeIf { it.isNotEmpty() },
                 generatedAt = System.currentTimeMillis(),
                 provider = ai.llm(Feature.JOURNAL).id,
             ),
         )
         return true
     }
+
+    /** Strips what models add around prose: titles, markdown, quotes, a date line. */
+    private fun cleanProse(t: String): String = t.trim()
+        .lines().dropWhile { l -> l.isBlank() || l.trimStart().startsWith("#") || l.trim().startsWith("**") && l.trim().endsWith("**") || Regex("(?i)^(dear diary|diary|journal)\\b.{0,40}$").matches(l.trim()) && l.length < 50 }
+        .joinToString("\n")
+        .replace(Regex("\\*\\*(.+?)\\*\\*"), "$1").replace(Regex("(?m)^#+\\s*"), "")
+        .trim().trim('"', '“', '”').trim()
 
     /**
      * The day's conversations as lines for the journal. On the phone, a busy day is first

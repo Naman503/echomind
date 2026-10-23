@@ -83,6 +83,7 @@ class Plans(private val db: Db, private val ai: Ai, private val settings: Settin
         val user = buildString {
             append("Plan for: ").append(when (kind) { "week" -> "the week of ${Prompts.day(from)}"; "month" -> d.month.name.lowercase().replaceFirstChar { it.uppercase() } + " ${d.year}"; else -> Prompts.day(from) }).append('\n')
             append("Now: ${Prompts.day(now)}, ${Prompts.time(now)}\n\n")
+            settings.value.aboutMe.trim().takeIf { it.isNotEmpty() }?.let { append("In their own words:\n").append(it.take(500)).append("\n\n") }
             memory.profile().takeIf { it.isNotBlank() }?.let { append("About them:\n").append(it.take(if (local) 600 else 2_000)).append("\n\n") }
             parent?.let { append("The ${if (kind == "day") "week" else "month"}'s focus: ${it.focus}\n\n") }
             if (goals.isNotEmpty()) { append("Goals and open loops from memory:\n"); goals.forEach { append("- ${it.subject}: ${it.statement}\n") }; append('\n') }
@@ -96,12 +97,15 @@ class Plans(private val db: Db, private val ai: Ai, private val settings: Settin
             ai.json(LlmRequest(Feature.JOURNAL, "Planning ${if (kind == "day") "today" else "this $kind"}", Prompts.planSystem(kind, settings.value.notesLanguage), user, schema, maxTokens = if (local) 700 else 1_400, deep = true))
         }.onFailure { Log.w("EchoPlans", "plan failed", it) }.getOrNull() ?: return null
         val taskOf = { n: Int -> open.getOrNull(n - 1)?.id }
+        // Task numbers are for the model; they never belong in text the owner reads.
+        val tag = Regex("\\s*\\(?\\bT\\d+(\\s*(&|and|,)\\s*T\\d+)*\\b\\)?")
+        fun t(x: String?) = x.orEmpty().replace(tag, "").replace(Regex("\\s{2,}"), " ").trim()
         val plan = Plan(
-            kind = kind, period = period(kind, d), focus = r.str("focus").orEmpty(), summary = r.str("summary").orEmpty(),
-            priorities = r.objects("priorities").mapNotNull { o -> o.str("title")?.takeIf { it.isNotBlank() }?.let { Item(it, o.str("why").orEmpty(), (o.int("task") ?: 0).takeIf { n -> n > 0 }?.let(taskOf)) } }.take(7),
-            schedule = r.objects("schedule").mapNotNull { o -> o.str("what")?.takeIf { it.isNotBlank() }?.let { Slot(o.str("time").orEmpty(), it) } }.take(12),
-            missing = r.objects("missing").mapNotNull { o -> o.str("title")?.takeIf { it.isNotBlank() }?.let { Item(it, o.str("why").orEmpty()) } }.take(6),
-            suggestions = r.strings("suggestions").take(3), madeAt = now,
+            kind = kind, period = period(kind, d), focus = t(r.str("focus")), summary = t(r.str("summary")),
+            priorities = r.objects("priorities").mapNotNull { o -> t(o.str("title")).takeIf { it.isNotBlank() }?.let { Item(it, t(o.str("why")), (o.int("task") ?: 0).takeIf { n -> n > 0 }?.let(taskOf)) } }.take(7),
+            schedule = r.objects("schedule").mapNotNull { o -> t(o.str("what")).takeIf { it.isNotBlank() }?.let { Slot(o.str("time").orEmpty(), it) } }.take(12),
+            missing = r.objects("missing").mapNotNull { o -> t(o.str("title")).takeIf { it.isNotBlank() }?.let { Item(it, t(o.str("why"))) } }.take(6),
+            suggestions = r.strings("suggestions").map(::t).take(3), madeAt = now,
         )
         db.memory().putKv(Kv("plan:$kind:${plan.period}", json.encodeToString(Plan.serializer(), plan), now))
         return plan

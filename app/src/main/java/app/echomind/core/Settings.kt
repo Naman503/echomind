@@ -92,6 +92,20 @@ data class Settings(
     val coachMax: Int = 8,
     /** Day review sections you hid. */
     val reviewHidden: List<String> = emptyList(),
+
+    // Context the AI should always have
+    /** A few lines you write about yourself: work, projects, the people around you. */
+    val aboutMe: String = "",
+    /** Words speech recognition gets wrong, as "heard => meant" (e.g. "not taking => note-taking"). */
+    val corrections: List<String> = emptyList(),
+
+    // Journal
+    /** cinematic | reflective | simple */
+    val journalStyle: String = "cinematic",
+    /** first ("I…") | second ("You…") */
+    val journalVoice: String = "first",
+    /** short | medium | long */
+    val journalLength: String = "medium",
     val geminiModel: String = "gemini-3.5-flash-lite",
     val anthropicModel: String = "claude-haiku-5-5",
     val openaiBaseUrl: String = "https://api.openai.com/v1",

@@ -97,6 +97,8 @@ Cloud "AI recorders" solve that by uploading everything you hear. EchoMind does 
 - **Exact measures:** words per minute, filler words (English and Hindi), restarts, talk time per person and the Hindi/English mix are counted directly, without AI.
 - **Insights hub:** one page for the day review, coach, topics, people, journal, dashboard, plans, memory, check-ins and songs.
 - **Fully adjustable:** night window, charging-only, rereading older conversations, which coaching kinds to show, strictness, points per conversation, hidden sections, and the model's context size.
+- **A real diary:** every night's journal is written in your own voice ("I…"), like a diary page read aloud in a film. Choose cinematic, reflective or simple, written as you or as a friend, short to long. It is shown on a serif page, and the facts always come from what was really said.
+- **Context it should know:** an "About me" note (your work, projects and people) is read with every conversation, and a list of misheard words ("not taking → note-taking") is fixed before the AI reads anything.
 - **Ask** uses the reviews too: "what did I discuss yesterday?", "what English mistakes do I keep making?"
 
 ### Insights and developer tools

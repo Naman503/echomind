@@ -178,7 +178,7 @@ fun InsightsScreen() {
             Triple(Icons.Rounded.MusicNote, "Songs", "What you sang") to { nav.go(app.echomind.ui.SongsRoute) },
         )
         item { SectionHeader("Settings") }
-        item { SettingRow("Night review & coach", "When it runs, what it looks for, how strict", Icons.Rounded.Settings) { nav.go(ReviewSettingsRoute) } }
+        item { SettingRow("Journal, review & coach", "Journal style, about you, misheard words, coach", Icons.Rounded.Settings) { nav.go(ReviewSettingsRoute) } }
     }
 }
 
@@ -267,9 +267,9 @@ fun DayReviewScreen(day: String) {
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(Sp.s), modifier = Modifier.padding(top = Sp.s)) {
-                            if (stale) Button(onClick = { g.brain.reviewNow(d) }) { Text("Review now") }
+                            if (stale) Button(onClick = { g.capture.processNow(); g.brain.reviewNow(d) }) { Text("Review now") }
                             else OutlinedButton(onClick = {
-                                g.scope.launch { g.db.analyses().delete("day", date); g.brain.reviewNow(d) }
+                                g.scope.launch { g.db.analyses().delete("day", date); g.capture.processNow(); g.brain.reviewNow(d) }
                             }) { Text("Review again") }
                         }
                     }
@@ -292,12 +292,10 @@ fun DayReviewScreen(day: String) {
 private fun LazyListScope.overview(entry: app.echomind.data.DayEntry?, review: DayReviewData?, convs: List<Conversation>) {
     item(key = "ov") {
         var expanded by remember { mutableStateOf(false) }
-        EchoCard {
-            Text(entry?.headline?.takeIf { it.isNotBlank() } ?: "No journal yet", style = MaterialTheme.typography.titleLarge)
-            entry?.diary?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = if (expanded) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = Sp.s).clickable { expanded = !expanded })
-            }
+        val diary = entry?.diary?.takeIf { it.isNotBlank() }
+        if (diary != null) app.echomind.ui.components.DiaryPage(diary, entry.headline, LocalDate.parse(entry.day), maxLines = if (expanded) Int.MAX_VALUE else 8, onClick = { expanded = !expanded })
+        EchoCard(modifier = Modifier.padding(top = if (diary != null) Sp.s else 0.dp)) {
+            if (diary == null) Text(entry?.headline?.takeIf { it.isNotBlank() } ?: "No journal yet", style = MaterialTheme.typography.titleLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(Sp.s), modifier = Modifier.padding(top = Sp.s)) {
                 entry?.productivity?.let { Pill("Productivity $it") }
                 entry?.rating?.let { Pill("Your rating $it/5") }
@@ -649,7 +647,53 @@ fun ReviewSettingsScreen() {
     val s by g.settings.flow.collectAsStateWithLifecycle()
     fun set(change: (Settings) -> Settings) { g.scope.launch { g.settings.update(change); g.brain.poke() } }
     val local = g.ai.llm(app.echomind.core.Feature.JOURNAL).local
-    ReviewPage("Night review & coach") {
+    ReviewPage("Journal, review & coach") {
+        item {
+            SectionHeader("Your journal")
+            Text("Written each night from your whole day, like a diary page in a film. Facts always come from what was really said.", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = Sp.l))
+            Choice("Style", listOf("cinematic" to "Cinematic", "reflective" to "Reflective", "simple" to "Simple"), s.journalStyle) { k -> set { it.copy(journalStyle = k) } }
+            Choice("Written as", listOf("first" to "Me (“I…”)", "second" to "A friend (“You…”)"), s.journalVoice) { k -> set { it.copy(journalVoice = k) } }
+            Choice("Length", listOf("short" to "Short", "medium" to "Medium", "long" to "Long"), s.journalLength) { k -> set { it.copy(journalLength = k) } }
+            Text(
+                when (s.journalStyle) {
+                    "simple" -> "Clear and warm, everyday words."
+                    "reflective" -> "Calm and thoughtful: what happened, then what it meant."
+                    else -> "Lyrical and dreamlike, with small moments and quiet meaning — never invented."
+                } + " Changes apply to the next journal; use Review again on a day to rewrite it.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = Sp.l),
+            )
+        }
+        item {
+            SectionHeader("Context the AI should know")
+            var about by remember(s.aboutMe) { mutableStateOf(s.aboutMe) }
+            OutlinedTextField(about, { about = it.take(500) }, Modifier.fillMaxWidth().padding(horizontal = Sp.l), minLines = 3, maxLines = 6,
+                label = { Text("About me") },
+                placeholder = { Text("Who you are, your work, your projects and the people around you. e.g. I build EchoMind, a note-taking app, and work at Eazeebox. Rahul is my manager.") },
+                supportingText = { Text("${about.length}/500 · read with every conversation, so names and projects are understood") })
+            if (about != s.aboutMe) TextButton(onClick = { set { it.copy(aboutMe = about.trim()) } }, modifier = Modifier.padding(horizontal = Sp.s)) { Text("Save") }
+            Spacer(Modifier.height(Sp.s))
+            Text("Words it mishears", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = Sp.l))
+            Text("Fixed before the AI reads your day. e.g. heard “not taking”, meant “note-taking”.", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = Sp.l))
+            app.echomind.brain.Corrections.parse(s.corrections).forEach { r ->
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = Sp.l)) {
+                    Text("“${r.heard}”  →  “${r.meant}”", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { set { it.copy(corrections = it.corrections.filterNot { l -> app.echomind.brain.Corrections.parse(listOf(l)).firstOrNull() == r }) } }) { Text("Remove") }
+                }
+            }
+            var heard by remember { mutableStateOf("") }
+            var meant by remember { mutableStateOf("") }
+            Row(horizontalArrangement = Arrangement.spacedBy(Sp.s), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = Sp.l, vertical = Sp.s)) {
+                OutlinedTextField(heard, { heard = it }, Modifier.weight(1f), singleLine = true, label = { Text("Heard") })
+                OutlinedTextField(meant, { meant = it }, Modifier.weight(1f), singleLine = true, label = { Text("Meant") })
+                TextButton(enabled = heard.isNotBlank() && meant.isNotBlank(), onClick = {
+                    val line = "${heard.trim()} => ${meant.trim()}"
+                    set { it.copy(corrections = (it.corrections + line).distinct()) }
+                    heard = ""; meant = ""
+                }) { Text("Add") }
+            }
+        }
         item {
             SectionHeader("When")
             SwitchRow("Night review", "Every night EchoMind reads the whole day again, slowly and carefully: people, topics, a speaking coach, lessons, and a better journal", s.nightReview) { v -> set { it.copy(nightReview = v) } }
@@ -662,8 +706,8 @@ fun ReviewSettingsScreen() {
             SwitchRow("Only while charging", "Recommended if your phone gets warm at night", s.nightNeedsCharging) { v -> set { it.copy(nightNeedsCharging = v) } }
             SwitchRow("Read older conversations again", "Conversations read before this update get the careful reading too", s.reReadOld) { v -> set { it.copy(reReadOld = v) } }
             Row(horizontalArrangement = Arrangement.spacedBy(Sp.s), modifier = Modifier.padding(horizontal = Sp.l, vertical = Sp.s)) {
-                OutlinedButton(onClick = { g.brain.reviewNow(LocalDate.now().minusDays(1)) }) { Text("Review yesterday now") }
-                OutlinedButton(onClick = { g.brain.reviewNow(LocalDate.now()) }) { Text("Review today now") }
+                OutlinedButton(onClick = { g.capture.processNow(); g.brain.reviewNow(LocalDate.now().minusDays(1)) }) { Text("Review yesterday now") }
+                OutlinedButton(onClick = { g.capture.processNow(); g.brain.reviewNow(LocalDate.now()) }) { Text("Review today now") }
             }
         }
         item {
@@ -700,6 +744,16 @@ fun ReviewSettingsScreen() {
                 }
             }
             Text("Loaded now: ${g.localLlm.contextTokens} tokens", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, modifier = Modifier.padding(horizontal = Sp.l))
+        }
+    }
+}
+
+@Composable
+private fun Choice(title: String, options: List<Pair<String, String>>, value: String, onPick: (String) -> Unit) {
+    Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = Sp.l, end = Sp.l, top = Sp.s, bottom = 4.dp))
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = Sp.l)) {
+        options.forEachIndexed { i, (k, label) ->
+            SegmentedButton(value == k, { onPick(k) }, SegmentedButtonDefaults.itemShape(i, options.size)) { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
     }
 }

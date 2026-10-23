@@ -59,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.echomind.App
 import app.echomind.brain.DayMetrics
@@ -264,7 +265,7 @@ fun JournalScreen() {
                 EchoCard(onClick = { nav.go(DayRoute(d.day)) }) {
                     Text(Fmt.day(LocalDate.parse(d.day)), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(d.headline ?: "Your day", style = MaterialTheme.typography.titleMedium)
-                    d.diary?.let { Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    d.diary?.let { Text(it, style = app.echomind.ui.components.DiaryStyle.copy(fontSize = 15.sp, lineHeight = 22.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), maxLines = 3, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
             }
         }
@@ -308,7 +309,7 @@ fun DayScreen(day: String) {
                     }
                 }
                 Spacer(Modifier.height(Sp.s))
-                Text(e?.diary ?: "", style = MaterialTheme.typography.bodyLarge)
+                e?.diary?.takeIf { it.isNotBlank() }?.let { app.echomind.ui.components.DiaryPage(it, date = date) }
                 if (e?.userEdited == true) Pill("Edited by you")
             }
             fun list(json: String?) = json?.let { runCatching { Js.json.decodeFromString(ListSerializer(String.serializer()), it) }.getOrNull() }.orEmpty()

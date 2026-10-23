@@ -62,8 +62,13 @@ data class ConvAnalysis(
 class Analyzer(private val db: Db, private val ai: Ai, private val settings: SettingsStore) {
 
     /** Lines numbered for the model: "L12 [4:05 PM] me: …" (global numbering across parts). */
-    fun numbered(utts: List<Utterance>, hesitant: Set<Long> = emptySet()) =
-        utts.mapIndexed { i, u -> "L${i + 1} [${Prompts.time(u.startAt)}] ${u.speaker ?: "?"}${if (u.id in hesitant) " [hesitant]" else ""}: ${u.text}" }
+    fun numbered(utts: List<Utterance>, hesitant: Set<Long> = emptySet()): List<String> {
+        val rules = Corrections.parse(settings.value.corrections)
+        return utts.mapIndexed { i, u -> "L${i + 1} [${Prompts.time(u.startAt)}] ${u.speaker ?: "?"}${if (u.id in hesitant) " [hesitant]" else ""}: ${Corrections.apply(u.text, rules)}" }
+    }
+
+    /** What the owner wrote about themselves, so names and projects are read right. */
+    fun aboutOwner(): String = settings.value.aboutMe.trim().take(500).let { if (it.isEmpty()) "" else "About the owner (background, in their words; never a source of new facts):\n$it\n\n" }
 
     /** Splits lines so each part, with its prompt and answer, fits the model. */
     fun parts(lines: List<String>, llm: Llm, overheadTokens: Int, answerTokens: Int): List<List<String>> {
@@ -83,6 +88,7 @@ class Analyzer(private val db: Db, private val ai: Ai, private val settings: Set
     }
 
     private fun header(c: Conversation, part: Int, of: Int) = buildString {
+        append(aboutOwner())
         append("Date: ").append(Prompts.day(c.startAt)).append('\n')
         append("Time: ").append(Prompts.time(c.startAt)).append(" to ").append(Prompts.time(c.endAt)).append('\n')
         if (c.source == "call") append("This is a phone call").append(c.contact?.let { " with $it" } ?: "").append(". \"me\" is the owner.\n")

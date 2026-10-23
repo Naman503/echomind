@@ -191,7 +191,8 @@ class Memory(private val db: Db, private val ai: Ai, private val settings: Setti
 
     private suspend fun guessKind(subject: String): String {
         val k = key(subject)
-        return db.memory().allEntities().firstOrNull { key(it.name) == k }?.kind ?: if (subject.trim().split(' ').size <= 3 && subject.first().isUpperCase()) "person" else "topic"
+        // People come from the conversation's people list; a fact's subject alone is only a topic.
+        return db.memory().allEntities().firstOrNull { key(it.name) == k }?.kind ?: "topic"
     }
 
     /**

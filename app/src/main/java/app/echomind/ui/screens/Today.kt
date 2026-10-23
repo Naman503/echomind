@@ -72,6 +72,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -571,8 +572,9 @@ private fun DaySummaryCard() {
             Text("All insights", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.clip(CircleShape).clickable { nav.go(app.echomind.ui.InsightsRoute) }.padding(horizontal = Sp.s, vertical = 2.dp))
         }
-        Text(entry?.headline?.takeIf { it.isNotBlank() } ?: "Tonight EchoMind reads your whole day again and writes it up", style = MaterialTheme.typography.titleMedium)
-        entry?.diary?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 4, overflow = TextOverflow.Ellipsis) }
+        Text(entry?.headline?.takeIf { it.isNotBlank() } ?: "Tonight EchoMind reads your whole day again and writes it up",
+            style = androidx.compose.ui.text.TextStyle(fontFamily = androidx.compose.ui.text.font.FontFamily.Serif, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, fontSize = 20.sp, lineHeight = 26.sp))
+        entry?.diary?.takeIf { it.isNotBlank() }?.let { Text(it, style = app.echomind.ui.components.DiaryStyle.copy(fontSize = 15.sp, lineHeight = 23.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp)) }
         if (review != null) Text(
             listOfNotNull(
                 "${review.people.count { it.named }} people",

@@ -57,7 +57,7 @@ Rules:
 4. Resolve dates against the date and time given. due_iso is empty if no time was said. remind_iso: when a reminder helps most — the time they said, else a sensible moment (an hour before a call, the evening before an early start, the morning of an errand), after the current time; empty for vague ideas and others' tasks.
 5. events: things happening at a set time (meetings, trips, appointments, birthdays), not to-dos.
 6. task_updates: only for the numbered existing tasks, and only with clear evidence they were done, progressed, stuck, moved or dropped. The existing tasks are reference only: never copy them as new tasks.
-7. open_questions: questions or requests put to the owner that were left unanswered.
+7. open_questions: only questions or requests another person put to the owner that were left unanswered. Never the owner's own questions or thinking aloud.
 8. quote: the exact words from the transcript. Return empty lists when there is nothing — that is the right answer for most chat."""
 
     // ── 3. Knowledge ──────────────────────────────────────────────

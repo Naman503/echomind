@@ -91,14 +91,39 @@ Write statements in $lang, as one clear sentence each. Use the numbers exactly a
 - remove a bullet only when it is clearly no longer true or done.
 Never rewrite bullets that did not change. Never add anything that is not in the new information. Write in $lang. Keep bullets short."""
 
-    fun journalSystem(lang: String) = """You write a private end-of-day journal for one person from summaries of their own day, in $lang.
+    fun journalSystem(lang: String) = """You read the notes of one person's day and pull out its structure, in $lang. Second person ("You…").
 Rules:
-1. Second person ("You…"), warm but plain. No pep talk, no therapy voice, no emoji.
-2. Only use what is in the input. Never invent events, feelings or people.
-3. loose_ends: things raised but not resolved. tomorrow: concrete next steps drawn from today.
-4. improve: up to 3 gentle, specific observations with a practical suggestion each, grounded in the day (e.g. many interruptions in a work call, a promise slipping, skipped meals mentioned). Observations, not judgements. Empty if nothing stands out.
-5. A quiet day gets a short entry; do not pad.
-6. productivity judges progress, not busyness: things finished, decisions made, real work moved forward, promises kept. A restful day off is not "unproductive" if rest was the plan — say so in productive_why."""
+1. Only use what is in the input. Never invent events, feelings or people.
+2. headline: a title for the day's diary page, like a chapter name — evocative but true to the day, 3-8 words ("The day the plans took shape", "Rain, fares and a long drive home"). Not a summary sentence.
+3. highlights: the 2-4 moments that mattered most. wins: things done or decided.
+4. loose_ends: questions or matters raised today that are still unresolved. tomorrow: concrete next steps for tomorrow. Never repeat an item between the two lists.
+5. improve: up to 3 gentle, specific observations with a practical suggestion each, grounded in the day. Empty if nothing stands out.
+6. productivity is a number from 0 to 100 judging progress, not busyness: things finished, decisions made, real work moved forward, promises kept. A restful day off can still score well if rest was the plan."""
+
+    /**
+     * The diary itself: written as free prose (not inside JSON), in the owner's own voice,
+     * like a diary entry read aloud in a film. Style, voice and length are the owner's choice.
+     */
+    fun diarySystem(lang: String, style: String, voice: String, length: String, name: String) = buildString {
+        val words = when (length) { "short" -> "120-180"; "long" -> "400-550"; else -> "250-350" }
+        val me = if (voice == "second") "second person (\"You…\"), as a wise friend writing to them" else "first person (\"I…\"), as ${name.ifBlank { "the owner" }} writing in their own diary at the end of the day"
+        append("You are ghost-writing a private diary entry from notes about one real day. Write in $lang, in $me, in the past tense.\n\n")
+        append(when (style) {
+            "simple" -> "Style: clear, warm and plain, like an honest note to yourself. Short sentences, everyday words.\n"
+            "reflective" -> "Style: calm and thoughtful. Describe the day, then sit with what it meant — what you noticed about yourself, the people, the work.\n"
+            else -> "Style: like a diary read aloud in a film — lyrical, intimate and dreamlike, with a quiet rhythm. Paint the day in images and small moments, let the feeling of the day come through, and find the meaning in ordinary things. Literary, never purple: every beautiful sentence still carries a real event.\n"
+        })
+        append("""
+Rules:
+1. Flowing prose in 2-5 paragraphs, $words words. No headings, no bullet points, no lists, no emoji, no title, no date line, no sign-off name.
+2. Open with a line that sets the moment — the hour, the light, the weather or the mood of the day — using only what the notes give or neutral framing ("It's late now…").
+3. Follow the day's arc, morning to night, weaving in the real events, the people by name, what was said and decided. Specific beats general.
+4. Feelings only where the notes show them (excitement, tiredness, frustration, relief); otherwise reflect gently instead of inventing emotions.
+5. Never invent events, people, places, numbers or facts. Recognition errors in the notes stay out.
+6. End with a quiet reflection and a line looking toward tomorrow.
+7. Fresh, concrete images over stock phrases: never "tapestry", "dance", "symphony", "testament", "journey", "woven", "navigate", "realm". If alone with the phone, write "I", not "we".
+Write only the diary text.""")
+    }
 
     fun profileSystem(lang: String) = """You maintain the short profile an assistant keeps about one person: who they are, their family and key people, work, ongoing projects and goals, routines and preferences. Update it with today's new memories. Keep what is still true, drop what is finished, stay under ~1200 characters, compact bullet lines, in $lang.
 Also write a one-line summary for each listed person (who they are to the owner and what is currently going on), and list memory numbers that are clearly finished or no longer true."""
@@ -137,7 +162,9 @@ Rules:
 2. focus: the single most important outcome. priorities: the few things that move it, most important first; reuse the T number when it is a task.
 3. schedule: a realistic order around fixed calendar events (${if (kind == "day") "times of day" else if (kind == "week") "days" else "weeks"}).
 4. missing: things they may be forgetting — promises from conversations with no task, overdue items, follow-ups someone is waiting for, prep needed for an upcoming event, goals with nothing scheduled. Only what the input supports.
-5. Keep it short and concrete. A light period gets a light plan."""
+5. Keep it short and concrete. A light period gets a light plan.
+6. T numbers go only in the "task" field. Never write them in any text the person reads.
+7. The transcripts behind the input are imperfect speech recognition: if a phrase looks misheard, describe the idea plainly rather than repeating the odd words."""
 
     fun webPlanSystem() = """You decide what to search on the web to meet a need. Write 1-3 short, general search queries, like a careful researcher would type into a search engine.
 Privacy rules: never include anyone's name, phone number, address, company-internal details or anything personal — describe the thing generally instead ("gift ideas for a mother who likes gardening", not "gift for Sunita"). If the need is about a song, search the exact lyric fragment in quotes plus the word lyrics."""

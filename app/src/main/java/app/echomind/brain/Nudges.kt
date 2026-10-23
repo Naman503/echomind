@@ -53,7 +53,7 @@ class Nudges(
     /** After a conversation is understood: hanging questions and action items. */
     suspend fun fromConversation(c: Conversation, questions: List<Pair<String, String?>>, tasksFound: Int) {
         val now = System.currentTimeMillis()
-        for ((q, who) in questions.take(2)) {
+        for ((q, who) in questions.filter { (_, w) -> w?.trim()?.lowercase() !in setOf("me", "owner", "the owner", "i", "myself") }.take(2)) {
             val asker = who?.takeIf { it.isNotBlank() && it.lowercase() !in setOf("someone", "unknown", "s1", "s2") } ?: "Someone"
             propose(Nudge(kind = "question", key = "q:${c.id}:${q.lowercase().hashCode()}", urgency = 2, createdAt = now, conversationId = c.id,
                 title = "$asker asked you something", body = "“$q” — from ${c.title ?: "a conversation"} at ${Prompts.time(c.startAt)}. Did you answer?",

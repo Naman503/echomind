@@ -174,15 +174,14 @@ object Schemas {
     )
 
     val journal = S.obj(
-        "headline" to S.str("The day in under 10 words"),
-        "diary" to S.str("A short diary entry, 120-220 words"),
+        "headline" to S.str("A chapter-like title for the day's diary page, 3-8 words"),
         "mood" to S.num("-1 … 1"),
         "highlights" to S.arr(S.str()),
         "wins" to S.arr(S.str()),
         "loose_ends" to S.arr(S.str()),
         "tomorrow" to S.arr(S.str()),
         "improve" to S.arr(S.obj("observation" to S.str(), "suggestion" to S.str())),
-        "productivity" to S.int("0-100: how productive the day was for the owner, judged from what they got done, decided and moved forward — not from how busy it was"),
+        "productivity" to S.int("a number from 0 to 100 (not 0-10): how productive the day was for the owner, judged from what they got done, decided and moved forward — not from how busy it was"),
         "productive_why" to S.str("One short line explaining that score"),
     )
 

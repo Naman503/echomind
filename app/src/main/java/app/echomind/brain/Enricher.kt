@@ -69,7 +69,7 @@ class Enricher(
 
         val liveTasks = db.tasks().live().filter { it.status == "open" || it.status == "suggested" }.sortedByDescending { it.updatedAt }.take(if (local) 10 else 40)
         val ctx = Prompts.Context(
-            profile = memory.profile().take(if (local) 700 else 4_000),
+            profile = (settings.value.aboutMe.trim().let { if (it.isEmpty()) "" else "In their own words: $it\n" } + memory.profile()).take(if (local) 900 else 4_000),
             people = memory.peopleContext(if (local) 600 else 3_000),
             openTasks = liveTasks.map { t -> t.title + (t.dueAt?.let { " (due ${Prompts.day(it).substringBefore(',')})" } ?: "") },
             noteTitles = notes.titles().take(if (local) 12 else 30),

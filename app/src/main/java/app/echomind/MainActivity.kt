@@ -71,6 +71,14 @@ class MainActivity : ComponentActivity() {
 
     private fun handle(intent: Intent?) {
         intent ?: return
+        // Debug builds only: `am start … --es review_day 2026-10-21 [--ez review_reset true]` runs a day's review now.
+        if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) intent.getStringExtra("review_day")?.let { day ->
+            val g = App.graph
+            lifecycleScope.launch {
+                if (intent.getBooleanExtra("review_reset", false)) g.db.analyses().delete("day", day)
+                g.capture.processNow(); g.brain.reviewNow(java.time.LocalDate.parse(day))
+            }
+        }
         when (intent.action) {
             Intent.ACTION_ASSIST -> pendingRoute.value = "ask"
             Intent.ACTION_SEND -> {
