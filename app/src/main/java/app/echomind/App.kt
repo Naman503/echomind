@@ -158,6 +158,7 @@ class App : Application() {
             runCatching { g.tasks.acceptWaiting() }
             runCatching { cleanJunk(g) }
             runCatching { fixPeople(g) }
+            runCatching { retryStuck(g) }
             runCatching { g.tasks.mergeDuplicates() }
             logExitReasons()
         }
@@ -176,6 +177,13 @@ class App : Application() {
         for (f in g.db.memory().activeFacts()) if (app.echomind.brain.Memory.isJunkName(f.subject)) g.db.memory().deleteFact(f.id)
         for (t in g.db.tasks().live()) if (t.dueText?.trim()?.lowercase()?.trimEnd('.') in app.echomind.brain.Tasks.PLACEHOLDERS) g.db.tasks().update(t.copy(dueText = null))
         g.db.memory().putKv(app.echomind.data.Kv("junkClean", "1", System.currentTimeMillis()))
+    }
+
+    /** Once: conversations that hit the retry limit because the app crashed (not their fault) get one fresh try. */
+    private suspend fun retryStuck(g: Graph) {
+        if (g.db.memory().kv("retryStuck") == "1") return
+        g.db.conversations().retryExhausted()
+        g.db.memory().putKv(app.echomind.data.Kv("retryStuck", "1", System.currentTimeMillis()))
     }
 
     /** Once: "people" that were never a speaker nor named as a person in any conversation were topics. */

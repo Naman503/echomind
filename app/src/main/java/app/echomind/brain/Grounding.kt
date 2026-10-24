@@ -93,4 +93,9 @@ object Grounding {
         }
         return out.toList()
     }
+
+    private val meta = Regex("(?i)^(conversation (occurred|took place|happened)|said at \\d|the (user|owner|speaker) (said|mentioned|talked)|transcript|recording|line l?\\d+)")
+
+    /** Note points that describe the recording instead of the topic ("Conversation occurred at 12:01"). */
+    fun isMetaPoint(p: String): Boolean = meta.containsMatchIn(p.trim().trimStart('-', ' '))
 }

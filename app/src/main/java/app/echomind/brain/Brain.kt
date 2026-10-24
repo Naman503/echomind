@@ -88,7 +88,7 @@ class Brain(
         reviewDay = day; forceAi = true; poke()
         // Without the listening service (e.g. the phone is locked), a background job runs it; the
         // watchdog keeps re-queuing it every 15 minutes until the review is done.
-        if (!app.echomind.capture.CaptureService.running) app.echomind.work.ProcessWorker.enqueue(context)
+        if (!app.echomind.capture.CaptureService.running) app.echomind.work.ProcessWorker.enqueue(context, now = true)
     }
 
     /**
@@ -151,6 +151,7 @@ class Brain(
         if (blocked == null && aiDue()) {
             val next = db.conversations().ready(1).firstOrNull()
             if (next != null) {
+                Log.i(TAG, "reading conversation ${next.id} (${next.words} words)")
                 governor.awaitTurn()
                 _state.value = _state.value.copy(phase = Phase.THINKING, detail = next.title ?: Prompts.time(next.startAt), waitingReason = null)
                 val began = System.currentTimeMillis()

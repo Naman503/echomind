@@ -138,7 +138,14 @@ class Nudges(
         val user = buildString {
             append("Now: ${Prompts.day(now)}, ${Prompts.time(now)}\n\nToday's conversations:\n")
             convs.takeLast(12).forEach { append("- ${Prompts.time(it.startAt)} ${it.title}: ${it.summary.orEmpty().take(200)}\n") }
-            append("\nOpen tasks:\n"); open.forEach { append("- ${it.title}${it.dueAt?.let { d -> " (due ${Prompts.time(d)})" } ?: ""}\n") }
+            // A date without a time is stored at 9:00; saying "due 9:00 AM" made the model invent deadlines.
+            append("\nOpen tasks:\n"); open.forEach { t ->
+                val due = t.dueAt?.let { d ->
+                    val lt = java.time.Instant.ofEpochMilli(d).atZone(zone).toLocalTime()
+                    if (lt.hour == When.DEFAULT_HOUR && lt.minute == 0 && t.remindAt == null) " (due ${Prompts.day(d).substringBefore(',')})" else " (due ${Prompts.day(d).substringBefore(',')} ${Prompts.time(d)})"
+                }.orEmpty()
+                append("- ${t.title}$due\n")
+            }
         }
         val system = """You are a thoughtful personal assistant who has been listening to the owner's day. Suggest at most two short nudges that would genuinely help right now: something they promised and may forget, a decision left open, a follow-up someone is waiting for, a conflict in their plans, or a pattern worth noticing. Only what the input supports. If nothing is genuinely useful, return an empty list — silence is better than noise. Write in ${settings.value.notesLanguage}."""
         val r = runCatching { ai.json(LlmRequest(Feature.JOURNAL, "Looking for anything you might be missing", system, user, reflectSchema, maxTokens = 400, deep = true)) }
@@ -146,6 +153,10 @@ class Nudges(
         for (o in r.objects("nudges").take(2)) {
             val title = o.str("title")?.trim().orEmpty()
             if (title.isEmpty()) continue
+            // A time the input never mentioned is made up.
+            val times = Regex("(?i)\\b\\d{1,2}(:\\d{2})?\\s?(am|pm)\\b").findAll(title + " " + o.str("body").orEmpty()).map { it.value.lowercase().replace(" ", "").replace(":00", "") }.toList()
+            val known = Regex("(?i)\\b\\d{1,2}(:\\d{2})?\\s?(am|pm)\\b").findAll(user).map { it.value.lowercase().replace(" ", "").replace(":00", "") }.toSet()
+            if (times.any { it !in known }) { Log.w("EchoNudges", "dropped a nudge with an invented time: $title"); continue }
             propose(Nudge(kind = "insight", key = "insight:${title.lowercase().hashCode()}:${LocalDate.now()}", urgency = (o.int("urgency") ?: 1).coerceIn(1, 3),
                 createdAt = now, title = title, body = o.str("body")?.trim().orEmpty(), taskText = o.str("task")?.trim()?.takeIf { it.isNotEmpty() }))
         }

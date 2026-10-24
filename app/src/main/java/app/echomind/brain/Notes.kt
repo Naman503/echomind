@@ -44,7 +44,7 @@ class Notes(private val db: Db, private val ai: Ai, private val settings: Settin
     suspend fun apply(updates: List<Update>, conversationId: Long, conversationTitle: String, at: Long): List<Long> {
         val touched = ArrayList<Long>()
         for (u in updates) {
-            val points = u.points.map { it.trim() }.filter { it.length > 3 }
+            val points = Dedup.strings(u.points.map { it.trim() }.filter { it.length > 3 && !Grounding.isMetaPoint(it) })
             if (points.isEmpty()) continue
             val existing = find(u.topic)
             if (existing == null) {

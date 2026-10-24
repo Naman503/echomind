@@ -114,7 +114,9 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE state IN ('ready','working') AND ignored = 0 AND attempts < 3 ORDER BY startAt LIMIT :n") suspend fun ready(n: Int): List<Conversation>
     @Query("SELECT COUNT(*) FROM conversations WHERE state IN ('ready','working') AND ignored = 0 AND attempts < 3") fun readyCount(): Flow<Int>
     @Query("SELECT COALESCE(SUM(words), 0) FROM conversations WHERE state IN ('ready','working') AND ignored = 0 AND attempts < 3") suspend fun readyWords(): Int
-    @Query("UPDATE conversations SET state = 'ready' WHERE state = 'working'") suspend fun resetWorking()
+    /** After a crash: interrupted work goes back to the queue, unless it has used all its tries. */
+    @Query("UPDATE conversations SET state = CASE WHEN attempts >= 3 THEN 'failed' ELSE 'ready' END WHERE state = 'working'") suspend fun resetWorking()
+    @Query("UPDATE conversations SET attempts = 0, state = 'ready' WHERE state IN ('ready','working','failed') AND attempts >= 3 AND ignored = 0") suspend fun retryExhausted()
     @Query("SELECT * FROM conversations WHERE state = 'done' AND ignored = 0 AND startAt >= :from AND startAt < :to ORDER BY startAt DESC LIMIT :n")
     suspend fun doneBefore(from: Long, to: Long, n: Int): List<Conversation>
     @Query("DELETE FROM conversations WHERE id = :id") suspend fun delete(id: Long)

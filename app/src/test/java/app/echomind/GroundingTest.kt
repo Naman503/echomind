@@ -49,4 +49,10 @@ class GroundingTest {
         val diary = "It was late. I talked with Rahul about the Oracle server, then Priya called from Mumbai. On Tuesday I rested."
         assertEquals(listOf("Priya", "Mumbai"), Grounding.unknownNames(diary, notes))
     }
+
+    @Test fun metaPointsAreNotNotes() {
+        assertTrue(Grounding.isMetaPoint("Conversation occurred around 12:01 PM to 12:02 PM."))
+        assertTrue(Grounding.isMetaPoint("- Said at 5:48 PM"))
+        assertFalse(Grounding.isMetaPoint("Cab to Bel Road costs about ₹142"))
+    }
 }

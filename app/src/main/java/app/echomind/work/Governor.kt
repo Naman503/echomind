@@ -92,9 +92,9 @@ class Governor(private val context: Context, private val settings: SettingsStore
         // Hysteresis: once hot, wait until clearly cooler before resuming.
         val margin = if (hot) s.coolDownC.toFloat() else 0f
         val reason = when {
-            p.tempC >= s.maxBatteryTempC - margin -> "Letting the phone cool: battery ${"%.1f".format(p.tempC)}°C (limit ${s.maxBatteryTempC}°C)" to "temp"
+            p.tempC >= s.maxBatteryTempC - margin -> (if (hot) "Letting the phone cool: battery ${"%.1f".format(p.tempC)}°C, resuming below ${s.maxBatteryTempC - s.coolDownC}°C" else "Letting the phone cool: battery ${"%.1f".format(p.tempC)}°C (limit ${s.maxBatteryTempC}°C)") to "temp"
             p.thermal >= s.thermalPauseAt.coerceIn(1, 5) -> "Letting the phone cool: Android reports it ${thermalName(p.thermal)}" to "thermal"
-            p.headroom != null && s.headroomLimit <= 1.2f && p.headroom >= s.headroomLimit - (if (hot) 0.12f else 0f) -> "Letting the phone cool: heat forecast ${(p.headroom * 100).toInt()}% (limit ${(s.headroomLimit * 100).toInt()}%)" to "headroom"
+            p.headroom != null && s.headroomLimit <= 1.2f && p.headroom >= s.headroomLimit - (if (hot) 0.12f else 0f) -> (if (hot) "Letting the phone cool: heat forecast ${(p.headroom * 100).toInt()}%, resuming below ${((s.headroomLimit - 0.12f) * 100).toInt()}%" else "Letting the phone cool: heat forecast ${(p.headroom * 100).toInt()}% (limit ${(s.headroomLimit * 100).toInt()}%)") to "headroom"
             else -> null
         }
         hot = reason != null
@@ -110,6 +110,7 @@ class Governor(private val context: Context, private val settings: SettingsStore
             val block = blocker(p)
             if (block != null) {
                 busySince = 0
+                if (_state.value.reason != block.first) android.util.Log.i("EchoGovernor", "holding work: ${block.first} (${block.second})")
                 _state.value = State(false, block.first, p, rule = block.second)
                 delay(30_000)
                 continue
@@ -118,6 +119,7 @@ class Governor(private val context: Context, private val settings: SettingsStore
             if (s.breakAfterMin > 0 && busySince > 0 && now - busySince > s.breakAfterMin * 60_000L && now >= ignoreLimitsUntil) {
                 busySince = 0
                 val breakMs = s.breakMin.coerceIn(1, 30) * 60_000L
+                android.util.Log.i("EchoGovernor", "break for ${breakMs / 60_000} min")
                 _state.value = State(false, "Short break after ${s.breakAfterMin} minutes of work", p, now + breakMs, rule = "break")
                 delay(breakMs)
                 continue

@@ -35,7 +35,10 @@ class WatchdogWorker(context: Context, params: WorkerParameters) : CoroutineWork
         runCatching { g.agenda.checkUpcoming() }
         runCatching { g.sounds.identifyPending() }
         runCatching { g.checkIns.quick() }
-        if (!CaptureService.running && g.brain.hasWork()) ProcessWorker.enqueue(applicationContext)
+        // At night the review should start promptly, not whenever Android gets round to it; a job
+        // already running is kept, never replaced.
+        val night = java.time.LocalTime.now().let { it.hour * 60 + it.minute }.let { it >= g.settings.value.nightReviewAt || it < 7 * 60 }
+        if (!CaptureService.running && g.brain.hasWork()) ProcessWorker.enqueue(applicationContext, now = night, replace = false)
         return Result.success()
     }
 }
@@ -44,17 +47,38 @@ class WatchdogWorker(context: Context, params: WorkerParameters) : CoroutineWork
 class ProcessWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         if (CaptureService.running) return Result.success()
-        App.graph.brain.drain(System.currentTimeMillis() + 9 * 60_000L)
+        // As a foreground job (a quiet notification) it may run past ten minutes and isn't
+        // killed as an idle background app, so a night review isn't cut off mid-answer.
+        val foreground = runCatching { setForeground(info()) }.isSuccess
+        App.graph.brain.drain(System.currentTimeMillis() + if (foreground) 3 * 3_600_000L else 6 * 60_000L)
         return Result.success()
     }
 
+    private fun info(): androidx.work.ForegroundInfo {
+        val n = androidx.core.app.NotificationCompat.Builder(applicationContext, app.echomind.notify.Notifier.CAPTURE)
+            .setSmallIcon(app.echomind.R.drawable.ic_stat_idle)
+            .setContentTitle("Working through your day")
+            .setContentText("Reading conversations and writing the review — paused when the phone is hot")
+            .setOngoing(true).setSilent(true)
+            .build()
+        return androidx.work.ForegroundInfo(4970, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+    }
+
     companion object {
-        fun enqueue(context: Context) {
+        /**
+         * [now]: you asked for it (Review now), so it runs straight away as an expedited job;
+         * otherwise Android picks a good moment (Android 15 may hold ordinary jobs back for a while).
+         */
+        fun enqueue(context: Context, now: Boolean = false, replace: Boolean = now) {
             val s = App.graph.settings.value
-            val c = Constraints.Builder().setRequiresBatteryNotLow(true).setRequiresCharging(s.onlyWhileCharging).build()
-            WorkManager.getInstance(context).enqueueUniqueWork("process", ExistingWorkPolicy.KEEP, OneTimeWorkRequestBuilder<ProcessWorker>().setConstraints(c).build())
+            val req = if (now) OneTimeWorkRequestBuilder<ProcessWorker>().setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST).build()
+            else OneTimeWorkRequestBuilder<ProcessWorker>().setConstraints(Constraints.Builder().setRequiresBatteryNotLow(true).setRequiresCharging(s.onlyWhileCharging).build()).build()
+            WorkManager.getInstance(context).enqueueUniqueWork("process", if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, req)
         }
     }
+
+    override suspend fun getForegroundInfo(): androidx.work.ForegroundInfo = info()
+
 }
 
 /** Morning brief (no AI needed) and evening journal + recap. */

@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
@@ -69,7 +70,11 @@ class LocalLlm(
         val id = installedModel() ?: throw LlmException("No on-device AI model is downloaded. Get one in Settings → On-device models.", retryable = false)
         val file = models.path(id)!!
         val useGpu = backend() == "gpu"
-        val ctx = wantedContext().coerceIn(2048, 32768).let { if (refusedContext in 1..it) 4096 else it }
+        // A bigger context needs more memory; when the phone is short of it, load at 4K rather than be killed.
+        val freeMb = runCatching {
+            android.app.ActivityManager.MemoryInfo().also { (context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager).getMemoryInfo(it) }.availMem / (1024 * 1024)
+        }.getOrDefault(Long.MAX_VALUE)
+        val ctx = wantedContext().coerceIn(2048, 32768).let { if (refusedContext in 1..it) 4096 else it }.let { if (it > 4096 && freeMb < 2_500) 4096.also { if (loadedKey?.endsWith("|4096") != true) Log.i(TAG, "only $freeMb MB free: loading at 4096 tokens") } else it }
         val key = "$id|$useGpu|${threads()}|$ctx"
         engine?.let { if (loadedKey == key) return it }
         engine?.close()
@@ -168,7 +173,8 @@ class LocalLlm(
         )
         return conversation.use { c ->
             // The native call blocks; a watchdog cancels it if it runs away.
-            val watchdog = scope.launch { delay(TIMEOUT_MS); c.cancelProcess() }
+            var cancelled = false
+            val watchdog = scope.launch { delay(TIMEOUT_MS); cancelled = true; c.cancelProcess() }
             try {
                 val reply = if (constrained) {
                     c.sendMessage(Contents.of(req.user), responseFormat = ResponseFormat.json(req.schema.toString()))
@@ -178,6 +184,8 @@ class LocalLlm(
                 reply.toString().also { if (debuggable) Log.i(TAG, "${req.purpose} [think=$think constrained=$constrained in≈${estimateTokens(system) + estimateTokens(req.user)}t] → ${it.take(600)}") }
             } finally {
                 watchdog.cancel()
+                // Same as in stream(): let a cancelled run wind down before the conversation closes.
+                if (cancelled) withContext(NonCancellable) { delay(1_500) }
             }
         }
     }
@@ -201,8 +209,14 @@ class LocalLlm(
                     try {
                         c.sendMessageAsync(Contents.of(req.user)).collect { emit(it.toString()) }
                     } finally {
-                        // Stops generation if the reader went away mid-answer.
-                        runCatching { c.cancelProcess() }
+                        // Stops generation if the reader went away mid-answer. The native side
+                        // keeps running for a moment after cancelling; closing the conversation
+                        // under it crashed the app (null pointer in liblitertlm), so wait first —
+                        // even when this coroutine is itself being cancelled.
+                        withContext(NonCancellable) {
+                            runCatching { c.cancelProcess() }
+                            delay(1_500)
+                        }
                     }
                 }
             } finally {
