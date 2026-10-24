@@ -251,6 +251,32 @@ class Notifier(private val context: Context) {
 
     fun cancelNudge(id: Long) = nm.cancel(NUDGE_BASE + (id % 1000).toInt())
 
+    /** Travel mode's lasting notification, with "I'm back" (and "Not travelling" when it switched on by itself). */
+    fun travel(on: Boolean, title: String, text: String, auto: Boolean) {
+        if (!on) { nm.cancel(TRAVEL_ID); return }
+        if (!can()) return
+        if (nm.getNotificationChannel(TRAVEL) == null) nm.createNotificationChannel(NotificationChannel(TRAVEL, "Travel mode", NotificationManager.IMPORTANCE_LOW).apply { description = "Shown while EchoMind rests to save battery on a trip"; setShowBadge(false) })
+        fun action(a: String, code: Int) = PendingIntent.getBroadcast(context, code, Intent(context, TravelReceiver::class.java).setAction(a), PendingIntent.FLAG_IMMUTABLE)
+        val b = NotificationCompat.Builder(context, TRAVEL)
+            .setSmallIcon(R.drawable.ic_travel)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setOngoing(true).setSilent(true).setOnlyAlertOnce(true)
+            .setContentIntent(open("travel", 320))
+            .addAction(0, "I'm back", action(TravelReceiver.ACTION_OFF, 321))
+        if (auto) b.addAction(0, "Not travelling", action(TravelReceiver.ACTION_NOT_TRAVELLING, 322))
+        nm.notify(TRAVEL_ID, b.build())
+    }
+
+    /** After a trip: what happens next. */
+    fun travelBack(text: String) {
+        if (!can()) return
+        nm.notify(TRAVEL_ID + 1, NotificationCompat.Builder(context, BRIEF).setSmallIcon(R.drawable.ic_stat_idle)
+            .setContentTitle("Welcome back").setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setAutoCancel(true).setContentIntent(open("today", 323)).build())
+    }
+
     fun brief(title: String, lines: List<String>) {
         if (!can()) return
         nm.notify(BRIEF_ID, NotificationCompat.Builder(context, BRIEF)
@@ -314,6 +340,8 @@ class Notifier(private val context: Context) {
         const val RECAP = "recap"
         const val ATTENTION = "attention"
         const val NUDGES = "nudges"
+        const val TRAVEL = "travel"
+        const val TRAVEL_ID = 4980
         const val NUDGE_BASE = 4600
         const val EVENT_BASE = 5600
         const val SPEAKER_ID = 4950

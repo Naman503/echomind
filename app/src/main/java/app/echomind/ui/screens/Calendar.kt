@@ -420,7 +420,8 @@ private fun DayHeader(d: LocalDate, e: DayEntry?, onPrev: () -> Unit, onNext: ()
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(Fmt.day(d).let { if (it == "Today" || it == "Yesterday" || it == "Tomorrow") it else d.format(DateTimeFormatter.ofPattern("EEEE")) }, style = MaterialTheme.typography.titleLarge)
-                Text(d.format(DateTimeFormatter.ofPattern("d MMMM yyyy")), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(d.format(DateTimeFormatter.ofPattern("d MMMM yyyy")) + if (remember(d) { g.travel.wasTravelling(d) }) "  ·  ✈ travel day" else "",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = onPrev) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Previous day") }
             IconButton(onClick = onNext) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Next day") }

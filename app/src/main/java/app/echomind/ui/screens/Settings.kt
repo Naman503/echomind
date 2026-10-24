@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Flight
 import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
@@ -180,6 +181,7 @@ fun SettingsScreen() {
             row(Icons.Rounded.RecordVoiceOver, "Your voice", if (g.voice.enrolled()) "Set up · ${g.voice.samples()} sample${if (g.voice.samples() == 1) "" else "s"} · ${s.voiceSensitivity}" else "Not set up — so notes know what you said") { nav.go(VoiceRoute) }
             row(Icons.Rounded.MusicNote, "Songs & surroundings", listOfNotNull(if (s.songs) "Songs kept" else null, if (s.ambient) "surroundings on" else null).joinToString(" · ").ifBlank { "Off" }) { nav.go(app.echomind.ui.SoundsSettingsRoute) }
             row(Icons.Rounded.Call, "Phone calls", if (s.importCalls) "Importing call recordings" else "Off") { nav.go(CallsRoute) }
+            row(Icons.Rounded.Flight, "Travel mode", if (s.travel) "On — EchoMind is resting" else listOfNotNull("Off", if (s.travelAuto) "turns on by itself" else null, s.places.size.takeIf { it > 0 }?.let { "$it place${if (it == 1) "" else "s"}" }).joinToString(" · ")) { nav.go(app.echomind.ui.TravelRoute) }
         }
         group("AI & privacy") {
             row(Icons.Rounded.Shield, "AI providers & privacy", "Who does transcription, notes, memory, Ask") { nav.go(ProvidersRoute) }
@@ -266,6 +268,8 @@ private fun settingsIndex(): List<SettingEntry> {
         SettingEntry("Your voice", "Recording › Your voice", "voiceprint enroll sensitivity recognise me", VoiceRoute, R.RecordVoiceOver),
         SettingEntry("Songs & surroundings", "Recording › Sounds", "singing songs ambient sound tagger look up online poster", app.echomind.ui.SoundsSettingsRoute, R.MusicNote),
         SettingEntry("Phone calls", "Recording › Calls", "call recordings import", CallsRoute, R.Call),
+        SettingEntry("Travel mode", "Recording › Travel mode", "trip battery saver away holiday rest places home work location auto plan", app.echomind.ui.TravelRoute, R.Flight),
+        SettingEntry("Your places", "Recording › Travel mode", "home work address places location radius", app.echomind.ui.TravelRoute, R.Flight),
         SettingEntry("AI providers & privacy", "AI › Providers", "cloud local only api key claude gemini openai privacy", ProvidersRoute, R.Shield),
         SettingEntry("AI behaviour", "AI › Behaviour", "thinking quality fast balanced best language notes language organise nightly stories", app.echomind.ui.AiSettingsRoute, R.AutoAwesome),
         SettingEntry("When the AI reads your day", "AI › Sessions", "session mode live interval charging manual words", SessionsRoute, R.Timer),

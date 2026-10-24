@@ -93,6 +93,30 @@ data class Settings(
     /** Day review sections you hid. */
     val reviewHidden: List<String> = emptyList(),
 
+    // Travel mode: EchoMind rests to save battery
+    val travel: Boolean = false,
+    val travelSince: Long = 0,
+    /** manual | auto | plan */
+    val travelReason: String = "",
+    /** Where it noticed you were, for the notification ("85 km north-west of Home"). */
+    val travelWhere: String = "",
+    /** Keep recording audio (no transcription or AI) to catch up after the trip. */
+    val travelKeepRecording: Boolean = false,
+    /** Whether listening was on when travel mode started, so it comes back on. */
+    val travelWasListening: Boolean = false,
+    /** Turn travel mode on by itself when you're far from all your places. */
+    val travelAuto: Boolean = false,
+    val travelAwayKm: Int = 30,
+    val travelCorridorKm: Int = 2,
+    /** "Not travelling": no automatic switch until this time. */
+    val travelSuppressUntil: Long = 0,
+    /** Learn likely home and work from where the phone usually is. */
+    val travelLearn: Boolean = true,
+    /** While travelling, notice you're home from locations other apps already got (no extra battery). */
+    val travelNoticeHome: Boolean = false,
+    val places: List<app.echomind.brain.Place> = emptyList(),
+    val trips: List<app.echomind.brain.Trip> = emptyList(),
+
     // Context the AI should always have
     /** A few lines you write about yourself: work, projects, the people around you. */
     val aboutMe: String = "",

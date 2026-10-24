@@ -151,6 +151,7 @@ fun AppRoot(pending: MutableState<String?>) {
             "checkins" -> { nav.tab(TodayRoute); nav.go(CheckInsRoute) }
             "note:new" -> { nav.tab(LibraryRoute); nav.go(NotesRoute); nav.go(NewNoteRoute()) }
             "settings" -> { nav.tab(TodayRoute); nav.go(SettingsRoute) }
+            "travel" -> { nav.tab(TodayRoute); nav.go(TravelRoute) }
             else -> if (r.startsWith("checkin:")) { nav.tab(TodayRoute); nav.go(CheckInRoute(r.removePrefix("checkin:"))) }
             else if (r.startsWith("note:")) { nav.tab(LibraryRoute); r.removePrefix("note:").toLongOrNull()?.let { nav.go(NoteRoute(it)) } }
             else if (r.startsWith("conversation:")) { nav.tab(TodayRoute); r.removePrefix("conversation:").toLongOrNull()?.let { nav.go(ConversationRoute(it)) } } else nav.tab(TodayRoute)
@@ -247,6 +248,7 @@ fun AppRoot(pending: MutableState<String?>) {
                         entry<ReviewSettingsRoute> { app.echomind.ui.screens.ReviewSettingsScreen() }
                         entry<BookRoute> { app.echomind.ui.screens.BookScreen() }
                         entry<DayNumbersRoute> { app.echomind.ui.screens.DayNumbersScreen() }
+                        entry<TravelRoute> { app.echomind.ui.screens.TravelScreen() }
                         entry<ChapterRoute> { app.echomind.ui.screens.ChapterScreen(it.week) }
                     },
                 )

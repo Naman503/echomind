@@ -17,6 +17,8 @@ import app.echomind.ai.OpenAiLlm
 import app.echomind.brain.Actions
 import app.echomind.brain.Analyzer
 import app.echomind.brain.Book
+import app.echomind.brain.Travel
+import kotlinx.coroutines.flow.first
 import app.echomind.brain.DayReview
 import app.echomind.brain.Agenda
 import app.echomind.brain.Ask
@@ -127,6 +129,16 @@ class Graph(val app: Application) {
         if (settings.value.storiesNightly) runCatching { people.refreshStories(if (ai.llm(Feature.MEMORY).local) 3 else 12) }
     }
     val capture = CaptureController(app, db, settings, scope, { brain }) { sounds }
+    val travel: Travel = Travel(app, settings,
+        onStart = { keepRecording -> if (!keepRecording) capture.stop(); localLlm.release(); brain.poke() },
+        onStop = { wasListening ->
+            if (wasListening) capture.start()
+            brain.poke()
+            val waiting = db.audio().pendingCount().first()
+            notifier.travelBack(if (waiting > 0) "$waiting recording${if (waiting == 1) "" else "s"} from your trip will be read as usual, then tonight's review catches up." else if (wasListening) "EchoMind is listening again." else "EchoMind is back to normal. Listening is off — turn it on from Today.")
+        },
+        notify = { on, title, text, auto -> notifier.travel(on, title, text, auto) },
+    )
     val speaker = Speaker(app, models, settings, scope) { governor.threads() }
     val briefing = Briefing(db, settings, { agenda }) { plans }
     val assistant = Assistant(db, tasks, notes, briefing, speaker, { actions }, { agenda })
@@ -159,6 +171,7 @@ class App : Application() {
             runCatching { cleanJunk(g) }
             runCatching { fixPeople(g) }
             runCatching { retryStuck(g) }
+            runCatching { g.travel.showOngoing(); g.travel.checkPlans() }
             runCatching { g.tasks.mergeDuplicates() }
             logExitReasons()
         }

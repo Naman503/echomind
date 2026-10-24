@@ -21,6 +21,8 @@ import java.time.LocalDate
  * (offers "tap to resume" — the silent-failure guard), picks up new call
  * recordings, and makes sure waiting work gets done even with no service.
  */
+private var lastTravelCheck = 0L
+
 class WatchdogWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val g = App.graph
@@ -29,6 +31,9 @@ class WatchdogWorker(context: Context, params: WorkerParameters) : CoroutineWork
             val beat = g.capture.lastHeartbeat()
             if (beat == 0L || System.currentTimeMillis() - beat > 5 * 60_000L) g.notifier.resumePrompt("Listening stopped in the background.")
         }
+        // Travel: planned trips and, about every 30 minutes, whether you're away.
+        if (System.currentTimeMillis() - lastTravelCheck >= 25 * 60_000L) { lastTravelCheck = System.currentTimeMillis(); runCatching { g.travel.check() } }
+        if (g.settings.value.travel) { g.travel.showOngoing(); return Result.success() }
         runCatching { g.calls.scan() }
         runCatching { g.nudges.check() }
         runCatching { g.recordings.sweep() }
@@ -87,6 +92,7 @@ class DailyWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         val g = App.graph
         val s = g.settings.awaitLoaded()
         val today = LocalDate.now()
+        if (s.travel) return Result.success()
         if (inputData.getString("kind") == "morning") {
             if (s.autoPlans) runCatching { g.plans.morning() }
             if (!s.notifyMorning) return Result.success()

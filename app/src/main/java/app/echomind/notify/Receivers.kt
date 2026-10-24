@@ -49,6 +49,24 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 }
 
+/** "I'm back" / "Not travelling" on the travel notification. */
+class TravelReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val g = App.graph
+        async {
+            when (intent.action) {
+                ACTION_OFF -> g.travel.disable()
+                ACTION_NOT_TRAVELLING -> g.travel.disable(suppressHours = 12)
+            }
+        }
+    }
+
+    companion object {
+        const val ACTION_OFF = "app.echomind.TRAVEL_OFF"
+        const val ACTION_NOT_TRAVELLING = "app.echomind.TRAVEL_NOT"
+    }
+}
+
 /** "Add task" / "Dismiss" on a nudge. */
 class NudgeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -83,7 +101,8 @@ class CheckInReceiver : BroadcastReceiver() {
                     g.notifier.quickAnswered(changes)
                 }
             }
-            else -> intent.getStringExtra(EXTRA_SLOT)?.let { id -> async { g.checkIns.due(id) } }
+            // No check-ins on a trip: they'd use the mic, voice and AI.
+            else -> intent.getStringExtra(EXTRA_SLOT)?.let { id -> if (!g.settings.value.travel) async { g.checkIns.due(id) } }
         }
     }
 

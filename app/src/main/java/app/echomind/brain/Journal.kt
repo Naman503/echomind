@@ -119,6 +119,7 @@ class Journal(private val db: Db, private val ai: Ai, private val settings: Sett
             if (people.isNotEmpty()) append("\nPeople in the day: ").append(people.joinToString(", ")).append('\n')
             if (topics.isNotEmpty()) append("Topics: ").append(topics.joinToString("; ") { it.name + if (it.detail.isNotBlank()) " — " + it.detail.take(120) else "" }).append('\n')
             if (decisions.isNotEmpty()) append("Decided: ").append(decisions.joinToString("; ")).append('\n')
+            if (runCatching { App.graph.travel.wasTravelling(d) }.getOrDefault(false)) append("I was travelling this day (travel mode was on).\n")
             append("\nMeasures: ${m.conversations} conversations, ${m.talkMinutes} minutes of talk, ${m.tasksMade} new tasks, ${m.tasksDone} done")
             if (m.lateNightMinutes > 10) append(", ${m.lateNightMinutes} min talking after 11 pm")
             append(".\n")

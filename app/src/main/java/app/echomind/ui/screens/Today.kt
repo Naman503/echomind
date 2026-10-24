@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.MicOff
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Flight
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Warning
@@ -140,7 +141,23 @@ fun TodayScreen() {
                     Text(Fmt.dayLong(today), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(if (s.userName.isNotBlank()) "$greet, ${s.userName.substringBefore(' ')}" else greet, style = MaterialTheme.typography.headlineMedium)
                 }
+                IconButton(onClick = { nav.go(app.echomind.ui.TravelRoute) }) {
+                    Icon(Icons.Rounded.Flight, "Travel mode", tint = if (s.travel) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 IconButton(onClick = { nav.go(SettingsRoute) }) { Icon(Icons.Rounded.Settings, "Settings") }
+            }
+        }
+        if (s.travel) item(key = "travel") {
+            EchoCard(color = MaterialTheme.colorScheme.tertiaryContainer, onClick = { nav.go(app.echomind.ui.TravelRoute) }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Flight, null, tint = MaterialTheme.colorScheme.onTertiaryContainer)
+                    Spacer(Modifier.width(Sp.m))
+                    Column(Modifier.weight(1f)) {
+                        Text("Travel mode is on", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Text("Resting since ${Fmt.dayTime(s.travelSince)}${if (s.travelKeepRecording) " · recording for later" else ""}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                    }
+                    androidx.compose.material3.Button(onClick = { g.scope.launch { g.travel.disable() } }) { Text("I'm back") }
+                }
             }
         }
         // Ask is a bar, not a tab: the quickest way into everything you've said.

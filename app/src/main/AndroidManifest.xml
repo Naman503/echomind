@@ -3,6 +3,9 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Travel mode: a coarse, low-power location now and then (never GPS), only if you turn it on. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
@@ -127,6 +130,18 @@
         <receiver android:name=".notify.ReminderReceiver" android:exported="false" />
         <receiver android:name=".notify.DailyReceiver" android:exported="false" />
         <receiver android:name=".notify.NudgeReceiver" android:exported="false" />
+        <receiver android:name=".notify.TravelReceiver" android:exported="false" />
+        <service
+            android:name=".surfaces.TravelTile"
+            android:exported="true"
+            android:icon="@drawable/ic_travel"
+            android:label="Travel mode"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="true" />
+        </service>
         <receiver android:name=".notify.EventReceiver" android:exported="false" />
         <receiver android:name=".notify.CheckInReceiver" android:exported="false" />
         <receiver android:name=".capture.ResumeReceiver" android:exported="false" />

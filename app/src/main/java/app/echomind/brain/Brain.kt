@@ -121,12 +121,17 @@ class Brain(
     }
 
     /** Work that can actually run now: due audio, or conversations the AI is set up and scheduled to read. */
-    suspend fun hasWork(): Boolean =
+    suspend fun hasWork(): Boolean = !settings.value.travel && (
         db.audio().dueCount() > 0 || (ai.ready(Feature.NOTES) && aiDue() && db.conversations().readyCount().first() > 0) || reviewDay != null ||
             (settings.value.nightReview && LocalTime.now().let { it.hour * 60 + it.minute }.let { it >= settings.value.nightReviewAt || it < 7 * 60 } &&
-                (1..3).any { val d = LocalDate.now().minusDays(it.toLong()); dayReview.hasConversations(d) && !dayReview.isComplete(d) })
+                (1..3).any { val d = LocalDate.now().minusDays(it.toLong()); dayReview.hasConversations(d) && !dayReview.isComplete(d) }))
 
     private suspend fun cycle(): Boolean {
+        // Travel mode: nothing runs (recording, if kept, just queues audio for later).
+        if (settings.value.travel) {
+            _state.value = _state.value.copy(phase = Phase.WAITING, waitingReason = "Travel mode — resting to save battery")
+            return false
+        }
         // 1. Audio first.
         when (transcriber.step()) {
             Transcriber.Outcome.DONE -> {

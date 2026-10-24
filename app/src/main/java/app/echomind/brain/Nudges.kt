@@ -75,7 +75,7 @@ class Nudges(
     /** Periodic look (every ~15 minutes): time-based and health nudges, then delivery. */
     suspend fun check() {
         val s = settings.value
-        if (!s.nudges) return
+        if (!s.nudges || s.travel) return
         val now = System.currentTimeMillis()
         val today = LocalDate.now()
         val minute = LocalTime.now().let { it.hour * 60 + it.minute }
@@ -165,6 +165,7 @@ class Nudges(
     /** Shows at most one nudge now, if the moment is right. */
     suspend fun deliver(now: Long = System.currentTimeMillis(), minute: Int = LocalTime.now().let { it.hour * 60 + it.minute }) {
         val s = settings.value
+        if (s.travel) return
         val night = minute < 8 * 60 || minute >= 22 * 60 || s.inQuietHours(minute)
         val mode = capture().state.value.mode
         if (mode == CaptureController.Mode.BLOCKED_CALL) return

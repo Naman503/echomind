@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.QuestionAnswer
 import androidx.compose.material.icons.rounded.Thermostat
+import androidx.compose.material.icons.rounded.Flight
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MusicNote
@@ -156,6 +157,7 @@ fun LibraryScreen() {
             app.echomind.ui.components.NavGroup {
                 app.echomind.ui.components.NavRow(Icons.Rounded.Settings, "Settings", "Recording, AI, journal, reminders, appearance", tint = MaterialTheme.colorScheme.outline) { nav.go(app.echomind.ui.SettingsRoute) }
                 app.echomind.ui.components.NavRow(Icons.Rounded.Thermostat, "Phone health", "Temperature, battery and work limits", tint = MaterialTheme.colorScheme.outline) { nav.go(app.echomind.ui.HealthRoute) }
+                app.echomind.ui.components.NavRow(Icons.Rounded.Flight, "Travel mode", if (s.travel) "On — EchoMind is resting" else "Save battery on trips", tint = MaterialTheme.colorScheme.outline) { nav.go(app.echomind.ui.TravelRoute) }
             }
         }
         if (live.isNotEmpty()) {

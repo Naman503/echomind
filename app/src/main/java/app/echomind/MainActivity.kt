@@ -72,6 +72,10 @@ class MainActivity : ComponentActivity() {
     private fun handle(intent: Intent?) {
         intent ?: return
         // Debug builds only: `am start … --es review_day 2026-10-21 [--ez review_reset true]` runs a day's review now.
+        // Debug builds only: `--es travel on|off`.
+        if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) intent.getStringExtra("travel")?.let { v ->
+            lifecycleScope.launch { if (v == "on") App.graph.travel.enable("manual") else App.graph.travel.disable() }
+        }
         if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) intent.getStringExtra("review_day")?.let { day ->
             val g = App.graph
             lifecycleScope.launch {

@@ -84,6 +84,7 @@ class Governor(private val context: Context, private val settings: SettingsStore
         val now = System.currentTimeMillis()
         // Android's own emergency levels always stop work: past this the system shuts things down itself.
         if (p.thermal >= PowerManager.THERMAL_STATUS_EMERGENCY) return "Phone is overheating — Android's emergency level" to "android"
+        if (s.travel) return "Travel mode — resting to save battery" to "travel"
         if (now < ignoreLimitsUntil) return null
         if (s.processingPausedUntil > now) return (if (s.processingPausedUntil == Long.MAX_VALUE) "Paused by you" else "Paused by you until ${app.echomind.ai.Prompts.time(s.processingPausedUntil)}") to "pause"
         if (s.onlyWhileCharging && !p.charging) return "Waiting for the charger (your setting)" to "charging"
