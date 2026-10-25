@@ -26,7 +26,20 @@ class VoiceInput(
     private val onNothing: () -> Unit = {},
     /** How long a pause ends the answer (longer for check-in answers). */
     private val pauseMs: () -> Long = { 0L },
+    /** Where push-to-talk was used, for anonymous usage: ask | check_in. */
+    private val surface: String = "other",
 ) {
+    private var startedAt = 0L
+
+    /** Anonymous usage: where, how it ended (fixed names) and how long it listened. Never the words. */
+    private fun report(outcome: String, err: String? = null) {
+        if (startedAt == 0L) return
+        val ms = System.currentTimeMillis() - startedAt
+        startedAt = 0L
+        app.echomind.telemetry.Usage.event("voice_input", mapOf("surface" to surface, "outcome" to outcome, "err" to err,
+            "listened" to app.echomind.telemetry.UsageMath.latencyBucket(ms), "on_device" to SpeechRecognizer.isOnDeviceRecognitionAvailable(context)))
+    }
+
     var listening by mutableStateOf(false)
         private set
     private var recognizer: SpeechRecognizer? = null
@@ -48,11 +61,14 @@ class VoiceInput(
             }
             override fun onResults(results: Bundle?) {
                 listening = false
+                report(if (results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().isNullOrBlank()) "nothing" else "heard")
                 results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.takeIf { it.isNotBlank() }?.let(onFinal)
                 r.destroy(); recognizer = null
             }
             override fun onError(error: Int) {
                 listening = false; r.destroy(); recognizer = null
+                val nothing = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                report(if (nothing) "nothing" else "error", app.echomind.telemetry.UsageMath.speechError(error))
                 if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) onNothing()
             }
         })
@@ -72,16 +88,17 @@ class VoiceInput(
             }
         })
         listening = true
+        startedAt = System.currentTimeMillis()
     }
 
     fun stop() { recognizer?.stopListening() }
-    fun release() { recognizer?.destroy(); recognizer = null; listening = false }
+    fun release() { if (listening) report("cancelled"); recognizer?.destroy(); recognizer = null; listening = false }
 }
 
 @Composable
-fun rememberVoiceInput(onPartial: (String) -> Unit, onFinal: (String) -> Unit, onNothing: () -> Unit = {}, pauseMs: () -> Long = { 0L }): VoiceInput {
+fun rememberVoiceInput(onPartial: (String) -> Unit, onFinal: (String) -> Unit, onNothing: () -> Unit = {}, pauseMs: () -> Long = { 0L }, surface: String = "other"): VoiceInput {
     val ctx = LocalContext.current
-    val v = remember { VoiceInput(ctx, onPartial, onFinal, onNothing, pauseMs) }
+    val v = remember { VoiceInput(ctx, onPartial, onFinal, onNothing, pauseMs, surface) }
     DisposableEffect(Unit) { onDispose { v.release() } }
     return v
 }

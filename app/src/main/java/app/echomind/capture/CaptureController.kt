@@ -61,6 +61,7 @@ class CaptureController(
         val forgetFrom = prefs.getLong("forgetFrom", 0)
         if (w.startedAt < forgetFrom && w.endedAt <= forgetFrom + 5_000) { w.file.delete(); return }
         if (w.voicedMs < MIN_VOICED_MS) {
+            app.echomind.App.graph.usage.count("capture_dropped", mapOf("reason" to "silence"))
             // No talk — but maybe music, or surroundings for the activity timeline, before it's deleted unheard.
             if (sounds().wanted()) runCatching {
                 sounds().analyse(w.file, AudioItem(path = w.file.absolutePath, startedAt = w.startedAt, endedAt = w.endedAt, durationMs = w.durationMs, voicedMs = w.voicedMs, source = "mic"), dropped = true)
@@ -72,6 +73,7 @@ class CaptureController(
         db.audio().insert(AudioItem(path = w.file.absolutePath, startedAt = w.startedAt, endedAt = w.endedAt, durationMs = w.durationMs, voicedMs = w.voicedMs, source = "mic"))
         // Anonymous usage: a count only, never the audio or its words.
         app.echomind.App.graph.usage.count("captures")
+        app.echomind.App.graph.usage.count("capture_added", mapOf("type" to "audio", "source" to "mic", "len" to app.echomind.telemetry.UsageMath.durationBucket(w.durationMs)))
         app.echomind.App.graph.usage.once("first_capture")
         brain().poke()
     }
@@ -136,6 +138,7 @@ class CaptureController(
      */
     suspend fun forget(minutes: Int) {
         val from = System.currentTimeMillis() - minutes * 60_000L
+        app.echomind.App.graph.usage.event("forget_used", mapOf("minutes" to minutes))
         prefs.edit().putLong("forgetFrom", System.currentTimeMillis()).apply()
         if (Recorder.isRunning()) Recorder.rotate("forget")
         for (a in db.audio().overlapping(from, Long.MAX_VALUE)) {

@@ -109,6 +109,11 @@ class Speaker(
         val clean = app.echomind.brain.Briefing.Script(title, items.map { Speakable.clean(it) }).tidy().parts
         if (clean.isEmpty()) return
         // No earphones: ask first (or don't read at all), as chosen in settings.
+        val earphones = onSpeaker || previewVoice != null || headphonesConnected()
+        // Anonymous usage: that something was read aloud, where, and with which kind of voice — never what.
+        app.echomind.telemetry.Usage.count("read_aloud", mapOf(
+            "output" to when { previewVoice != null -> "preview"; onSpeaker -> "speaker_confirmed"; earphones -> "earphones"; settings.value.speakerPolicy == "never" -> "blocked"; settings.value.speakerPolicy == "ask" -> "asked"; else -> "speaker" },
+            "engine" to if (settings.value.readEngine == "system") "system" else "open", "parts" to app.echomind.telemetry.UsageMath.countBucket(clean.size)))
         if (!onSpeaker && previewVoice == null && !headphonesConnected()) {
             when (settings.value.speakerPolicy) {
                 "never" -> { _notice.value = "Not read aloud — no earphones connected"; return }

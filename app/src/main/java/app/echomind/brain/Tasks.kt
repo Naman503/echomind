@@ -80,6 +80,8 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
             if (row.status == "open" && row.remindAt != null) reminders.schedule(row.copy(id = id))
             added++
         }
+        // Anonymous usage: how many tasks conversations produced (a count; never the tasks).
+        if (added > 0) app.echomind.telemetry.Usage.count("tasks_found", mapOf("origin" to if (origin == "voice") "voice" else "ai"), added)
         return added
     }
 
@@ -106,18 +108,20 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
         if (!force && settings.value.reviewAiTasks) return
         val onList = db.tasks().live().filter { it.status == "open" }.map { it.title }
         for (t in db.tasks().observeByStatus("suggested").first()) {
-            if (onList.any { sameTask(it, t.title) }) dismiss(t, "Already on the list") else accept(t)
+            if (onList.any { sameTask(it, t.title) }) dismiss(t, "Already on the list", auto = true) else accept(t, auto = true)
         }
     }
 
-    suspend fun accept(t: TaskRow) {
+    suspend fun accept(t: TaskRow, auto: Boolean = false) {
+        app.echomind.telemetry.Usage.count("task_review", mapOf("action" to "accepted", "auto" to auto))
         val now = System.currentTimeMillis()
         val updated = t.copy(status = "open", updatedAt = now)
         db.tasks().update(updated)
         if (updated.remindAt != null && updated.remindAt > now) reminders.schedule(updated)
     }
 
-    suspend fun dismiss(t: TaskRow, reason: String) {
+    suspend fun dismiss(t: TaskRow, reason: String, auto: Boolean = false) {
+        app.echomind.telemetry.Usage.count("task_review", mapOf("action" to "dismissed", "auto" to auto))
         db.tasks().update(t.copy(status = "dismissed", dismissReason = reason, updatedAt = System.currentTimeMillis()))
         reminders.cancel(t.id)
     }
@@ -130,6 +134,7 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
         val now = System.currentTimeMillis()
         db.tasks().update(t.copy(status = "done", completedAt = now, updatedAt = now))
         reminders.cancel(t.id)
+        app.echomind.telemetry.Usage.count("task_completed", mapOf("origin" to when (t.origin) { "user" -> "user"; "voice" -> "voice"; else -> "ai" }, "recurring" to (t.recurrence != null), "had_reminder" to (t.remindAt != null)))
         val rule = t.recurrence ?: return null
         val base = t.dueAt ?: t.remindAt ?: now
         val nextDue = Recurrence.next(rule, base, now) ?: return null
@@ -182,7 +187,8 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
      * Adds a task typed in quick-add syntax; creates the list if it is new. A task you type
      * without a date lands on Today (unless you turned that off), so it never disappears.
      */
-    suspend fun addQuick(text: String, defaultProjectId: Long? = null, toToday: Boolean = settings.value.undatedToToday): Long? {
+    /** [via]: where it was typed, for anonymous usage (fixed names: typed, today, quick_add, command, nudge, insight, note). */
+    suspend fun addQuick(text: String, defaultProjectId: Long? = null, toToday: Boolean = settings.value.undatedToToday, via: String = "typed"): Long? {
         if (text.isBlank()) return null
         val parsed = QuickAdd.parse(text)
         val p = if (parsed.due == null && toToday) parsed.copy(due = When.Resolved(todayNoTime(), false)) else parsed
@@ -198,6 +204,7 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
         )
         val id = db.tasks().insert(row)
         if (row.remindAt != null) reminders.schedule(row.copy(id = id))
+        app.echomind.telemetry.Usage.count("capture_added", mapOf("type" to "task", "source" to via, "reminder" to (row.remindAt != null), "dated" to (row.dueAt != null), "recurring" to (row.recurrence != null)))
         return id
     }
 
@@ -220,6 +227,7 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
     suspend fun addByUser(title: String, remindAt: Long?): Long {
         val now = System.currentTimeMillis()
         val row = TaskRow(title = title.trim(), status = "open", remindAt = remindAt, dueAt = remindAt, confidence = 1f, createdAt = now, updatedAt = now, origin = "user")
+        app.echomind.telemetry.Usage.count("capture_added", mapOf("type" to "task", "source" to "reminder_form", "reminder" to (remindAt != null)))
         val id = db.tasks().insert(row)
         if (remindAt != null) reminders.schedule(row.copy(id = id))
         return id

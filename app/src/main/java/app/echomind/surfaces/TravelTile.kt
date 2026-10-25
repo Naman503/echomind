@@ -11,6 +11,7 @@ class TravelTile : TileService() {
 
     override fun onClick() {
         val g = App.graph
+        app.echomind.telemetry.Usage.count("tile_tap", mapOf("tile" to "travel", "was_on" to g.travel.active))
         g.scope.launch {
             if (g.travel.active) g.travel.disable() else g.travel.enable("manual")
             refresh()

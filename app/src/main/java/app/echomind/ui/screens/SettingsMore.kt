@@ -178,8 +178,8 @@ private fun KeyField(name: String, label: String, present: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(text, { text = it }, label = { Text(if (present) "$label (saved)" else label) }, singleLine = true, visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.weight(1f))
-        TextButton(enabled = text.isNotBlank(), onClick = { g.secrets.set(name, text.trim()); text = "" }) { Text("Save") }
-        if (present) TextButton(onClick = { g.secrets.set(name, null) }) { Text("Remove") }
+        TextButton(enabled = text.isNotBlank(), onClick = { g.secrets.set(name, text.trim()); text = ""; g.usage.event("api_key_added", mapOf("provider" to app.echomind.telemetry.UsageMath.keyName(name), "where" to "settings")) }) { Text("Save") }
+        if (present) TextButton(onClick = { g.secrets.set(name, null); g.usage.event("api_key_removed", mapOf("provider" to app.echomind.telemetry.UsageMath.keyName(name))) }) { Text("Remove") }
     }
 }
 

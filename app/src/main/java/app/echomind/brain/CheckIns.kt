@@ -240,6 +240,7 @@ Short, specific, one thing per question, no yes/no chains. Never ask what was al
         if (!slot.enabled) return
         val n = candidates(slot.kind).size
         notifier.checkInPrompt(slot, n)
+        app.echomind.telemetry.Usage.count("check_in_prompted", mapOf("kind" to app.echomind.telemetry.UsageMath.checkInKind(slot.kind)))
     }
 
     // ── quick questions through the day ──
@@ -262,6 +263,7 @@ Short, specific, one thing per question, no yes/no chains. Never ask what was al
         db.memory().putKv(Kv("quickq:last", now.toString(), now))
         db.memory().putKv(Kv("quickq:pending", Js.json.encodeToString(Q.serializer(), q), now))
         notifier.quickQuestion(q.question, q.why)
+        app.echomind.telemetry.Usage.count("quick_question", mapOf("kind" to if (q.kind == "who") "who" else "task", "stage" to "asked"))
     }
 
     /** An inline reply to the quick question. */
@@ -269,6 +271,7 @@ Short, specific, one thing per question, no yes/no chains. Never ask what was al
         val q = db.memory().kv("quickq:pending")?.let { runCatching { Js.json.decodeFromString(Q.serializer(), it) }.getOrNull() } ?: return emptyList()
         db.memory().putKv(Kv("quickq:pending", "", System.currentTimeMillis()))
         val answered = q.copy(answer = text, skipped = isSkip(text))
+        app.echomind.telemetry.Usage.count("quick_question", mapOf("kind" to if (q.kind == "who") "who" else "task", "stage" to if (answered.skipped) "skipped" else "answered"))
         return finish("quick", System.currentTimeMillis(), listOf(answered))
     }
 }

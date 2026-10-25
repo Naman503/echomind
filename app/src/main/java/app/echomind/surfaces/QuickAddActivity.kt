@@ -67,7 +67,7 @@ class QuickAddActivity : ComponentActivity() {
                 fun addTask() {
                     val t = text.trim()
                     if (t.isEmpty()) return
-                    lifecycleScope.launch { g.tasks.addQuick(t); finish() }
+                    lifecycleScope.launch { g.tasks.addQuick(t, via = "quick_add"); finish() }
                 }
                 androidx.compose.foundation.layout.Box(
                     Modifier.fillMaxWidth().fillMaxSize().background(Color.Black.copy(alpha = 0.35f)).clickable { finish() }.imePadding(),
@@ -111,6 +111,7 @@ class QuickAddActivity : ComponentActivity() {
 /** Quick Settings tile that opens the quick-add box. */
 class QuickAddTile : TileService() {
     override fun onClick() {
+        app.echomind.telemetry.Usage.count("tile_tap", mapOf("tile" to "quick_add"))
         val pi = PendingIntent.getActivity(this, 1, Intent(this, QuickAddActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE)
         startActivityAndCollapse(pi)
     }

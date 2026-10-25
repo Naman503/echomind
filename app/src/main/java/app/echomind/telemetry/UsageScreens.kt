@@ -27,11 +27,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val WHAT = listOf(
-    "How often you open EchoMind, listen and use Ask: counts only.",
-    "Setup steps, the AI provider you picked (its name, never keys or addresses) and the app version.",
-    "Crash types, so problems get fixed.",
+    "How you use EchoMind: app opens, time in the app (rounded), which screens you open, and counts of features used — listening, Ask, voice input, commands by type, tasks, notes, check-ins, reminders, widgets, tiles and searches (that you searched, not what).",
+    "How well it works: whether answers, transcription, nightly reviews and downloads succeeded, the kind of error (for example \"offline\" or \"no key\") and how long they took, rounded.",
+    "How it's set up, once a day: your settings' on/off and choice values, the AI provider names you picked, which permissions are allowed, and storage and data sizes as rough ranges.",
+    "Setup steps, the app version, phone model and language, and crash types with their code location, so problems get fixed.",
 )
-private val NEVER = "Never anything you said, wrote or asked, nor people, places or recordings. Everything you say still stays on this phone unless you choose a cloud provider."
+private val NEVER = "Never anything you said, wrote, asked or were answered, nor transcripts, notes, names of people or places, search words, API keys, server addresses or model names you typed. Everything you say still stays on this phone unless you choose a cloud provider."
 
 /** Shown once: anonymous usage sharing is part of using EchoMind. */
 @Composable
@@ -68,7 +69,7 @@ fun UsageSharingScreen() {
                     usage.stopped -> "Stopped. Your request was approved: nothing is shared and what was shared was deleted."
                     status == "pending" -> "On · request to stop is waiting for the developer's approval."
                     status == "declined" -> "On · your last request was declined. You can ask again."
-                    else -> "On · anonymous counts are shared every 6 hours."
+                    else -> "On · anonymous usage is shared every 6 hours."
                 },
                 style = MaterialTheme.typography.bodyLarge,
             )
@@ -83,5 +84,20 @@ fun UsageSharingScreen() {
             }
             Text("Install id: ${usage.installId.take(8)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+/**
+ * Anonymous usage for a search box: counts one search per visit once something has been typed
+ * and left for a moment. Only the screen's fixed name is sent, never the words.
+ */
+@Composable
+fun TrackSearch(surface: String, query: String) {
+    var counted by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(query.isBlank()) {
+        if (counted || query.isBlank()) return@LaunchedEffect
+        kotlinx.coroutines.delay(1_200)
+        counted = true
+        Usage.count("search_used", mapOf("surface" to surface))
     }
 }

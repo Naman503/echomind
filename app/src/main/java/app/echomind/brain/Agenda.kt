@@ -99,14 +99,19 @@ class Agenda(
     suspend fun save(e: EventRow): Long {
         val now = System.currentTimeMillis()
         val id = if (e.id == 0L) db.events().insert(e.copy(createdAt = now, updatedAt = now)) else { db.events().update(e.copy(updatedAt = now)); e.id }
+        if (e.id == 0L) app.echomind.telemetry.Usage.count("capture_added", mapOf("type" to "event", "source" to if (e.status == "confirmed") "user" else "suggested"))
         val saved = db.events().get(id) ?: return id
         if (saved.status == "confirmed") afterConfirm(saved)
         return id
     }
 
-    suspend fun confirm(e: EventRow) = save(e.copy(status = "confirmed"))
+    suspend fun confirm(e: EventRow): Long {
+        app.echomind.telemetry.Usage.count("event_review", mapOf("action" to "confirmed"))
+        return save(e.copy(status = "confirmed"))
+    }
 
     suspend fun dismiss(e: EventRow) {
+        app.echomind.telemetry.Usage.count("event_review", mapOf("action" to "dismissed"))
         db.events().update(e.copy(status = "cancelled", updatedAt = System.currentTimeMillis()))
         am.cancel(alarm(e.id))
     }
@@ -123,7 +128,9 @@ class Agenda(
     private suspend fun afterConfirm(e: EventRow) {
         schedule(e)
         if (settings.value.writeToPhoneCalendar && e.deviceId == null && canWrite()) {
-            writeDevice(e)?.let { db.events().update(e.copy(deviceId = it)) }
+            val written = writeDevice(e)
+            app.echomind.telemetry.Usage.count("calendar_sync", mapOf("direction" to "to_phone", "outcome" to if (written != null) "ok" else "failed"))
+            written?.let { db.events().update(e.copy(deviceId = it)) }
         }
     }
 

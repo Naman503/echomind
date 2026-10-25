@@ -111,6 +111,10 @@ fun CheckInScreen(slotId: String?) {
         scope.launch {
             changes = g.checkIns.finish(slot.kind, startedAt, questions.toList())
             saving = false
+            // Anonymous usage: kind of check-in, how many were answered/skipped, length — never questions or answers.
+            g.usage.event("check_in_done", mapOf("kind" to app.echomind.telemetry.UsageMath.checkInKind(slot.kind), "asked" to questions.size,
+                "answered" to questions.count { it.answer != null }, "skipped" to questions.count { it.skipped }, "changes" to (changes?.size ?: 0),
+                "took" to app.echomind.telemetry.UsageMath.sessionBucket(System.currentTimeMillis() - startedAt)))
             if (wasListening) g.capture.resume()
         }
     }
@@ -123,7 +127,7 @@ fun CheckInScreen(slotId: String?) {
         heard = ""; typed = ""; typing = false
         if (i + 1 >= questions.size) finish() else { i++; asked++ }
     }
-    val voice = rememberVoiceInput(onPartial = { heard = it }, onFinal = { answer(it) }, onNothing = { answer("") }, pauseMs = { g.settings.value.checkInPauseMs.toLong() })
+    val voice = rememberVoiceInput(onPartial = { heard = it }, onFinal = { answer(it) }, onNothing = { answer("") }, pauseMs = { g.settings.value.checkInPauseMs.toLong() }, surface = "check_in")
 
     LaunchedEffect(Unit) {
         // The microphone is needed for answers: listening pauses for the check-in and comes back after.

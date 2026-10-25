@@ -183,10 +183,10 @@ Requires **Android 12 or newer** (API 31). A phone with 8 GB of RAM or more is r
 - **Audio and transcripts stay on the phone.** Recognition, speaker grouping, sound tagging and the default AI all run locally.
 - **Nothing you say is sent without your choice.** Cloud AI, web search and song naming are each off until you turn them on.
 - **Every network request is logged.** The cloud ledger shows what was sent, to whom, and why.
-- **No accounts or ads.** EchoMind shares **anonymous usage counts** (app opens, listening, Ask use, setup steps, the AI provider name, crash types) with a random id. Never anything you said, wrote or asked. It is part of using the app (shown once at first launch); to stop, request it in *Settings → Phone & data → Usage sharing*. It stops once the developer approves the request, and what was shared is then deleted. Each report shows in the Data ledger.
+- **No accounts or ads.** EchoMind shares **anonymous usage** with a random id: app opens and time in the app (rounded), screens opened, counts of features used (listening, Ask, voice input, commands by type, tasks, notes, check-ins, reminders, widgets, searches — never the words), whether answers, transcription, nightly reviews and downloads worked plus the kind of error and rounded timings, a daily snapshot of settings choices, permissions and storage/data sizes as ranges, setup steps, the AI provider names, and crash types. Never anything you said, wrote or asked, nor names, places, keys, server addresses or model names you typed. It is part of using the app (shown once at first launch); to stop, request it in *Settings → Phone & data → Usage sharing*. It stops once the developer approves the request, and what was shared is then deleted. Each report shows in the Data ledger.
 - **API keys** are stored with Android Keystore encryption.
 
-**Why the app has internet access:** model downloads, anonymous usage counts, and the optional features above. Nothing else.
+**Why the app has internet access:** model downloads, anonymous usage, and the optional features above. Nothing else.
 
 ## 🩺 Phone health and limits
 

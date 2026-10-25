@@ -105,7 +105,7 @@ class Brain(
             db.audio().resetWorking()
             db.conversations().resetWorking()
             while (keepGoing()) {
-                val didWork = runCatching { cycle() }.onFailure { Log.w(TAG, "cycle failed", it) }.getOrDefault(false)
+                val didWork = runCatching { cycle() }.onFailure { Log.w(TAG, "cycle failed", it); app.echomind.telemetry.Usage.error("brain_cycle", it) }.getOrDefault(false)
                 if (!didWork) {
                     _state.value = _state.value.copy(phase = Phase.IDLE, detail = "")
                     withTimeoutOrNull(60_000) { wake.receive() }
@@ -162,11 +162,17 @@ class Brain(
                 governor.awaitTurn()
                 _state.value = _state.value.copy(phase = Phase.THINKING, detail = next.title ?: Prompts.time(next.startAt), waitingReason = null)
                 val began = System.currentTimeMillis()
+                val provider = settings.value.provider(Feature.NOTES).let { if (app.echomind.core.Providers.isLocal(it)) "on_device" else app.echomind.telemetry.UsageMath.provider(it) }
                 try {
                     val r = enricher.enrich(next)
+                    // Anonymous usage: a conversation was read — outcome, AI kind, time, counts as buckets.
+                    app.echomind.telemetry.Usage.count("conversation_read", mapOf("outcome" to "ok", "provider" to provider, "took" to app.echomind.telemetry.UsageMath.latencyBucket(System.currentTimeMillis() - began),
+                        "words" to app.echomind.telemetry.UsageMath.countBucket(next.words.toLong()), "tasks" to app.echomind.telemetry.UsageMath.countBucket(r.tasks), "facts" to app.echomind.telemetry.UsageMath.countBucket(r.facts), "notes" to app.echomind.telemetry.UsageMath.countBucket(r.notes)))
                     if (r.tasks > 0) announceSuggestions()
                 } catch (e: Exception) {
                     Log.w(TAG, "enrich ${next.id} failed", e)
+                    app.echomind.telemetry.Usage.count("conversation_read", mapOf("outcome" to "failed", "provider" to provider, "err" to app.echomind.telemetry.UsageMath.errorCategory(e), "attempt" to next.attempts + 1))
+                    app.echomind.telemetry.Usage.unexpected("enrich", e)
                     enricher.markFailed(next, e)
                     _state.value = _state.value.copy(waitingReason = e.message)
                 }
@@ -198,7 +204,7 @@ class Brain(
             governor.awaitTurn()
             _state.value = _state.value.copy(phase = Phase.REVIEW, detail = "Reviewing ${Prompts.day(journal.bounds(d).first)}")
             val began = System.currentTimeMillis()
-            val more = runCatching { dayReview.step(d) }.onFailure { Log.w(TAG, "review step failed", it) }.getOrDefault(false)
+            val more = nightJob("review_now") { dayReview.step(d) }
             governor.workDone(System.currentTimeMillis() - began)
             if (!more) reviewDay = null
             return true
@@ -216,7 +222,7 @@ class Brain(
             governor.awaitTurn()
             _state.value = _state.value.copy(phase = Phase.REVIEW, detail = "Reviewing ${Prompts.day(journal.bounds(d).first)}")
             val began = System.currentTimeMillis()
-            val did = runCatching { dayReview.step(d) }.onFailure { Log.w(TAG, "review step failed", it) }.getOrDefault(false)
+            val did = nightJob("review") { dayReview.step(d) }
             governor.workDone(System.currentTimeMillis() - began)
             if (did) return true
         }
@@ -224,15 +230,36 @@ class Brain(
         governor.awaitTurn()
         _state.value = _state.value.copy(phase = Phase.REVIEW, detail = "Writing the book")
         val began = System.currentTimeMillis()
-        val wrote = runCatching { book.step() }.onFailure { Log.w(TAG, "book step failed", it) }.getOrDefault(false)
+        val wrote = nightJob("book") { book.step() }
         governor.workDone(System.currentTimeMillis() - began)
         if (wrote) return true
         governor.awaitTurn()
         _state.value = _state.value.copy(phase = Phase.REVIEW, detail = "Noting names in older conversations")
         val began2 = System.currentTimeMillis()
-        val caught = runCatching { catchUp() }.onFailure { Log.w(TAG, "catch-up failed", it) }.getOrDefault(false)
+        val caught = nightJob("catch_up") { catchUp() }
         governor.workDone(System.currentTimeMillis() - began2)
         return caught
+    }
+
+    /**
+     * A step of the night's work, counted for anonymous usage (job name from our code, outcome
+     * did_work | nothing | failed with an error kind). Failures are logged and swallowed as before.
+     */
+    private suspend fun nightJob(job: String, rethrow: Boolean = false, block: suspend () -> Boolean): Boolean {
+        val began = System.currentTimeMillis()
+        return try {
+            block().also { did ->
+                app.echomind.telemetry.Usage.count("night_job", mapOf("job" to job, "outcome" to if (did) "did_work" else "nothing", "took" to app.echomind.telemetry.UsageMath.latencyBucket(System.currentTimeMillis() - began)))
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            if (rethrow) { app.echomind.telemetry.Usage.count("night_job", mapOf("job" to job, "outcome" to "failed", "err" to app.echomind.telemetry.UsageMath.errorCategory(e))); throw e }
+            Log.w(TAG, "$job step failed", e)
+            app.echomind.telemetry.Usage.count("night_job", mapOf("job" to job, "outcome" to "failed", "err" to app.echomind.telemetry.UsageMath.errorCategory(e)))
+            app.echomind.telemetry.Usage.unexpected("night_$job", e)
+            false
+        }
     }
 
     /** Whether the session mode wants the AI to run now. */
@@ -268,7 +295,7 @@ class Brain(
             governor.awaitTurn()
             _state.value = _state.value.copy(phase = Phase.JOURNAL, detail = "Journal for ${Prompts.day(from)}")
             markAttempt(d)
-            journal.nightly(d)
+            nightJob("journal_late", rethrow = true) { journal.nightly(d) }
             return true
         }
         if (nowMinute < s.eveningRecapAt) return false
@@ -279,7 +306,7 @@ class Brain(
         governor.awaitTurn()
         _state.value = _state.value.copy(phase = Phase.JOURNAL, detail = "Writing today's journal")
         markAttempt(today)
-        if (journal.nightly(today)) recap(today)
+        if (nightJob("journal", rethrow = true) { journal.nightly(today) }) recap(today)
         tasks.expireOld()
         runCatching { tasks.mergeDuplicates() }
         nightlyExtras()

@@ -271,8 +271,8 @@ private fun ForYou() {
                 Text(n.body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row {
                     TextButton(onClick = { g.speaker.speak(n.title, listOf(n.title + ".", n.body)) }) { Text("Listen") }
-                    if (n.taskText != null) TextButton(onClick = { scope.launch { g.nudges.act(n.id) { g.tasks.addQuick(it) }; g.notifier.cancelNudge(n.id) } }) { Text("Add task") }
-                    TextButton(onClick = { scope.launch { g.nudges.dismiss(n.id); g.notifier.cancelNudge(n.id) } }) { Text("Dismiss") }
+                    if (n.taskText != null) TextButton(onClick = { g.usage.count("nudge_action", mapOf("action" to "add_task", "where" to "today")); scope.launch { g.nudges.act(n.id) { g.tasks.addQuick(it, via = "nudge") }; g.notifier.cancelNudge(n.id) } }) { Text("Add task") }
+                    TextButton(onClick = { g.usage.count("nudge_action", mapOf("action" to "dismiss", "where" to "today")); scope.launch { g.nudges.dismiss(n.id); g.notifier.cancelNudge(n.id) } }) { Text("Dismiss") }
                 }
             }
         }
@@ -577,7 +577,7 @@ private fun TodayTasks() {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = Sp.m, top = 4.dp)) {
                 androidx.compose.material3.OutlinedTextField(adding, { adding = it }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Add for today…") },
                     shape = MaterialTheme.shapes.extraLarge)
-                IconButton(enabled = adding.isNotBlank(), onClick = { val t = adding.trim(); adding = ""; scope.launch { g.tasks.addQuick(t, toToday = true) } }) {
+                IconButton(enabled = adding.isNotBlank(), onClick = { val t = adding.trim(); adding = ""; scope.launch { g.tasks.addQuick(t, toToday = true, via = "today") } }) {
                     Icon(Icons.Rounded.Add, "Add task")
                 }
             }

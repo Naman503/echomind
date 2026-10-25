@@ -48,6 +48,17 @@ class MainActivity : ComponentActivity() {
         handle(intent)
     }
 
+    override fun onStart() {
+        super.onStart()
+        App.graph.usage.sessionStart()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // A rotation is not the end of a visit.
+        if (!isChangingConfigurations) App.graph.usage.sessionEnd()
+    }
+
     override fun onPause() {
         super.onPause()
         App.graph.speaker.uiVisible = false
@@ -59,6 +70,8 @@ class MainActivity : ComponentActivity() {
         // Opening the app is a good moment to catch up: recover, import calls, wake the pipeline.
         val g = App.graph
         g.usage.count("app_open")
+        // A permission granted or taken away in system settings since last time (states only).
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { g.usage.checkPermissions(app.echomind.telemetry.UsageDaily.permissions(this@MainActivity)) } }
         lifecycleScope.launch {
             runCatching { g.capture.recoverOrphans() }
             g.models.refresh()
@@ -85,11 +98,13 @@ class MainActivity : ComponentActivity() {
             }
         }
         when (intent.action) {
-            Intent.ACTION_ASSIST -> pendingRoute.value = "ask"
+            Intent.ACTION_ASSIST -> { pendingRoute.value = "ask"; App.graph.usage.count("deep_link", mapOf("target" to "ask", "via" to "assist")) }
             Intent.ACTION_SEND -> {
                 val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim()
                 if (!text.isNullOrEmpty()) {
                     val g = App.graph
+                    // Anonymous usage: that something was shared in, and roughly how long — never the text.
+                    g.usage.count("capture_added", mapOf("type" to "text", "source" to "share", "len" to app.echomind.telemetry.UsageMath.countBucket(text.length)))
                     lifecycleScope.launch {
                         val now = System.currentTimeMillis()
                         g.db.utterances().insert(Utterance(startAt = now, endAt = now + 1_000, text = text.take(4_000), speaker = "me", source = "typed", engine = "shared", searchText = TextNorm.searchable(text)))
@@ -98,7 +113,11 @@ class MainActivity : ComponentActivity() {
                     pendingRoute.value = "today"
                 }
             }
-            else -> intent.getStringExtra(EXTRA_ROUTE)?.let { pendingRoute.value = it }
+            else -> intent.getStringExtra(EXTRA_ROUTE)?.let {
+                pendingRoute.value = it
+                // Notifications open without an action; shortcuts and widgets use ACTION_VIEW.
+                App.graph.usage.count("deep_link", mapOf("target" to app.echomind.telemetry.UsageMath.linkTarget(it), "via" to if (intent.action == Intent.ACTION_VIEW) "shortcut_widget" else "notification"))
+            }
         }
     }
 

@@ -59,6 +59,7 @@ fun TimelineScreen() {
     var dayStr by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     val day = LocalDate.parse(dayStr)
     var query by rememberSaveable { mutableStateOf("") }
+    app.echomind.telemetry.TrackSearch("timeline", query)
     var showAll by rememberSaveable { mutableStateOf(false) }
     val (from, to) = remember(day) { g.journal.bounds(day) }
     val convs by remember(day) { g.db.conversations().inRange(from, to) }.collectAsStateWithLifecycle(emptyList())

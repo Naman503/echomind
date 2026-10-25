@@ -63,6 +63,7 @@ class CallImporter(private val context: Context, private val db: Db, private val
                 if (parsed.spam) {
                     db.audio().insert(AudioItem(path = "", startedAt = parsed.at ?: added * 1000, endedAt = (parsed.at ?: added * 1000) + durationMs,
                         durationMs = durationMs, voicedMs = 0, source = "call", state = "skipped", contact = parsed.contact, mediaId = id, error = "spam call"))
+                    app.echomind.telemetry.Usage.count("call_import", mapOf("outcome" to "spam_skipped"))
                     continue
                 }
                 val out = File(dir, "call_$id.wav")
@@ -70,6 +71,7 @@ class CallImporter(private val context: Context, private val db: Db, private val
                     AudioDecoder.toWav(context, ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id), out)
                 } catch (e: Exception) {
                     Log.w(TAG, "decode failed for $name", e)
+                    app.echomind.telemetry.Usage.count("call_import", mapOf("outcome" to "decode_failed", "err" to app.echomind.telemetry.UsageMath.errorCategory(e)))
                     out.delete()
                     continue
                 }
@@ -77,6 +79,8 @@ class CallImporter(private val context: Context, private val db: Db, private val
                 db.audio().insert(AudioItem(path = out.absolutePath, startedAt = start, endedAt = start + ms, durationMs = ms, voicedMs = ms,
                     source = "call", contact = parsed.contact, mediaId = id))
                 queued++
+                // Anonymous usage: a call recording was queued, and its length bucket — never who or when.
+                app.echomind.telemetry.Usage.count("capture_added", mapOf("type" to "audio", "source" to "call", "len" to app.echomind.telemetry.UsageMath.durationBucket(ms)))
             }
             queued
         }

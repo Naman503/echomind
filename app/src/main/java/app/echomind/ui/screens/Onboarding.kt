@@ -43,6 +43,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -88,6 +89,8 @@ fun Onboarding() {
     var tick by remember { mutableIntStateOf(0) }
     val perms = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { tick++ }
     val resumeTick = app.echomind.ui.components.rememberResumeTick()
+    // Anonymous usage: the onboarding funnel, one event per step reached (once per install).
+    LaunchedEffect(step) { g.usage.once("onboarding_" + listOf("welcome", "privacy", "ai", "permissions", "name").getOrElse(step) { "name" }) }
 
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).windowInsetsPadding(WindowInsets.navigationBars).padding(Sp.xl)) {
         LinearProgressIndicator(progress = { (step + 1) / 5f }, modifier = Modifier.fillMaxWidth())
@@ -122,6 +125,7 @@ fun Onboarding() {
                                 keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password), modifier = Modifier.fillMaxWidth())
                             Button(enabled = key.isNotBlank(), onClick = {
                                 g.secrets.set("gemini", key); key = ""
+                                g.usage.event("api_key_added", mapOf("provider" to "gemini", "where" to "onboarding"))
                                 scope.launch { g.settings.update { it.copy(providers = it.providers + mapOf("notes" to "gemini", "memory" to "gemini", "ask" to "gemini", "journal" to "gemini"), cloudConsent = it.cloudConsent + setOf("notes", "memory", "ask", "journal")) } }
                             }) { Text("Use Gemini for notes, memory, Ask and journal") }
                             Text("Other providers (Claude, OpenAI, Sarvam for Hindi speech…) are in Settings → Privacy & providers.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -192,6 +196,10 @@ fun Onboarding() {
             else Button(onClick = {
                 scope.launch {
                     g.settings.update { it.copy(onboarded = true) }
+                    val micOk = ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                    g.usage.once("onboarding_done", mapOf("privacy" to if (s.privacy == Privacy.LOCAL_ONLY) "local_only" else "cloud", "mic" to micOk,
+                        "notifications" to (ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED), "battery_unrestricted" to ignoringBattery(ctx),
+                        "name_set" to s.userName.isNotBlank(), "models_installed" to models.values.count { it.installed }))
                     if (ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) g.capture.start()
                 }
             }) { Text("Start listening") }
@@ -287,7 +295,9 @@ fun VoiceScreen() {
                         adding = true
                         scope.launch {
                             val clip = withContext(Dispatchers.IO) { recordClip(8_000) }
-                            result = if (clip != null && g.voice.enroll(listOf(clip), append = true)) "Added — ${g.voice.samples()} samples now." else "Couldn't hear you clearly — try again (pause listening first if the mic is busy)."
+                            val added = clip != null && g.voice.enroll(listOf(clip), append = true)
+                            g.usage.event("voice_enroll", mapOf("outcome" to if (added) "ok" else if (clip == null) "mic_busy" else "too_quiet", "mode" to "add_sample"))
+                            result = if (added) "Added — ${g.voice.samples()} samples now." else "Couldn't hear you clearly — try again (pause listening first if the mic is busy)."
                             adding = false
                         }
                     }) { Text(if (adding) "Listening… keep talking" else "Add a sample (8 s)") }
@@ -313,6 +323,7 @@ fun VoiceScreen() {
                     scope.launch {
                         result = "Learning your voice…"
                         val ok = g.voice.enroll(clips)
+                        g.usage.event("voice_enroll", mapOf("outcome" to if (ok) "ok" else "too_quiet", "mode" to "new"))
                         enrolled = ok
                         result = if (ok) "Done — your lines will be labelled \"You\"." else "That didn't work — the clips were too quiet. Try again somewhere calmer."
                         if (!ok) clips = emptyList()

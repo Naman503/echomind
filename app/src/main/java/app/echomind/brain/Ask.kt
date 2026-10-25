@@ -49,8 +49,10 @@ class Ask(private val db: Db, private val ai: Ai, private val settings: Settings
         data class Searching(val text: String) : Event
         data class Sources(val citations: List<Citation>) : Event
         data class Delta(val text: String) : Event
-        data class Done(val messageId: Long, val threadId: Long) : Event
-        data class Failed(val message: String) : Event
+        /** [outcome]: answered | not_ready (no AI set up: matching moments only). */
+        data class Done(val messageId: Long, val threadId: Long, val outcome: String = "answered") : Event
+        /** [category]: a fixed error kind for anonymous usage (see UsageMath.errorCategory). */
+        data class Failed(val message: String, val category: String = "other") : Event
     }
 
     private val zone get() = ZoneId.systemDefault()
@@ -238,7 +240,7 @@ class Ask(private val db: Db, private val ai: Ai, private val settings: Settings
             val text = if (sources.isEmpty()) "I couldn't find anything about that yet. ($reason to get written answers.)"
             else "Here are the moments that match. ($reason to get a written answer.)"
             val id = db.chat().insertMessage(ChatMessage(threadId = thread.id, role = "assistant", text = text, citations = encode(sources), createdAt = System.currentTimeMillis()))
-            emit(Event.Delta(text)); emit(Event.Done(id, thread.id)); return@flow
+            emit(Event.Delta(text)); emit(Event.Done(id, thread.id, "not_ready")); return@flow
         }
 
         val schedule = Regex("\\b(when|calendar|meeting|appointment|schedule|week|today|tomorrow|kal|aaj|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next|upcoming|free|busy)\\b", RegexOption.IGNORE_CASE)
@@ -300,7 +302,7 @@ class Ask(private val db: Db, private val ai: Ai, private val settings: Settings
             val req = ai.resolve(LlmRequest(Feature.ASK, "Answering your question", Prompts.askSystem(settings.value.notesLanguage), user, maxTokens = 600, temperature = 0.2))
             ai.track(req) { m -> m.stream(req).collect { sb.append(it); emit(Event.Delta(it)) } }
         } catch (e: Exception) {
-            emit(Event.Failed(e.message ?: "The answer failed"))
+            emit(Event.Failed(e.message ?: "The answer failed", app.echomind.telemetry.UsageMath.errorCategory(e)))
             if (sb.isEmpty()) sb.append("Sorry — I couldn't answer that just now (${e.message?.take(120)}).")
         }
         val cited = Regex("\\[(\\d+)]").findAll(sb).mapNotNull { it.groupValues[1].toIntOrNull() }.toSet()

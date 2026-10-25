@@ -700,6 +700,7 @@ fun TopicsScreen() {
     val today = LocalDate.now()
     val rows by remember { g.db.analyses().observeDays(today.minusDays(29).toString(), today.toString()) }.collectAsStateWithLifecycle(emptyList())
     var query by rememberSaveable { mutableStateOf("") }
+    app.echomind.telemetry.TrackSearch("topics", query)
     val topics = rows.flatMap { r -> g.dayReview.decode(r.json)?.topics.orEmpty().map { r.ref to it } }
         .groupBy { it.second.name.lowercase() }
         .map { (_, l) -> Triple(l.first().second.name, l.map { it.first }.distinct().sortedDescending(), l.first().second.detail) }

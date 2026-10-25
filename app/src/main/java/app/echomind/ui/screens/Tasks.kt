@@ -345,6 +345,7 @@ fun TasksScreen() {
     var listFilter by rememberSaveable { mutableStateOf<Long?>(null) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
+    app.echomind.telemetry.TrackSearch("tasks", query)
     var reschedule by remember { mutableStateOf<TaskRow?>(null) }
     var showDone by rememberSaveable { mutableStateOf(false) }
     var showLater by rememberSaveable { mutableStateOf(false) }
