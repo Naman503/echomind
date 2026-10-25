@@ -70,6 +70,9 @@ class CaptureController(
         }
         if (db.audio().hasPath(w.file.absolutePath)) return
         db.audio().insert(AudioItem(path = w.file.absolutePath, startedAt = w.startedAt, endedAt = w.endedAt, durationMs = w.durationMs, voicedMs = w.voicedMs, source = "mic"))
+        // Anonymous usage: a count only, never the audio or its words.
+        app.echomind.App.graph.usage.count("captures")
+        app.echomind.App.graph.usage.once("first_capture")
         brain().poke()
     }
 

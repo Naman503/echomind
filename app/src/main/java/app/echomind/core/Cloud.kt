@@ -50,6 +50,13 @@ class Cloud(private val egress: EgressDao, private val settings: SettingsStore) 
         return track(feature, provider, bytes, what, block)
     }
 
+    /**
+     * Anonymous usage counts to EchoMind's author (telemetry/UsageReporter). Not personal data,
+     * so it runs in local-only mode too, as the usage terms say; it still shows in the ledger.
+     */
+    suspend fun <T> sendUsage(bytes: Long, block: suspend () -> T): T =
+        track("Usage stats", "EchoMind (anonymous counts)", bytes, "Feature counts, no content", block)
+
     private suspend fun <T> track(featureLabel: String, providerLabel: String, bytes: Long, what: String, block: suspend () -> T): T {
         val item = InFlight(featureLabel, providerLabel, what)
         _active.update { it + item }

@@ -35,6 +35,7 @@ import kotlinx.serialization.Serializable
 @Serializable data object PowerRoute : Route
 @Serializable data object NotificationsRoute : Route
 @Serializable data object LedgerRoute : Route
+@Serializable data object UsageSharingRoute : Route
 @Serializable data object DataRoute : Route
 @Serializable data object VoiceRoute : Route
 @Serializable data object ReadingRoute : Route

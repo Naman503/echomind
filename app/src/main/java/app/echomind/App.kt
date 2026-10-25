@@ -19,6 +19,8 @@ import app.echomind.brain.Analyzer
 import app.echomind.brain.Book
 import app.echomind.brain.Travel
 import app.echomind.brain.Places
+import app.echomind.telemetry.UsageReporter
+import app.echomind.telemetry.UsageWorker
 import kotlinx.coroutines.flow.first
 import app.echomind.brain.DayReview
 import app.echomind.brain.Agenda
@@ -78,6 +80,7 @@ class Graph(val app: Application) {
     val settings = SettingsStore(app, scope)
     val secrets = Secrets(app)
     val cloud = Cloud(db.egress(), settings)
+    val usage = UsageReporter(app, cloud)
     val models = ModelManager(app, scope)
     val governor = Governor(app, settings)
     val notifier = Notifier(app)
@@ -178,6 +181,14 @@ class App : Application() {
             logExitReasons()
         }
         app.echomind.surfaces.WidgetUpdater.start(this, g.scope)
+        // Anonymous usage (telemetry/UsageReporter): every 6 hours, when online.
+        g.usage.installCrashHandler()
+        g.usage.once("app_installed")
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "usage", ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<UsageWorker>(6, TimeUnit.HOURS)
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build()).build(),
+        )
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "watchdog", ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<WatchdogWorker>(15, TimeUnit.MINUTES).setConstraints(Constraints.NONE).build(),

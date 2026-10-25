@@ -130,6 +130,12 @@ fun AppRoot(pending: MutableState<String?>) {
         }
         return
     }
+    // Once, for new and existing users: what anonymous usage sharing is.
+    var termsSeen by remember { mutableStateOf(g.usage.termsSeen) }
+    if (!termsSeen) {
+        app.echomind.telemetry.UsageTermsScreen { g.usage.acceptTerms(); termsSeen = true }
+        return
+    }
     val stack = rememberNavBackStack(TodayRoute)
     val nav = remember(stack) { Navigator(stack) }
     LaunchedEffect(pending.value) {
@@ -224,6 +230,7 @@ fun AppRoot(pending: MutableState<String?>) {
                         entry<PowerRoute> { PowerScreen() }
                         entry<NotificationsRoute> { NotificationsScreen() }
                         entry<LedgerRoute> { LedgerScreen() }
+                        entry<UsageSharingRoute> { app.echomind.telemetry.UsageSharingScreen() }
                         entry<DataRoute> { DataScreen() }
                         entry<VoiceRoute> { VoiceScreen() }
                         entry<ReadingRoute> { app.echomind.ui.screens.ReadingScreen() }

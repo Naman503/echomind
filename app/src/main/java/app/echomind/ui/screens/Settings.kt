@@ -232,6 +232,7 @@ fun SettingsScreen() {
             row(Icons.Rounded.Thermostat, "Phone health & limits", "Temperature, what's running, every limit that pauses work") { nav.go(app.echomind.ui.HealthRoute) }
             row(Icons.Rounded.BatteryChargingFull, "Background & battery", "Keep running in the background · vivo setup") { nav.go(PowerRoute) }
             row(Icons.Rounded.Shield, "Data ledger", "Everything that left the phone") { nav.go(LedgerRoute) }
+            row(Icons.Rounded.Shield, "Usage sharing", "Anonymous feature counts · request to stop") { nav.go(app.echomind.ui.UsageSharingRoute) }
             row(Icons.Rounded.Storage, "Your data", "Storage, export, delete") { nav.go(DataRoute) }
         }
         group("Advanced") {
