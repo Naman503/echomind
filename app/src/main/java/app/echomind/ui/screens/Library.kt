@@ -119,7 +119,7 @@ fun LibraryScreen() {
         while (d.toString() in written) { n++; d = d.minusDays(1) }
         n
     }
-    LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(Sp.m)) {
+    LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(Sp.m), state = app.echomind.ui.components.rememberKeptListState()) {
         item {
             app.echomind.ui.components.TabHeader(s.userName.ifBlank { "You" }, listOfNotNull(
                 "${days.count { !it.diary.isNullOrBlank() }} days written",
@@ -199,7 +199,7 @@ fun MemoryScreen() {
         topBar = { ScreenTopBar("Memory", onBack = { nav.back() }) },
         floatingActionButton = { ExtendedFloatingActionButton(onClick = { adding = true }, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("Remember") }) },
     ) { pad ->
-        LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(Sp.gutter, Sp.s, Sp.gutter, 96.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(Sp.gutter, Sp.s, Sp.gutter, 96.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 Text("Each night the AI reviews the day: it keeps what will matter later, updates what changed, and lets go of what's finished. Pinned memories are never dropped.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -281,7 +281,7 @@ fun JournalScreen() {
     var writing by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         ScreenTopBar("Journal", onBack = { nav.back() })
-        LazyColumn(contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.m)) {
+        LazyColumn(contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.m), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 Text("Each evening the AI writes your day: what happened, what's unresolved, and a few gentle things to improve.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -323,7 +323,7 @@ fun DayScreen(day: String) {
             IconButton(onClick = { editing = true }) { Icon(Icons.Rounded.Edit, "Edit") }
         }
         val e = d
-        LazyColumn(contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 EchoCard(onClick = { nav.go(app.echomind.ui.DayReviewRoute(day)) }, color = MaterialTheme.colorScheme.primaryContainer) {
                     Text("Open the full day review", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)

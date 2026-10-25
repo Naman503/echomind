@@ -18,14 +18,40 @@ import kotlin.math.sqrt
  */
 class VoiceCheck(private val db: Db, private val voice: VoiceId) {
 
-    /** One line with its voice score. */
-    data class Scored(val u: Utterance, val score: Float)
+    /** One line with its voice score, and whether its recording was kept (so it can be played). */
+    data class Scored(val u: Utterance, val score: Float, val playable: Boolean = false)
+
+    /** Everything the check screen shows, from one pass over the lines. */
+    data class Report(val stats: Stats, val uncertain: List<Scored>)
+
+    suspend fun report(days: Int = 7, n: Int = 20): Report = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        val since = System.currentTimeMillis() - days * 86_400_000L
+        val lines = db.utterances().range(since, System.currentTimeMillis()).filter { it.speaker != "Song" && it.speaker != "EchoMind" && it.source != "typed" }
+        val sc = scoredFrom(lines)
+        val thr = voice.threshold()
+        val answered = db.memory().kvPrefix("voiceok:").toSet()
+        val unsure = sc.filter { abs(it.score - thr) <= 0.09f && it.u.text.length >= 8 && "voiceok:${it.u.id}" !in answered }
+            .sortedBy { abs(it.score - thr) }.distinctBy { it.score }.take(n)
+            .map { it.copy(playable = db.audio().keptAt(it.u.startAt) != null || db.audio().keptAt(it.u.endAt) != null) }
+        val distinct = sc.distinctBy { it.score }.map { it.score }
+        Report(
+            Stats(
+                me = lines.count { it.speaker == "me" }, others = lines.count { it.speaker != null && it.speaker != "me" && it.speaker != "?" }, unknown = lines.count { it.speaker == null || it.speaker == "?" },
+                threshold = thr, auto = voice.autoThreshold() != null, samples = voice.samples(), corrections = voice.corrections(),
+                separation = Calib.fit(distinct)?.let { (it.hi.mean - it.lo.mean).toFloat() },
+            ),
+            unsure,
+        )
+    }
 
     data class Stats(val me: Int, val others: Int, val unknown: Int, val threshold: Float, val auto: Boolean, val samples: Int, val corrections: Int, val separation: Float?)
 
     private suspend fun scored(days: Int): List<Scored> {
         val since = System.currentTimeMillis() - days * 86_400_000L
-        val lines = db.utterances().range(since, System.currentTimeMillis()).filter { it.speaker != "Song" && it.speaker != "EchoMind" && it.source != "typed" }
+        return scoredFrom(db.utterances().range(since, System.currentTimeMillis()).filter { it.speaker != "Song" && it.speaker != "EchoMind" && it.source != "typed" })
+    }
+
+    private suspend fun scoredFrom(lines: List<Utterance>): List<Scored> {
         val prints = lines.map { it.id }.chunked(500).flatMap { db.vectors().forOwners("s", it) }.associateBy { it.ownerId }
         return lines.mapNotNull { u ->
             val v = prints[u.id] ?: return@mapNotNull null
@@ -35,20 +61,15 @@ class VoiceCheck(private val db: Db, private val voice: VoiceId) {
     }
 
     /** Re-fits the threshold from the last two weeks; keeps the enrolment one when the data can't tell. */
-    suspend fun calibrate(): Float? {
+    suspend fun calibrate(): Float? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { calibrateNow() }
+
+    private suspend fun calibrateNow(): Float? {
         if (!voice.enrolled()) return null
         // Lines measured together share one print: count each print once.
         val scores = scored(14).distinctBy { it.score }.map { it.score }
         val t = Calib.threshold(scores, voice.baseThreshold())
         voice.setAutoThreshold(t)
         return t
-    }
-
-    /** Lines whose score is closest to the line between you and others, not yet answered. */
-    suspend fun uncertain(days: Int = 7, n: Int = 20): List<Scored> {
-        val thr = voice.threshold()
-        return scored(days).filter { abs(it.score - thr) <= 0.09f && it.u.text.length >= 8 && db.memory().kv("voiceok:${it.u.id}") == null }
-            .sortedBy { abs(it.score - thr) }.distinctBy { it.score }.take(n)
     }
 
     /** Your answer for one line: fixes the label and teaches the model both ways. */
@@ -58,17 +79,6 @@ class VoiceCheck(private val db: Db, private val voice: VoiceId) {
         val label = if (isMe) "me" else u.speaker?.takeIf { it != "me" } ?: "S9"
         if (u.speaker != label) db.utterances().update(u.copy(speaker = label))
         db.memory().putKv(Kv("voiceok:${u.id}", if (isMe) "me" else "other", System.currentTimeMillis()))
-    }
-
-    suspend fun stats(days: Int = 7): Stats {
-        val since = System.currentTimeMillis() - days * 86_400_000L
-        val lines = db.utterances().range(since, System.currentTimeMillis()).filter { it.speaker != "Song" && it.speaker != "EchoMind" && it.source != "typed" }
-        val sc = scored(days).distinctBy { it.score }.map { it.score }
-        return Stats(
-            me = lines.count { it.speaker == "me" }, others = lines.count { it.speaker != null && it.speaker != "me" && it.speaker != "?" }, unknown = lines.count { it.speaker == null || it.speaker == "?" },
-            threshold = voice.threshold(), auto = voice.autoThreshold() != null, samples = voice.samples(), corrections = voice.corrections(),
-            separation = Calib.fit(sc)?.let { (it.hi.mean - it.lo.mean).toFloat() },
-        )
     }
 
     /** A two-group (others / you) fit of 1-D scores, and the threshold where the groups meet. */

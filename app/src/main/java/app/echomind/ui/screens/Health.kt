@@ -199,7 +199,7 @@ fun HealthScreen() {
 
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         ScreenTopBar("Phone health", onBack = { nav.back() })
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             item { StatusCard(big = true) }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(Sp.s)) {

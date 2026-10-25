@@ -144,7 +144,7 @@ fun PeopleScreen() {
         val list = all.filter { it.kind == kind }.filter { e ->
             q.isEmpty() || listOfNotNull(e.name, e.role, e.org, e.relationToMe, e.summary, e.aliases, e.story).any { it.lowercase().contains(q) }
         }
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             if (kind == "person" && q.isEmpty() && recent.isNotEmpty()) {
                 item { SectionHeader("Names to remember · new this month") }
                 item {
@@ -261,7 +261,7 @@ fun PersonScreen(id: Long) {
                 DropdownMenuItem(text = { Text("Remove ${p.name}", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; scope.launch { g.people.delete(p); nav.back() } })
             }
         }
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Avatar(p, 64); Spacer(Modifier.width(Sp.l))
@@ -334,7 +334,7 @@ fun PersonScreen(id: Long) {
         val others = everyone.filter { it.kind == p.kind && it.id != p.id }.sortedBy { it.name }
         AlertDialog(onDismissRequest = { merging = false }, title = { Text("${p.name} is the same as…") },
             text = {
-                LazyColumn(Modifier.height(360.dp)) {
+                LazyColumn(Modifier.height(360.dp), state = app.echomind.ui.components.rememberKeptListState()) {
                     items(others, key = { it.id }) { o ->
                         Row(Modifier.fillMaxWidth().clickable { merging = false; scope.launch { g.people.mergeInto(p, o) } }.padding(vertical = Sp.s), verticalAlignment = Alignment.CenterVertically) {
                             Avatar(o, 32); Spacer(Modifier.width(Sp.s))
@@ -379,7 +379,7 @@ private fun EditPerson(p: EntityRow, onDone: () -> Unit) {
     var aliases by remember { mutableStateOf(runCatching { Js.json.decodeFromString(ListSerializer(String.serializer()), p.aliases) }.getOrDefault(emptyList()).joinToString(", ")) }
     AlertDialog(onDismissRequest = onDone, title = { Text("Edit") },
         text = {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
                 item { OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true) }
                 if (p.kind == "person") {
                     item { OutlinedTextField(relation, { relation = it }, label = { Text("Who they are to you") }, singleLine = true, placeholder = { Text("my manager, cousin, plumber") }) }
@@ -423,7 +423,7 @@ fun CirclesScreen() {
     val people = all.filter { it.kind == "person" }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         ScreenTopBar("Circles", onBack = { nav.back() })
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp)) {
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 Text("You know ${people.size} people. Tap a circle to open it; tap a person for their page.", style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = Sp.s))
@@ -492,7 +492,7 @@ fun OrganizeScreen() {
     fun run(everything: Boolean) { busy = true; plan = null; scope.launch { plan = g.organizer.propose(everything); busy = false } }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         ScreenTopBar("Organise with AI", onBack = { nav.back() })
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 Text("The AI suggests a folder tree and tags for your notes, and a circle for each person. Nothing moves until you apply it. New notes are filed on their own every night.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

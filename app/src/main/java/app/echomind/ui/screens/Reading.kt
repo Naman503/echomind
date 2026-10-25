@@ -78,7 +78,7 @@ fun ReadingScreen() {
 
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         ScreenTopBar("Voice & reading", onBack = { nav.back() })
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 Text("EchoMind reads your brief, tasks, notes, summaries and answers aloud. Open-source voices run on this phone; nothing is sent anywhere.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -215,7 +215,7 @@ fun VoicesScreen(lang: String) {
             items(listOf("all" to "All", "open" to "Open-source", "system" to "Phone voices")) { (k, l) -> FilterChip(source == k, { source = k }, label = { Text(l) }) }
             items(accents) { a -> FilterChip(accent == a, { accent = if (accent == a) "" else a }, label = { Text(a) }) }
         }
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 Text("${list.size} voices. Stars are how natural they sound. Open voices are downloaded once per pack (one pack can hold many voices) and run offline.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

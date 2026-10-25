@@ -133,7 +133,7 @@ fun TodayScreen() {
     LazyColumn(
         Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Sp.gutter, vertical = Sp.s),
-        verticalArrangement = Arrangement.spacedBy(Sp.m),
+        verticalArrangement = Arrangement.spacedBy(Sp.m), state = app.echomind.ui.components.rememberKeptListState(),
     ) {
         item(key = "header") {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Sp.s)) {

@@ -144,6 +144,7 @@ interface MemoryDao {
     @Query("DELETE FROM facts WHERE id = :id") suspend fun deleteFact(id: Long)
 
     @Query("SELECT value FROM kv WHERE `key` = :key") suspend fun kv(key: String): String?
+    @Query("SELECT `key` FROM kv WHERE `key` LIKE :prefix || '%'") suspend fun kvPrefix(prefix: String): List<String>
     @Query("SELECT value FROM kv WHERE `key` = :key") fun observeKv(key: String): Flow<String?>
     @Upsert suspend fun putKv(kv: Kv)
 }

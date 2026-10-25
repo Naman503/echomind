@@ -112,7 +112,7 @@ fun ThingsScreen() {
     val counts = things.groupingBy { it.kind }.eachCount()
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         ScreenTopBar("Things", onBack = { nav.back() })
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true, shape = MaterialTheme.shapes.extraLarge,
                     placeholder = { Text("Search shows, places, apps, books…") })
@@ -175,7 +175,7 @@ fun ThingScreen(id: Long) {
     val t = e ?: return
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         ScreenTopBar(t.name, onBack = { nav.back() }) { IconButton(onClick = { deleting = true }) { Icon(Icons.Rounded.Delete, "Delete") } }
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(Sp.m)) {
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(Sp.m), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 EchoCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -250,7 +250,7 @@ fun ThingScreen(id: Long) {
         val others = all.filter { it.kind in Things.KEYS && it.id != t.id }.sortedBy { it.name.lowercase() }
         AlertDialog(onDismissRequest = { merging = false }, title = { Text("Same thing as…") },
             text = {
-                LazyColumn(Modifier.fillMaxWidth()) {
+                LazyColumn(Modifier.fillMaxWidth(), state = app.echomind.ui.components.rememberKeptListState()) {
                     items(others, key = { it.id }) { o ->
                         Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             ThingBadge(o.kind, 28); Spacer(Modifier.width(Sp.s))

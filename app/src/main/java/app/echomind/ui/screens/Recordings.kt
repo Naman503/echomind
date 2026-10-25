@@ -107,7 +107,7 @@ fun RecordingsScreen() {
         },
         bottomBar = { if (play.item != null) PlayerBar() },
     ) { pad ->
-        LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(Sp.gutter, Sp.s, Sp.gutter, 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(Sp.gutter, Sp.s, Sp.gutter, 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 EchoCard(color = LocalSemantic.current.onDevice.copy(alpha = 0.08f)) {
                     Text("Kept ${retentionLabel(s.keepRecordingsDays)}", style = MaterialTheme.typography.titleMedium)

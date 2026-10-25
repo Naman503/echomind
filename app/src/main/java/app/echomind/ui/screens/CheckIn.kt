@@ -155,7 +155,7 @@ fun CheckInScreen(slotId: String?) {
             loading -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                 LoadingIndicator(); Spacer(Modifier.height(Sp.m)); Text("Looking over your day…", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            changes != null || saving -> LazyColumn(contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+            changes != null || saving -> LazyColumn(contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
                 item { Text(if (saving) "Saving…" else "Thanks — that's everything", style = MaterialTheme.typography.headlineSmall) }
                 if (saving) item { LoadingIndicator() }
                 changes?.let { c ->
@@ -216,7 +216,7 @@ fun CheckInsScreen() {
     fun setSlot(slot: CheckInSlot) = set { st -> st.copy(checkIns = st.checkIns.map { if (it.id == slot.id) slot else it }) }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         ScreenTopBar("Check-ins", onBack = { nav.back() })
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 Text("The assistant asks about your day — did you do what you said, who was that, what happened while nothing was recorded — and keeps your journal and tasks honest. Skip any question.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

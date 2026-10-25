@@ -384,7 +384,7 @@ fun TasksScreen() {
             }
 
             val filtered = open.filter { (listFilter == null || it.projectId == listFilter) && (query.isBlank() || it.title.contains(query, true) || (it.detail ?: "").contains(query, true)) }
-            LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = Sp.l), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = Sp.l), verticalArrangement = Arrangement.spacedBy(6.dp), state = app.echomind.ui.components.rememberKeptListState()) {
                 fun section(title: String, tasks: List<TaskRow>, showList: Boolean = true, limit: Int = Int.MAX_VALUE, onMore: (() -> Unit)? = null) {
                     if (tasks.isEmpty()) return
                     item(key = "h$title") { SectionHeader("$title · ${tasks.size}", action = if (tasks.size > limit) "Show all" else null, onAction = onMore) }
@@ -601,7 +601,7 @@ fun TaskScreen(id: Long) {
         ScreenTopBar(if (t.status == "suggested") "Suggested task" else "Task", onBack = { persistText(); nav.back() }) {
             IconButton(onClick = { scope.launch { g.tasks.delete(t); nav.back() } }) { Icon(Icons.Rounded.Delete, "Delete") }
         }
-        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = Sp.gutter, vertical = Sp.s), verticalArrangement = Arrangement.spacedBy(Sp.m)) {
+        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = Sp.gutter, vertical = Sp.s), verticalArrangement = Arrangement.spacedBy(Sp.m), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 Row(verticalAlignment = Alignment.Top) {
                     TaskCheck(t.status == "done", t.priority) { scope.launch { if (t.status == "done") g.tasks.reopen(t) else { persistText(); g.tasks.complete(t) } } }
@@ -752,7 +752,7 @@ fun RemindersScreen() {
         topBar = { ScreenTopBar("Reminders", onBack = { nav.back() }) { app.echomind.ui.components.ListenButton("Read reminders") { g.briefing.reminders() } } },
         floatingActionButton = { androidx.compose.material3.ExtendedFloatingActionButton(onClick = { adding = true }, icon = { Icon(Icons.Rounded.Alarm, null) }, text = { Text("Reminder") }) },
     ) { pad ->
-        LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             reminderItems(reminders) { nav.go(TaskRoute(it.id)) }
         }
     }
@@ -863,7 +863,7 @@ fun ListsScreen() {
         topBar = { ScreenTopBar("Lists", onBack = { nav.back() }) },
         floatingActionButton = { androidx.compose.material3.ExtendedFloatingActionButton(onClick = { creating = true }, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("List") }) },
     ) { pad ->
-        LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 EchoCard {
                     Text("Inbox", style = MaterialTheme.typography.titleMedium)

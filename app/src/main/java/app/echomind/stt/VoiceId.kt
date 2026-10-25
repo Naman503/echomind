@@ -78,7 +78,7 @@ class VoiceId(private val context: Context, private val models: ModelManager, pr
     fun samples() = bank("me_bank").size
     fun corrections() = bank("me_neg").size
 
-    fun forget() = prefs.edit().remove("me").remove("me_bank").remove("me_neg").remove("me_thr").remove("me_thr_auto").apply()
+    fun forget() { prefs.edit().remove("me").remove("me_bank").remove("me_neg").remove("me_thr").remove("me_thr_auto").apply(); cache.clear() }
 
     /** The threshold from enrolment (how alike your own samples are). */
     fun baseThreshold(): Float = prefs.getFloat("me_thr", ME_THRESHOLD)
@@ -97,15 +97,23 @@ class VoiceId(private val context: Context, private val models: ModelManager, pr
         val pairs = bank.indices.flatMap { i -> (i + 1 until bank.size).map { j -> cosine(bank[i], bank[j]) } }
         val thr = if (pairs.isEmpty()) ME_THRESHOLD else (pairs.sorted()[pairs.size / 5] - 0.08f).coerceIn(0.45f, 0.65f)
         prefs.edit().putString("me", normalize(avg).joinToString(",")).putFloat("me_thr", thr).apply()
+        cache.remove("me")
     }
 
-    private fun bank(key: String): List<FloatArray> = prefs.getString(key, null)?.split(';')?.mapNotNull { p ->
-        p.split(',').mapNotNull { it.toFloatOrNull() }.toFloatArray().takeIf { it.isNotEmpty() }
-    } ?: listOfNotNull(if (key == "me_bank") me() else null)
+    // Parsed once and kept: scoring a week of lines would otherwise re-read thousands of numbers per line.
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, List<FloatArray>>()
 
-    private fun save(key: String, list: List<FloatArray>) = prefs.edit().putString(key, list.joinToString(";") { it.joinToString(",") }).apply()
+    private fun bank(key: String): List<FloatArray> = cache.getOrPut(key) {
+        prefs.getString(key, null)?.split(';')?.mapNotNull { p ->
+            p.split(',').mapNotNull { it.toFloatOrNull() }.toFloatArray().takeIf { it.isNotEmpty() }
+        } ?: listOfNotNull(if (key == "me_bank") me() else null)
+    }
 
-    private fun me(): FloatArray? = prefs.getString("me", null)?.split(',')?.mapNotNull { it.toFloatOrNull() }?.toFloatArray()
+    private fun save(key: String, list: List<FloatArray>) { prefs.edit().putString(key, list.joinToString(";") { it.joinToString(",") }).apply(); cache[key] = list; cache.remove("me") }
+
+    private fun me(): FloatArray? = cache.getOrPut("me") {
+        listOfNotNull(prefs.getString("me", null)?.split(',')?.mapNotNull { it.toFloatOrNull() }?.toFloatArray())
+    }.firstOrNull()
 
     /** The owner's calibrated threshold, shifted by the sensitivity setting. */
     fun threshold(): Float = (autoThreshold() ?: baseThreshold()) + when (sensitivity()) { "strict" -> 0.06f; "lenient" -> -0.06f; else -> 0f }

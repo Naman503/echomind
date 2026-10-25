@@ -259,7 +259,7 @@ fun NotesScreen() {
                     horizontalArrangement = Arrangement.spacedBy(Sp.s), verticalItemSpacing = Sp.s,
                 ) { items(shown, key = { it.id }) { n -> NoteCard(n) { nav.go(NoteRoute(n.id)) } } }
             } else {
-                LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+                LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
                     items(shown, key = { it.id }) { n -> NoteCard(n) { nav.go(NoteRoute(n.id)) } }
                 }
             }
@@ -438,7 +438,7 @@ fun NoteScreen(id: Long?, template: String? = null) {
         },
     ) { pad ->
         val n = note
-        LazyColumn(Modifier.padding(pad).fillMaxSize(), contentPadding = PaddingValues(horizontal = Sp.gutter, vertical = Sp.s)) {
+        LazyColumn(Modifier.padding(pad).fillMaxSize(), contentPadding = PaddingValues(horizontal = Sp.gutter, vertical = Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             if (editing) {
                 item {
                     TextField(title, { title = it }, Modifier.fillMaxWidth(), placeholder = { Text("Title") }, textStyle = MaterialTheme.typography.headlineSmall,

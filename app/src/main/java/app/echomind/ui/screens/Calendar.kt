@@ -203,7 +203,7 @@ fun CalendarScreen() {
         modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars),
         floatingActionButton = { ExtendedFloatingActionButton(onClick = { nav.go(NewEventRoute(selectedStr)) }, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("Event") }) },
     ) { pad ->
-        LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 104.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 104.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             item(key = "head") {
                 Row(Modifier.fillMaxWidth().padding(top = Sp.s), verticalAlignment = Alignment.CenterVertically) {
                     Text(ym.format(DateTimeFormatter.ofPattern(if (ym.year == LocalDate.now().year) "MMMM" else "MMMM yyyy")), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
@@ -542,7 +542,7 @@ fun EventScreen(id: Long?, day: String? = null) {
         ScreenTopBar(if (e == null) "New event" else if (e.status == "suggested") "Heard in a conversation" else "Event", onBack = { nav.back() }) {
             if (e != null) IconButton(onClick = { scope.launch { g.agenda.delete(e); nav.back() } }) { Icon(Icons.Rounded.Delete, "Delete event") }
         }
-        LazyColumn(contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.m)) {
+        LazyColumn(contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.m), state = app.echomind.ui.components.rememberKeptListState()) {
             if (e?.quote != null && e.source == "ai") item {
                 EchoCard(onClick = e.conversationId?.let { { nav.go(ConversationRoute(it)) } }, color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f)) {
                     Text("“${e.quote}”", style = MaterialTheme.typography.bodyMedium)

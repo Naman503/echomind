@@ -142,7 +142,7 @@ fun ModelsScreen() {
 
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         ScreenTopBar("On-device models", onBack = { nav.back() })
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 EchoCard(color = LocalSemantic.current.onDevice.copy(alpha = 0.08f)) {
                     Text("Your phone", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)

@@ -82,7 +82,7 @@ fun TimelineScreen() {
             shape = MaterialTheme.shapes.extraLarge,
         )
         if (query.isNotBlank()) {
-            LazyColumn(contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+            LazyColumn(contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
                 if (results.isEmpty()) item { EmptyState("Nothing found", "Try other words — names work in any spelling.") }
                 items(results, key = { it.id }) { u ->
                     Column(Modifier.fillMaxWidth().clickable { u.conversationId?.let { nav.go(ConversationRoute(it, u.id)) } }.padding(vertical = 6.dp)) {
@@ -95,7 +95,7 @@ fun TimelineScreen() {
         }
         DayStrip(day) { dayStr = it.toString() }
         val items = remember(convs, gaps, sounds, showAll) { merge(convs.filter { showAll || (it.state != "skipped" && !it.ignored) }, gaps, sounds.filter { it.kind == "song" }) }
-        val list = rememberLazyListState()
+        val list = app.echomind.ui.components.rememberKeptListState()
         LazyColumn(state = list, contentPadding = PaddingValues(Sp.gutter), verticalArrangement = Arrangement.spacedBy(Sp.m)) {
             if (items.isEmpty()) item { EmptyState(if (day == LocalDate.now()) "Nothing yet today" else "Nothing on ${Fmt.day(day)}", "Conversations appear here after they're transcribed.") }
             items(items, key = { when (it) { is Conversation -> "c${it.id}"; is Gap -> "g${it.id}"; is app.echomind.data.SoundRow -> "s${it.id}"; else -> it.hashCode() } }, contentType = { it::class }) { item ->

@@ -119,7 +119,7 @@ fun DayNumbersScreen() {
         }
         val s = d
         if (s == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }; return@Column }
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, top = Sp.s, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, top = Sp.s, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             if (week && w.isNotEmpty()) {
                 item { WeekView(w) }
                 return@LazyColumn
@@ -287,7 +287,7 @@ fun PlanScreen() {
                 SegmentedButton(kind == k, { kind = k }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
             }
         }
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, top = Sp.s, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, top = Sp.s, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             if (busy) item { Row(verticalAlignment = Alignment.CenterVertically) { LoadingIndicator(); Spacer(Modifier.width(Sp.s)); Text("Thinking through your tasks, calendar and memory…") } }
             if (plan == null && !busy) item {
                 EmptyState("No plan yet", g.ai.readiness(app.echomind.core.Feature.JOURNAL) ?: "Plans are written each morning from your tasks, calendar, goals and recent days.") {
@@ -382,7 +382,7 @@ fun SongsScreen() {
 
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         ScreenTopBar("Songs", onBack = { nav.back() })
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 EchoCard {
                     app.echomind.ui.components.SwitchRow("Keep songs", "When you sing or music plays, that part is kept as its own clip with the words — never as notes or tasks", st.songs) { v -> set { it.copy(songs = v) } }

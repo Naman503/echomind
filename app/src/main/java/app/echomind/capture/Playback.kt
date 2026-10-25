@@ -18,7 +18,13 @@ import kotlinx.coroutines.launch
  * ends, and keeps the microphone from recording its own playback.
  */
 class Playback(private val db: Db, private val recordings: Recordings, private val scope: CoroutineScope) {
-    data class State(val item: AudioItem? = null, val playing: Boolean = false, val positionMs: Long = 0, val durationMs: Long = 0, val speed: Float = 1f)
+    data class State(
+        val item: AudioItem? = null, val playing: Boolean = false, val positionMs: Long = 0, val durationMs: Long = 0, val speed: Float = 1f,
+        /** When playing one line: its id, and where in the recording it starts and stops. */
+        val clipId: Long? = null, val clipFromMs: Long = 0, val clipToMs: Long? = null,
+    )
+
+    enum class Clip { PLAYING, NOT_KEPT, FAILED }
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
@@ -27,28 +33,38 @@ class Playback(private val db: Db, private val recordings: Recordings, private v
     /** The recordings shown on screen, oldest first, so playback can continue into the next one. */
     var queue: List<AudioItem> = emptyList()
 
-    fun play(item: AudioItem, fromMs: Long = 0) {
-        val file = recordings.file(item) ?: return
+    fun play(item: AudioItem, fromMs: Long = 0, clip: Triple<Long, Long, Long>? = null): Boolean {
+        val file = recordings.file(item) ?: return false
         stopPlayer()
         val mp = MediaPlayer()
         runCatching {
             mp.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
             mp.setDataSource(file.absolutePath)
             mp.prepare()
-        }.onFailure { mp.release(); return }
+        }.onFailure { mp.release(); return false }
         mp.playbackParams = mp.playbackParams.setSpeed(_state.value.speed)
         if (fromMs > 0) mp.seekTo(fromMs.coerceAtMost(mp.duration - 200L), MediaPlayer.SEEK_CLOSEST)
-        mp.setOnCompletionListener { next(item) }
+        mp.setOnCompletionListener { if (clip != null) stop() else next(item) }
         mp.start()
         player = mp
         Recorder.assistantSpeaking = true
-        _state.value = State(item, true, fromMs, mp.duration.toLong(), _state.value.speed)
+        _state.value = State(item, true, fromMs, mp.duration.toLong(), _state.value.speed, clip?.first, clip?.second ?: 0, clip?.third)
         ticker = scope.launch {
             while (isActive) {
                 player?.let { p -> runCatching { _state.value = _state.value.copy(positionMs = p.currentPosition.toLong(), playing = p.isPlaying) } }
-                delay(250)
+                // A single line stops at its end.
+                _state.value.clipToMs?.let { end -> if (_state.value.positionMs >= end) { stop(); return@launch } }
+                delay(if (clip != null) 100 else 250)
             }
         }
+        return true
+    }
+
+    /** Plays just one transcript line (a little before to a little after), if its recording was kept. */
+    suspend fun playLine(id: Long, startAt: Long, endAt: Long): Clip {
+        val item = db.audio().keptAt(startAt) ?: db.audio().keptAt(endAt) ?: return Clip.NOT_KEPT
+        val from = (startAt - item.startedAt - 300).coerceAtLeast(0); val to = endAt - item.startedAt + 400
+        return if (play(item, from, Triple(id, from, to))) Clip.PLAYING else Clip.FAILED
     }
 
     /** Plays the kept recording that covers this moment (e.g. a transcript line), if there is one. */

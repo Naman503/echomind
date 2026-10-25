@@ -140,7 +140,7 @@ fun DashboardScreen() {
         if (d == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { androidx.compose.material3.CircularProgressIndicator() }; return@Column }
         val (cur, prev, usual) = d
         val recorded = cur.filter { it.recorded }
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.m)) {
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.m), state = app.echomind.ui.components.rememberKeptListState()) {
             if (recorded.isEmpty()) { item { EmptyState("Nothing recorded in this ${span.label.lowercase()}", "Turn on listening and your numbers fill in day by day.") }; return@LazyColumn }
 
             // 1. The report: a headline, the key numbers against last period, and what stood out.

@@ -133,7 +133,7 @@ private fun ReviewPage(title: String, actions: @Composable androidx.compose.foun
     val nav = LocalNav.current
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         ScreenTopBar(title, onBack = { nav.back() }, actions = actions)
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), content = content)
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), content = content, state = app.echomind.ui.components.rememberKeptListState())
     }
 }
 
@@ -158,7 +158,7 @@ fun InsightsScreen() {
     val coach = decoded.filter { inWeek(it.first, 0) }.sumOf { it.second.coachPoints }
     val latest = days.firstOrNull { !it.diary.isNullOrBlank() }
 
-    LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(Sp.m)) {
+    LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(Sp.m), state = app.echomind.ui.components.rememberKeptListState()) {
         item { TabHeader("Insights", "What your days are telling you") { IconButton(onClick = { nav.go(ReviewSettingsRoute) }) { Icon(Icons.Rounded.Settings, "Journal and review settings") } } }
         // This week at a glance, against last week.
         item {

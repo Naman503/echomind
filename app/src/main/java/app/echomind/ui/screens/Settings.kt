@@ -134,7 +134,7 @@ private fun SettingsPage(title: String, content: LazyListScope.() -> Unit) {
     val nav = LocalNav.current
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         ScreenTopBar(title, onBack = { nav.back() })
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), content = content)
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), content = content, state = app.echomind.ui.components.rememberKeptListState())
     }
 }
 
