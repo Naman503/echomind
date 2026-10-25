@@ -32,14 +32,17 @@ object Whereabouts {
         val sorted = fixes.sortedBy { it.at }
         val out = ArrayList<Visit>()
         var i = 0
+        // Better readings count more: weight 1/accuracy (a ±2 km reading barely moves a ±30 m one).
+        fun w(f: GeoFix) = 1.0 / f.accuracyM.coerceIn(15f, 3_000f)
         while (i < sorted.size) {
-            var lat = sorted[i].lat; var lon = sorted[i].lon; var n = 1
+            var lat = sorted[i].lat; var lon = sorted[i].lon; var n = 1; var wsum = w(sorted[i])
             var j = i + 1
             var lastIn = i
             while (j < sorted.size) {
                 val f = sorted[j]
                 if (Geo.meters(lat, lon, f.lat, f.lon) <= radiusM + f.accuracyM.coerceAtMost(500f)) {
-                    lat = (lat * n + f.lat) / (n + 1); lon = (lon * n + f.lon) / (n + 1); n++; lastIn = j; j++
+                    val wf = w(f)
+                    lat = (lat * wsum + f.lat * wf) / (wsum + wf); lon = (lon * wsum + f.lon * wf) / (wsum + wf); wsum += wf; n++; lastIn = j; j++
                 } else if (j + 1 < sorted.size && Geo.meters(lat, lon, sorted[j + 1].lat, sorted[j + 1].lon) <= radiusM) {
                     j++ // one stray reading
                 } else break

@@ -37,6 +37,8 @@ import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.Route
+import androidx.compose.material.icons.rounded.WbCloudy
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Psychology
@@ -303,7 +305,14 @@ fun DayReviewScreen(day: String) {
                         Text("Where and weather", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                         Text("Map", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     }
-                    n.lines().forEach { l -> Text(l.removePrefix("Places: ").removePrefix("Weather: ").let { if (l.startsWith("Weather")) "☁ $it" else "📍 $it" }, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp)) }
+                    n.lines().forEach { l ->
+                        Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(top = 6.dp)) {
+                            Icon(if (l.startsWith("Weather")) androidx.compose.material.icons.Icons.Rounded.WbCloudy else androidx.compose.material.icons.Icons.Rounded.Route, null,
+                                tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp).padding(top = 2.dp))
+                            Spacer(Modifier.width(Sp.s))
+                            Text(l.removePrefix("Places: ").removePrefix("Weather: "), style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
                 }
             }
         }

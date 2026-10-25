@@ -49,6 +49,8 @@ class Places(
         if (last != null && System.currentTimeMillis() - last.at < (every - 2) * 60_000L) return
         val f = travel().locate() ?: return
         if (last != null && last.at == f.at) return
+        // With precise location allowed, a rough reading (a fallback when Wi-Fi was off) only blurs the map.
+        if (travel().hasPrecise() && f.accuracyM > 1_500) return
         db.locations().insert(LocationRow(at = f.at, lat = f.lat, lon = f.lon, accuracyM = f.accuracyM))
         // Old readings fade out.
         if (System.currentTimeMillis() % 20 == 0L) db.locations().deleteBefore(System.currentTimeMillis() - s.locationKeepDays * 86_400_000L)
@@ -57,7 +59,7 @@ class Places(
 
     /** A reading right now (from the map's "I'm here" or after turning history on). */
     suspend fun recordNow(): GeoFix? {
-        val f = travel().locate() ?: return null
+        val f = travel().locate(now = true) ?: return null
         db.locations().insert(LocationRow(at = System.currentTimeMillis(), lat = f.lat, lon = f.lon, accuracyM = f.accuracyM, source = "manual"))
         return f
     }

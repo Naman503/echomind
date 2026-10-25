@@ -178,22 +178,35 @@ class Travel(
         }
     }
 
+    /** Precise location allowed (Wi-Fi level instead of Android's ±2 km approximate). */
+    fun hasPrecise() = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
     /**
-     * One cheap fix: a recent location the phone already has, else a low-power one from
-     * Wi-Fi and mobile networks (no GPS), given 30 seconds at most.
+     * One reading. A recent one the phone already has if it's good enough; else a fresh one:
+     * with precise location, Wi-Fi level (balanced power, no constant GPS); without it, Android's
+     * approximate location (about ±2 km — the most it allows). [now]: you asked ("where am I"),
+     * so a short GPS fix is fine.
      */
     @Suppress("MissingPermission")
-    suspend fun locate(): GeoFix? {
+    suspend fun locate(now: Boolean = false): GeoFix? {
         if (!hasPermission(background = false)) return null
         val lm = context.getSystemService(LocationManager::class.java) ?: return null
-        val now = System.currentTimeMillis()
-        val known = listOf(LocationManager.FUSED_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+        val precise = hasPrecise()
+        val t = System.currentTimeMillis()
+        val goodEnough = if (precise) (if (now) 60f else 200f) else 3_000f
+        val known = listOf(LocationManager.FUSED_PROVIDER, LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
             .mapNotNull { p -> runCatching { lm.getLastKnownLocation(p) }.getOrNull() }
-            .filter { now - it.time < 15 * 60_000L && it.accuracy < 3_000 }
+            .filter { t - it.time < (if (now) 2 else 10) * 60_000L && it.accuracy <= goodEnough }
             .minByOrNull { it.accuracy }
         if (known != null) return known.toFix()
-        val provider = listOf(LocationManager.FUSED_PROVIDER, LocationManager.NETWORK_PROVIDER).firstOrNull { runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) } ?: return null
-        val req = LocationRequest.Builder(0).setQuality(LocationRequest.QUALITY_LOW_POWER).setDurationMillis(30_000).build()
+        val provider = listOf(LocationManager.FUSED_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
+            .firstOrNull { runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) } ?: return null
+        val quality = when {
+            precise && now -> LocationRequest.QUALITY_HIGH_ACCURACY
+            precise -> LocationRequest.QUALITY_BALANCED_POWER_ACCURACY
+            else -> LocationRequest.QUALITY_LOW_POWER
+        }
+        val req = LocationRequest.Builder(0).setQuality(quality).setDurationMillis(if (now) 20_000 else 30_000).build()
         return withTimeoutOrNull(35_000) {
             suspendCancellableCoroutine<Location?> { cont ->
                 val cancel = CancellationSignal()

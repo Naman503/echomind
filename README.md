@@ -107,7 +107,8 @@ For trips and long days out, EchoMind rests so the battery lasts. Listening stop
 - **Location history (opt-in):** EchoMind notes an approximate location every 15, 30 or 60 minutes (Wi-Fi and mobile networks, never GPS), kept on the phone for as long as you choose. From that it works out your **visits** (where you stayed 15 minutes or more), named after your places or, if you allow it, by OpenStreetMap.
 - **What happened where:** each conversation shows where it happened. The day review, diary and Ask know the day's route ("Home until 9:40 AM → Office → Toit"), and the map lists the conversations at each place.
 - **Weather (opt-in):** hourly weather from Open-Meteo, using a location rounded to about 1 km, goes into the diary ("rain around 4–6 PM"), the day review and the morning brief.
-- **Map:** an OpenStreetMap view (osmdroid, no account) of your path and visits for a day, week, month or trip, with a dark style in dark mode. Map pictures can be switched off.
+- **Map:** a full-screen OpenStreetMap view (osmdroid, no account) with your timeline in a pull-up sheet. It shows your path, numbered stops (a chat badge where something was said), your places with home/work icons, a start flag, a "you are here" dot with its accuracy circle, and a scale bar. Map styles: auto, light, dark or terrain. Tap a stop to fly to it, or long-press to save a place.
+- **Accuracy:** with precise location allowed, readings are at Wi-Fi level (no constant GPS); otherwise Android limits them to about ±2 km, and the map says so. Stops lean on the best readings.
 - **Travel profiles:** *rest completely*, *only note where I go* (for the trip map), or *record and note places, process later*, plus *catch up while charging*.
 
 ### Nothing twice, nothing made up

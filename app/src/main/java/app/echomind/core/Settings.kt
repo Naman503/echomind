@@ -129,6 +129,8 @@ data class Settings(
     val placesOnline: Boolean = false,
     /** Map pictures from OpenStreetMap. */
     val mapTiles: Boolean = true,
+    /** auto (follows the app theme) | light | dark | terrain */
+    val mapStyle: String = "auto",
     val trips: List<app.echomind.brain.Trip> = emptyList(),
 
     // Context the AI should always have

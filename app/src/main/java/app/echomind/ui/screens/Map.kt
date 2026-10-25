@@ -37,6 +37,21 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.GpsNotFixed
+import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.WbSunny
+import androidx.compose.material.icons.rounded.WbCloudy
+import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.Dehaze
+import androidx.compose.material.icons.rounded.Umbrella
+import androidx.compose.material.icons.rounded.AcUnit
+import androidx.compose.material.icons.rounded.Thunderstorm
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Work
+import androidx.compose.material.icons.rounded.Place
+import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.ChatBubble
 import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.DirectionsWalk
 import androidx.compose.material.icons.rounded.FitScreen
@@ -80,6 +95,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -206,6 +223,11 @@ fun MapScreen(day: String? = null) {
         selected = -1
     }
     val coarse = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    // Android shows "Precise / Approximate" in this dialog; precise is what makes the timeline accurate.
+    val precise = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
+        if (r[Manifest.permission.ACCESS_FINE_LOCATION] == true) scope.launch { g.places.recordNow() }
+    }
+    var styleMenu by remember { mutableStateOf(false) }
     val ctl = remember { MapCtl() }
     val sheet = rememberBottomSheetScaffoldState()
     val listState = rememberLazyListState()
@@ -218,6 +240,8 @@ fun MapScreen(day: String? = null) {
                 onSelect = { i -> selected = i; data?.visits?.getOrNull(i)?.let { ctl.flyTo(it.lat, it.lon) } },
                 onConversation = { nav.go(ConversationRoute(it)) },
                 onDay = { nav.go(DayReviewRoute(it)) },
+                precise = !g.travel.hasPrecise(),
+                onPrecise = { precise.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) },
                 onTurnOn = {
                     scope.launch { g.settings.update { it.copy(locationHistory = true) } }
                     if (!g.travel.hasPermission(background = false)) coarse.launch(Manifest.permission.ACCESS_COARSE_LOCATION) else scope.launch { g.places.recordNow() }
@@ -266,6 +290,14 @@ fun MapScreen(day: String? = null) {
                 SmallFloatingActionButton(onClick = { ctl.zoomIn() }) { Icon(Icons.Rounded.Add, "Zoom in") }
                 SmallFloatingActionButton(onClick = { ctl.zoomOut() }) { Icon(Icons.Rounded.Remove, "Zoom out") }
                 SmallFloatingActionButton(onClick = { ctl.fit() }) { Icon(Icons.Rounded.FitScreen, "Show everything") }
+                Box {
+                    SmallFloatingActionButton(onClick = { styleMenu = true }) { Icon(Icons.Rounded.Layers, "Map style") }
+                    androidx.compose.material3.DropdownMenu(styleMenu, { styleMenu = false }) {
+                        listOf("auto" to "Auto (follows the app)", "light" to "Light", "dark" to "Dark", "terrain" to "Terrain").forEach { (k, l) ->
+                            androidx.compose.material3.DropdownMenuItem(text = { Text(l + if (s.mapStyle == k) "  ✓" else "") }, onClick = { styleMenu = false; scope.launch { g.settings.update { it.copy(mapStyle = k) } } })
+                        }
+                    }
+                }
                 SmallFloatingActionButton(onClick = {
                     if (!g.travel.hasPermission(background = false)) coarse.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
                     else scope.launch { g.places.recordNow()?.let { ctl.flyTo(it.lat, it.lon) } }
@@ -322,12 +354,23 @@ private fun OsmMap(d: MapData?, s: Settings, selected: Int, ctl: MapCtl, onVisit
         lifecycle.addObserver(obs)
         onDispose { lifecycle.removeObserver(obs); ctl.view = null; map.onDetach() }
     }
-    // Tiles and theme.
-    LaunchedEffect(s.mapTiles, dark) {
+    // Tiles and style: auto follows the app theme; terrain is OpenTopoMap.
+    val style = s.mapStyle
+    val darkTiles = style == "dark" || (style == "auto" && dark)
+    LaunchedEffect(s.mapTiles, darkTiles, style) {
+        map.setTileSource(if (style == "terrain") TileSourceFactory.OpenTopo else TileSourceFactory.MAPNIK)
         map.setUseDataConnection(s.mapTiles)
-        map.overlayManager.tilesOverlay.setColorFilter(if (dark) DARK_TILES else null)
+        map.overlayManager.tilesOverlay.setColorFilter(if (darkTiles && style != "terrain") DARK_TILES else null)
         map.invalidate()
     }
+    // Icons for the pins, drawn from the app's own Material icons.
+    val homeIcon = androidx.compose.ui.graphics.vector.rememberVectorPainter(Icons.Rounded.Home)
+    val workIcon = androidx.compose.ui.graphics.vector.rememberVectorPainter(Icons.Rounded.Work)
+    val placeIcon = androidx.compose.ui.graphics.vector.rememberVectorPainter(Icons.Rounded.Place)
+    val flagIcon = androidx.compose.ui.graphics.vector.rememberVectorPainter(Icons.Rounded.Flag)
+    val chatIcon = androidx.compose.ui.graphics.vector.rememberVectorPainter(Icons.Rounded.ChatBubble)
+    val positive = app.echomind.ui.theme.LocalSemantic.current.positive.toArgb()
+    val here = android.graphics.Color.rgb(66, 133, 244)
     // Overlays: rebuilt when the data, your places or the selection change.
     LaunchedEffect(d, s.places, selected, dark) {
         map.overlays.clear()
@@ -335,34 +378,65 @@ private fun OsmMap(d: MapData?, s: Settings, selected: Int, ctl: MapCtl, onVisit
             override fun singleTapConfirmedHelper(p: GeoPoint?) = false
             override fun longPressHelper(p: GeoPoint?): Boolean { p?.let(onLongPress); return true }
         }))
+        // A scale bar, top left under the header.
+        map.overlays.add(org.osmdroid.views.overlay.ScaleBarOverlay(map).apply {
+            setAlignBottom(false); setScaleBarOffset((16 * density).toInt(), (200 * density).toInt())
+            textPaint.color = if (darkTiles) android.graphics.Color.WHITE else android.graphics.Color.DKGRAY
+            barPaint.color = if (darkTiles) android.graphics.Color.WHITE else android.graphics.Color.DKGRAY
+        })
         val fixes = d?.fixes.orEmpty()
         val pts = fixes.map { GeoPoint(it.lat, it.lon) }
         // Consecutive readings at the same spot add nothing to a path (and a zero-length one breaks drawing).
         val line = pts.fold(ArrayList<GeoPoint>()) { acc, p -> if (acc.isEmpty() || acc.last().distanceToAsDouble(p) > 15) acc.add(p); acc }
         if (line.size >= 2) {
+            // A soft casing under the line keeps it readable on any map.
             map.overlays.add(Polyline(map).apply {
-                setPoints(line)
-                outlinePaint.color = path; outlinePaint.strokeWidth = 5 * density; outlinePaint.strokeCap = Paint.Cap.ROUND; outlinePaint.strokeJoin = Paint.Join.ROUND
+                setPoints(line); infoWindow = null
+                outlinePaint.color = android.graphics.Color.WHITE; outlinePaint.alpha = 170; outlinePaint.strokeWidth = 8 * density
+                outlinePaint.strokeCap = Paint.Cap.ROUND; outlinePaint.strokeJoin = Paint.Join.ROUND; outlinePaint.isAntiAlias = true
+            })
+            map.overlays.add(Polyline(map).apply {
+                setPoints(line); infoWindow = null
+                outlinePaint.color = path; outlinePaint.strokeWidth = 4.5f * density; outlinePaint.strokeCap = Paint.Cap.ROUND; outlinePaint.strokeJoin = Paint.Join.ROUND
                 outlinePaint.isAntiAlias = true
-                infoWindow = null
+            })
+            // Where the day's path starts.
+            map.overlays.add(Marker(map).apply {
+                position = line.first(); setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER); infoWindow = null
+                icon = BitmapDrawable(ctx.resources, iconPin(flagIcon, positive, density, 26)); setOnMarkerClickListener { _, _ -> true }
             })
         }
         // Every reading as a small dot.
         if (pts.isNotEmpty()) map.overlays.add(Dots(pts, path, 2.5f * density))
-        // Your saved places: a ring.
+        // Your saved places, with their kind's icon.
         s.places.forEach { p ->
             map.overlays.add(Marker(map).apply {
                 position = GeoPoint(p.lat, p.lon); setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER); infoWindow = null
-                icon = BitmapDrawable(ctx.resources, pin(p.name.take(1).uppercase(), accent, density, ring = true))
+                icon = BitmapDrawable(ctx.resources, iconPin(when (p.kind) { "home" -> homeIcon; "work" -> workIcon; else -> placeIcon }, accent, density, 32))
                 setOnMarkerClickListener { _, _ -> true }
             })
         }
-        // Stops, numbered in the order of the timeline.
+        // Stops, numbered in the order of the timeline; a chat badge where something was said.
         d?.visits.orEmpty().forEachIndexed { i, v ->
+            val talked = d!!.convs.any { it.startAt in (v.start - 10 * 60_000L)..(v.end + 10 * 60_000L) }
             map.overlays.add(Marker(map).apply {
                 position = GeoPoint(v.lat, v.lon); setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER); infoWindow = null
-                icon = BitmapDrawable(ctx.resources, pin("${i + 1}", if (i == selected) accent else path, density, big = i == selected))
+                icon = BitmapDrawable(ctx.resources, pin("${i + 1}", if (i == selected) accent else path, density, big = i == selected).let { if (talked) withBadge(it, chatIcon, accent, density) else it })
                 setOnMarkerClickListener { _, _ -> onVisit(i); true }
+            })
+        }
+        // You are here: the latest reading (if recent), with how sure it is.
+        fixes.lastOrNull()?.takeIf { System.currentTimeMillis() - it.at < 45 * 60_000L }?.let { f ->
+            val centre = GeoPoint(f.lat, f.lon)
+            map.overlays.add(org.osmdroid.views.overlay.Polygon(map).apply {
+                points = org.osmdroid.views.overlay.Polygon.pointsAsCircle(centre, f.accuracyM.toDouble().coerceAtLeast(10.0))
+                fillPaint.color = here; fillPaint.alpha = if (f.accuracyM > 500) 18 else 40
+                outlinePaint.color = here; outlinePaint.alpha = 120; outlinePaint.strokeWidth = 1.5f * density
+                infoWindow = null
+            })
+            map.overlays.add(Marker(map).apply {
+                position = centre; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER); infoWindow = null
+                icon = BitmapDrawable(ctx.resources, meDot(here, density)); setOnMarkerClickListener { _, _ -> true }
             })
         }
         map.invalidate()
@@ -391,6 +465,43 @@ private class Dots(private val points: List<GeoPoint>, color: Int, private val r
     }
 }
 
+/** A round pin with a Material icon in it. */
+private fun iconPin(icon: androidx.compose.ui.graphics.vector.VectorPainter, color: Int, density: Float, sizeDp: Int): Bitmap {
+    val px = (sizeDp * density).toInt()
+    val img = androidx.compose.ui.graphics.ImageBitmap(px, px)
+    androidx.compose.ui.graphics.drawscope.CanvasDrawScope().draw(androidx.compose.ui.unit.Density(density), androidx.compose.ui.unit.LayoutDirection.Ltr,
+        androidx.compose.ui.graphics.Canvas(img), androidx.compose.ui.geometry.Size(px.toFloat(), px.toFloat())) {
+        drawCircle(Color.White, radius = px / 2f)
+        drawCircle(Color(color), radius = px / 2f - 2.5f * density)
+        val inner = px * 0.56f
+        translate((px - inner) / 2, (px - inner) / 2) {
+            with(icon) { draw(androidx.compose.ui.geometry.Size(inner, inner), colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.White)) }
+        }
+    }
+    return img.asAndroidBitmap()
+}
+
+/** A pin with a small icon badge in its corner (a chat bubble where something was said). */
+private fun withBadge(pin: Bitmap, icon: androidx.compose.ui.graphics.vector.VectorPainter, color: Int, density: Float): Bitmap {
+    val badge = iconPin(icon, color, density, 15)
+    val out = Bitmap.createBitmap(pin.width + badge.width / 2, pin.height + badge.height / 2, Bitmap.Config.ARGB_8888)
+    val c = Canvas(out)
+    c.drawBitmap(pin, 0f, (badge.height / 2).toFloat(), null)
+    c.drawBitmap(badge, (out.width - badge.width).toFloat(), 0f, null)
+    return out
+}
+
+/** The blue "you are here" dot. */
+private fun meDot(color: Int, density: Float): Bitmap {
+    val px = (22 * density).toInt()
+    val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
+    val c = Canvas(bmp); val r = px / 2f
+    c.drawCircle(r, r, r, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color; alpha = 60 })
+    c.drawCircle(r, r, r * 0.55f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = android.graphics.Color.WHITE })
+    c.drawCircle(r, r, r * 0.42f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color })
+    return bmp
+}
+
 /** A round pin with a number or letter. */
 private fun pin(label: String, color: Int, density: Float, big: Boolean = false, ring: Boolean = false): Bitmap {
     val size = ((if (big) 34 else 26) * density).toInt()
@@ -415,7 +526,7 @@ private fun pin(label: String, color: Int, density: Float, big: Boolean = false,
 @Composable
 private fun Timeline(
     span: MapSpan, d: MapData?, s: Settings, listState: androidx.compose.foundation.lazy.LazyListState, selected: Int,
-    onSelect: (Int) -> Unit, onConversation: (Long) -> Unit, onDay: (String) -> Unit, onTurnOn: () -> Unit,
+    onSelect: (Int) -> Unit, onConversation: (Long) -> Unit, onDay: (String) -> Unit, precise: Boolean, onPrecise: () -> Unit, onTurnOn: () -> Unit,
 ) {
     val zone = ZoneId.systemDefault()
     LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f), contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 32.dp)) {
@@ -436,6 +547,20 @@ private fun Timeline(
                 Text("A rough location every 15 minutes (Wi-Fi and mobile networks, never GPS), kept on this phone. Your diary, day review and morning brief then know where things happened.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(vertical = Sp.s))
                 Button(onClick = onTurnOn) { Text("Turn on location history") }
+            }
+        }
+        // Approximate-only readings are blurred by Android to about ±2 km: say so, and offer the fix.
+        if (precise && (s.locationHistory || d.fixes.isNotEmpty())) item(key = "precise") {
+            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.fillMaxWidth().padding(bottom = Sp.s)) {
+                Row(Modifier.padding(Sp.m), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.GpsNotFixed, null, tint = MaterialTheme.colorScheme.onTertiaryContainer)
+                    Spacer(Modifier.width(Sp.m))
+                    Column(Modifier.weight(1f)) {
+                        Text("Locations are approximate (about ±2 km)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Text("Allow precise location for Wi-Fi-level accuracy. Still no constant GPS.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                    }
+                    TextButton(onClick = onPrecise) { Text("Allow") }
+                }
             }
         }
         if (d.visits.isEmpty() && d.fixes.isNotEmpty()) item(key = "few") {
@@ -467,7 +592,7 @@ private fun Timeline(
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Sp.m)) {
                         Column(Modifier.weight(1f)) {
                             Text(Fmt.day(vd).let { if (it == "Today" || it == "Yesterday") it else vd.format(DateTimeFormatter.ofPattern("EEEE d MMMM")) }, style = MaterialTheme.typography.titleSmall)
-                            d.weather[vd.toString()]?.let { w -> Whereabouts.weatherLine(w)?.let { Text("☁ $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+                            d.weather[vd.toString()]?.let { w -> Whereabouts.weatherLine(w)?.let { WeatherLine(it, w.hours.groupingBy { h -> h.code }.eachCount().maxByOrNull { e -> e.value }?.key ?: 0) } }
                         }
                         TextButton(onClick = { onDay(vd.toString()) }) { Text("Day review") }
                     }
@@ -493,21 +618,51 @@ private fun Stop(i: Int, v: Visit, d: MapData, isSelected: Boolean, onSelect: (I
     val here = d.convs.filter { it.startAt in (v.start - 10 * 60_000L)..(v.end + 10 * 60_000L) }
     val weather = d.weather[Instant.ofEpochMilli(v.start).atZone(ZoneId.systemDefault()).toLocalDate().toString()]
         ?.let { w -> Whereabouts.weatherLine(w, Instant.ofEpochMilli(v.start).atZone(ZoneId.systemDefault()).hour, Instant.ofEpochMilli(v.end).atZone(ZoneId.systemDefault()).hour) }
+    val weatherCode = d.weather[Instant.ofEpochMilli(v.start).atZone(ZoneId.systemDefault()).toLocalDate().toString()]?.hours
+        ?.firstOrNull { it.hour == Instant.ofEpochMilli(v.start).atZone(ZoneId.systemDefault()).hour }?.code ?: 0
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent).clickable { onSelect(i) }.padding(vertical = Sp.s, horizontal = 4.dp)) {
         Box(Modifier.size(28.dp).clip(CircleShape).background(if (isSelected) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
             Text("${i + 1}", style = MaterialTheme.typography.labelLarge, color = Color.White, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.width(Sp.m))
         Column(Modifier.weight(1f)) {
-            Text(v.name, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                v.place?.let { p -> Icon(when (p.kind) { "home" -> Icons.Rounded.Home; "work" -> Icons.Rounded.Work; else -> Icons.Rounded.Place }, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)) }
+                Text(v.name, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
             Text("${Fmt.time(v.start)} – ${Fmt.time(v.end)} · ${if (v.minutes >= 60) "${v.minutes / 60} h ${v.minutes % 60} min" else "${v.minutes} min"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            weather?.let { Text("☁ $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline) }
+            weather?.let { WeatherLine(it, weatherCode) }
             here.forEach { c ->
-                Text("💬 ${Fmt.time(c.startAt)} · ${c.title.orEmpty()}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth().clickable { onConversation(c.id) }.padding(vertical = 3.dp))
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { onConversation(c.id) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.ChatBubbleOutline, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("${Fmt.time(c.startAt)} · ${c.title.orEmpty()}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
     }
+}
+
+/** Weather with an icon that matches it. */
+@Composable
+private fun WeatherLine(text: String, code: Int) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+        Icon(weatherIcon(code), null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** WMO weather code → icon. */
+fun weatherIcon(code: Int): androidx.compose.ui.graphics.vector.ImageVector = when (code) {
+    0, 1 -> Icons.Rounded.WbSunny
+    2 -> Icons.Rounded.WbCloudy
+    3 -> Icons.Rounded.Cloud
+    45, 48 -> Icons.Rounded.Dehaze
+    in 51..67, in 80..82 -> Icons.Rounded.Umbrella
+    in 71..77, 85, 86 -> Icons.Rounded.AcUnit
+    in 95..99 -> Icons.Rounded.Thunderstorm
+    else -> Icons.Rounded.Cloud
 }
 
 /** The move between two stops, on the timeline's rail. */

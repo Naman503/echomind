@@ -22,6 +22,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Place
+import androidx.compose.material.icons.rounded.Work
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SwapVert
@@ -150,8 +153,13 @@ fun ConversationScreen(id: Long, lineId: Long?) {
                             // Where it happened, from your location history.
                             val place by androidx.compose.runtime.produceState<app.echomind.brain.Visit?>(null, conv.id) { value = runCatching { g.places.placeAt(conv.startAt) }.getOrNull() }
                             place?.let { v ->
-                                Text("📍 ${v.name}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(top = 4.dp).clickable { nav.go(app.echomind.ui.MapRoute(java.time.Instant.ofEpochMilli(conv.startAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString())) })
+                                androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                    modifier = Modifier.padding(top = 4.dp).clickable { nav.go(app.echomind.ui.MapRoute(java.time.Instant.ofEpochMilli(conv.startAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString())) }) {
+                                    Icon(when (v.place?.kind) { "home" -> androidx.compose.material.icons.Icons.Rounded.Home; "work" -> androidx.compose.material.icons.Icons.Rounded.Work; else -> androidx.compose.material.icons.Icons.Rounded.Place },
+                                        null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(v.name, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                                }
                             }
                             Spacer(Modifier.height(Sp.s))
                             Text(conv.summary.orEmpty(), style = MaterialTheme.typography.bodyLarge)
