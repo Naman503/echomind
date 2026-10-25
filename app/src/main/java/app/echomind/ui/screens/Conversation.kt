@@ -147,6 +147,12 @@ fun ConversationScreen(id: Long, lineId: Long?) {
                             }
                         } else {
                             conv.provider?.let { p -> PrivacyChip(Providers.isLocal(p), if (Providers.isLocal(p)) "Made on this phone" else "Made with ${Providers.get(p)?.label ?: p}") }
+                            // Where it happened, from your location history.
+                            val place by androidx.compose.runtime.produceState<app.echomind.brain.Visit?>(null, conv.id) { value = runCatching { g.places.placeAt(conv.startAt) }.getOrNull() }
+                            place?.let { v ->
+                                Text("📍 ${v.name}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(top = 4.dp).clickable { nav.go(app.echomind.ui.MapRoute(java.time.Instant.ofEpochMilli(conv.startAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString())) })
+                            }
                             Spacer(Modifier.height(Sp.s))
                             Text(conv.summary.orEmpty(), style = MaterialTheme.typography.bodyLarge)
                         }

@@ -107,6 +107,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
     implementation("com.squareup.okhttp3:okhttp:5.5.0")
+    // OpenStreetMap map view (Apache 2.0, no API key) for your places and travel history.
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
     implementation("com.anthropic:anthropic-java:2.75.0")
     implementation("org.apache.commons:commons-compress:1.28.0")
 

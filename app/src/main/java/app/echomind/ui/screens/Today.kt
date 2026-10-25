@@ -154,7 +154,7 @@ fun TodayScreen() {
                     Spacer(Modifier.width(Sp.m))
                     Column(Modifier.weight(1f)) {
                         Text("Travel mode is on", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                        Text("Resting since ${Fmt.dayTime(s.travelSince)}${if (s.travelKeepRecording) " · recording for later" else ""}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Text("Resting since ${Fmt.dayTime(s.travelSince)}${when { s.travelRecords -> " · recording for later"; s.travelProfile == "places" -> " · noting places"; else -> "" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
                     }
                     androidx.compose.material3.Button(onClick = { g.scope.launch { g.travel.disable() } }) { Text("I'm back") }
                 }

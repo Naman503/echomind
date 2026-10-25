@@ -115,6 +115,20 @@ data class Settings(
     /** While travelling, notice you're home from locations other apps already got (no extra battery). */
     val travelNoticeHome: Boolean = false,
     val places: List<app.echomind.brain.Place> = emptyList(),
+    /** rest (nothing at all) | places (only note where you are) | record (audio and places, process later) */
+    val travelProfile: String = "rest",
+    /** While travelling, catch up on the charger (transcription and AI only while charging). */
+    val travelProcessOnCharge: Boolean = false,
+
+    // Location history: where your day happened
+    val locationHistory: Boolean = false,
+    /** Minutes between readings (15, 30 or 60). */
+    val locationEveryMin: Int = 15,
+    val locationKeepDays: Int = 365,
+    /** Weather and place names from the internet (rough location sent to Open-Meteo and OpenStreetMap). */
+    val placesOnline: Boolean = false,
+    /** Map pictures from OpenStreetMap. */
+    val mapTiles: Boolean = true,
     val trips: List<app.echomind.brain.Trip> = emptyList(),
 
     // Context the AI should always have
@@ -292,6 +306,11 @@ data class Settings(
         val chosen = providers[f.id] ?: f.defaultProvider
         return if (privacy == Privacy.LOCAL_ONLY && !Providers.isLocal(chosen)) f.defaultProvider else chosen
     }
+
+    /** On a trip: keep the microphone recording (for later). */
+    val travelRecords get() = travelProfile == "record" || travelKeepRecording
+    /** On a trip: transcription and AI may run now (only while charging, if you allowed it). */
+    fun travelMayProcess(charging: Boolean) = travelProcessOnCharge && charging
 
     fun isPaused(now: Long = System.currentTimeMillis()) = pausedUntil > now
 

@@ -18,6 +18,7 @@ import app.echomind.brain.Actions
 import app.echomind.brain.Analyzer
 import app.echomind.brain.Book
 import app.echomind.brain.Travel
+import app.echomind.brain.Places
 import kotlinx.coroutines.flow.first
 import app.echomind.brain.DayReview
 import app.echomind.brain.Agenda
@@ -123,6 +124,7 @@ class Graph(val app: Application) {
     val calls = CallImporter(app, db, settings)
     val dayReview = DayReview(db, ai, settings, analyzer, enricher, journal)
     val book = Book(db, ai, settings)
+    val places: Places by lazy { Places(db, settings, cloud, { travel }) { web } }
     val brain: Brain = Brain(app, db, settings, governor, transcriber, sessionizer, enricher, journal, tasks, notes, calls, ai, notifier, dayReview, book) {
         // Nightly extras after the journal and memory review: file new notes, refresh people's pages.
         if (settings.value.organizeNightly) runCatching { organizer.tidyNew() }

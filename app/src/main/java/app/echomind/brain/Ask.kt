@@ -257,6 +257,11 @@ class Ask(private val db: Db, private val ai: Ai, private val settings: Settings
                     append("\n${if (k == "day") "Today's" else "This $k's"} plan (can be cited as [plan]): ${p.focus}. Priorities: ${p.priorities.joinToString("; ") { it.title }}. Might be missing: ${p.missing.joinToString("; ") { it.title }}\n")
                 }
             }
+            if (Regex("\\b(where|place|went|go|visit|travel|trip|weather|rain|hot|cold|kahan|kaha)", RegexOption.IGNORE_CASE).containsMatchIn(question)) {
+                val today = java.time.LocalDate.now()
+                val lines = (0..6).mapNotNull { b -> val d = today.minusDays(b.toLong()); runCatching { app.echomind.App.graph.places.dayNotes(d) }.getOrNull()?.let { "- ${Prompts.day(d.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli())}: ${it.replace("\n", " · ")}" } }
+                if (lines.isNotEmpty()) { append("\nPlaces and weather (can be cited as [places]):\n"); lines.forEach { append(it).append('\n') } }
+            }
             if (Regex("\\b(day|yesterday|today|week|topic|discuss|talk|english|grammar|mistake|wrong|nervous|coach|speak|said|people|met|lesson|learn|improve|kal|aaj)", RegexOption.IGNORE_CASE).containsMatchIn(question)) {
                 append(reviews(if (Regex("\\bweek\\b", RegexOption.IGNORE_CASE).containsMatchIn(question)) 7 else 3))
             }

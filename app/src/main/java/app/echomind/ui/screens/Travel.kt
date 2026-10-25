@@ -138,16 +138,34 @@ fun TravelScreen() {
             // ── What it does ──
             item {
                 SectionHeader("While travelling")
+                // One choice, from saving the most battery to keeping the most memories.
+                val profile = if (s.travelKeepRecording && s.travelProfile == "rest") "record" else s.travelProfile
+                listOf(
+                    Triple("rest", "Rest completely", "Nothing runs: no mic, no location, no AI. Best for battery."),
+                    Triple("places", "Only note where I go", "A rough location every 30 min for your trip map. No mic, no AI."),
+                    Triple("record", "Record and note places, process later", "Mic and places on; nothing is transcribed until you're back."),
+                ).forEach { (k, title, sub) ->
+                    androidx.compose.material3.Surface(onClick = { set { it.copy(travelProfile = k, travelKeepRecording = false) } }, shape = MaterialTheme.shapes.medium,
+                        color = if (profile == k) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth().padding(bottom = Sp.s)) {
+                        Row(Modifier.padding(Sp.m), verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.RadioButton(profile == k, onClick = { set { it.copy(travelProfile = k, travelKeepRecording = false) } })
+                            Column(Modifier.weight(1f)) {
+                                Text(title, style = MaterialTheme.typography.titleSmall)
+                                Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
                 EchoCard {
-                    Effect(false, if (s.travelKeepRecording) "Listening stays on, but nothing is transcribed" else "Listening stops")
-                    Effect(false, "No transcription, AI or night review — even on the charger")
+                    Effect(profile == "record", if (profile == "record") "Listening stays on, nothing is transcribed" else "Listening stops")
+                    Effect(profile != "rest", if (profile == "rest") "No location at all" else "Where you go is noted for the map (about every 30 min)")
+                    Effect(s.travelProcessOnCharge, if (s.travelProcessOnCharge) "Transcription and AI only while charging" else "No transcription, AI or night review — even on the charger")
                     Effect(false, "No check-ins or nudges; the AI model is freed from memory")
-                    Effect(false, "No location checks at all")
                     Effect(true, "Reminders and alarms still ring")
-                    Effect(true, "Everything you have stays readable: tasks, notes, journal, Ask")
+                    Effect(true, "Everything stays readable: tasks, notes, journal, map, Ask")
                     Effect(true, "Back home, it catches up by itself")
                 }
-                SwitchRow("Keep recording for later", "Uses the mic (a little battery); transcribed and reviewed after the trip", s.travelKeepRecording) { v -> set { it.copy(travelKeepRecording = v) } }
+                SwitchRow("Catch up while charging", "On the charger (hotel, car) it may transcribe and run the AI; on battery it rests", s.travelProcessOnCharge) { v -> set { it.copy(travelProcessOnCharge = v) } }
                 SwitchRow("Tell me when I'm home", "Uses only locations other apps already got — no extra battery", s.travelNoticeHome) { v -> set { it.copy(travelNoticeHome = v) } }
             }
             // ── Planned trips ──
@@ -235,6 +253,7 @@ fun TravelScreen() {
             if (spans.isNotEmpty()) item {
                 SectionHeader("Recent trips")
                 spans.forEach { sp ->
+                    TextButton(onClick = { nav.go(app.echomind.ui.MapRoute(java.time.Instant.ofEpochMilli(sp.from).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString())) }) { Text("Show on the map") }
                     Text("${Fmt.dayTime(sp.from)} → ${if (sp.to == 0L) "now" else Fmt.dayTime(sp.to)} · ${when (sp.reason) { "auto" -> "noticed by itself"; "plan" -> "planned"; else -> "turned on by you" }}",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 2.dp))
                 }

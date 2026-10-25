@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.RecordVoiceOver
@@ -183,6 +184,7 @@ fun InsightsScreen() {
                 NavRow(Icons.Rounded.Insights, "Dashboard", "Trends, people, patterns, your year", tint = MaterialTheme.colorScheme.tertiary) { nav.go(app.echomind.ui.DashboardRoute) }
                 NavRow(Icons.Rounded.RecordVoiceOver, "Speaking coach", "English, nervous moments, better ways", tint = MaterialTheme.colorScheme.tertiary) { nav.go(CoachRoute) }
                 NavRow(Icons.Rounded.Tag, "Topics", "What you talk about", tint = MaterialTheme.colorScheme.tertiary) { nav.go(TopicsRoute) }
+                NavRow(Icons.Rounded.Map, "Places & map", "Where you went and what happened there", tint = MaterialTheme.colorScheme.tertiary) { nav.go(app.echomind.ui.MapRoute()) }
                 NavRow(Icons.Rounded.Flag, "Plans", "Today, this week, this month", tint = MaterialTheme.colorScheme.tertiary) { nav.go(app.echomind.ui.PlanRoute) }
             }
         }
@@ -293,6 +295,18 @@ fun DayReviewScreen(day: String) {
             }
         }
         if (show("overview")) overview(entry, review, convs)
+        if (show("overview")) item(key = "where") {
+            val notes by produceState<String?>(null, date) { value = runCatching { g.places.dayNotes(d) }.getOrNull() }
+            notes?.let { n ->
+                EchoCard(onClick = { nav.go(app.echomind.ui.MapRoute(date)) }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Where and weather", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        Text("Map", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    }
+                    n.lines().forEach { l -> Text(l.removePrefix("Places: ").removePrefix("Weather: ").let { if (l.startsWith("Weather")) "☁ $it" else "📍 $it" }, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp)) }
+                }
+            }
+        }
         if (review != null && show("people")) peopleSection(review, entities) { id -> nav.go(PersonRoute(id)) }
         if (review != null && show("topics")) topicsSection(review, convs) { nav.go(ConversationRoute(it)) }
         if (show("coach")) coachSection(convs, analyses, review, s) { cid, line -> nav.go(ConversationRoute(cid, line)) }

@@ -103,6 +103,13 @@ For trips and long days out, EchoMind rests so the battery lasts. Listening stop
 - **Turns on by itself if you forget:** you add your places (several homes, work, others, each with a radius). About every 30 minutes, a low-power Wi-Fi/mobile-network location (never GPS) checks whether you're far from all of them and not on your home–work commute. It needs two readings 20 minutes apart (or clearly fast movement), so one odd reading never switches it. Once it's on, there are no location checks at all. "Not travelling" undoes it for 12 hours.
 - **Planned trips** switch it by date with no location. EchoMind can **suggest home and work** from where the phone usually is (on the phone only, two weeks). It can **notice you're home** from locations other apps already got, at no extra battery cost. Travel days are marked in the calendar and the diary.
 
+### Places, weather and map
+- **Location history (opt-in):** EchoMind notes an approximate location every 15, 30 or 60 minutes (Wi-Fi and mobile networks, never GPS), kept on the phone for as long as you choose. From that it works out your **visits** (where you stayed 15 minutes or more), named after your places or, if you allow it, by OpenStreetMap.
+- **What happened where:** each conversation shows where it happened. The day review, diary and Ask know the day's route ("Home until 9:40 AM → Office → Toit"), and the map lists the conversations at each place.
+- **Weather (opt-in):** hourly weather from Open-Meteo, using a location rounded to about 1 km, goes into the diary ("rain around 4–6 PM"), the day review and the morning brief.
+- **Map:** an OpenStreetMap view (osmdroid, no account) of your path and visits for a day, week, month or trip, with a dark style in dark mode. Map pictures can be switched off.
+- **Travel profiles:** *rest completely*, *only note where I go* (for the trip map), or *record and note places, process later*, plus *catch up while charging*.
+
 ### Nothing twice, nothing made up
 - Read-aloud never repeats itself. The same check against near-duplicates is used for nudges, plans and tasks, and duplicate open tasks merge on their own.
 - Every task, event, fact, person and note point the AI extracts must be backed by the transcript: a real quote, real lines, and names that were actually said. The coach may only quote your real words. If the diary or a chapter names someone who isn't in the day's notes, it is rewritten.

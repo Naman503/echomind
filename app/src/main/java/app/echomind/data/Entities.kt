@@ -487,3 +487,15 @@ data class Analysis(
     val at: Long,
     val provider: String? = null,
 )
+
+/** One approximate location reading (for your timeline and map), kept on the phone. */
+@Entity(tableName = "locations", indices = [androidx.room.Index("at")])
+data class LocationRow(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val at: Long,
+    val lat: Double,
+    val lon: Double,
+    val accuracyM: Float,
+    /** net | passive | manual */
+    val source: String = "net",
+)

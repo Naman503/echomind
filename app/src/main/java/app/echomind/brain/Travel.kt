@@ -48,7 +48,7 @@ class Travel(
         settings.update { it.copy(travel = true, travelSince = System.currentTimeMillis(), travelReason = reason, travelWhere = where, travelWasListening = it.captureWanted) }
         log { it + Span(System.currentTimeMillis(), reason = reason) }
         prefs.edit().remove("recent").apply()
-        onStart(s.travelKeepRecording)
+        onStart(s.travelRecords)
         showOngoing()
         Log.i(TAG, "travel mode on ($reason) $where")
     }
@@ -77,8 +77,13 @@ class Travel(
             if (auto) "Travel mode turned on by itself" else "Travel mode is on",
             buildString {
                 if (auto && s.travelWhere.isNotBlank()) append("You seem to be away: ${s.travelWhere}. ")
-                append(if (s.travelKeepRecording) "Recording only — " else "Listening off — ")
-                append("no AI, saving battery. Reminders still ring.")
+                append(when {
+                    s.travelRecords -> "Recording and noting places for later — "
+                    s.travelProfile == "places" -> "Only noting where you go — "
+                    else -> "Resting completely — "
+                })
+                append(if (s.travelProcessOnCharge) "catches up on the charger. " else "no AI. ")
+                append("Reminders still ring.")
             },
             auto,
         )

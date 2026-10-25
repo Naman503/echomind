@@ -33,7 +33,8 @@ class WatchdogWorker(context: Context, params: WorkerParameters) : CoroutineWork
         }
         // Travel: planned trips and, about every 30 minutes, whether you're away.
         if (System.currentTimeMillis() - lastTravelCheck >= 25 * 60_000L) { lastTravelCheck = System.currentTimeMillis(); runCatching { g.travel.check() } }
-        if (g.settings.value.travel) { g.travel.showOngoing(); return Result.success() }
+        runCatching { g.places.maybeRecord() }
+        if (g.settings.value.travel) { g.travel.showOngoing(); if (!g.brain.hasWork()) return Result.success() }
         runCatching { g.calls.scan() }
         runCatching { g.nudges.check() }
         runCatching { g.recordings.sweep() }
@@ -102,7 +103,8 @@ class DailyWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
             val yesterday = g.db.days().get(today.minusDays(1).toString())
             val carry = yesterday?.tomorrow?.let { runCatching { Js.json.decodeFromString(ListSerializer(String.serializer()), it) }.getOrNull() }.orEmpty()
             val plan = g.plans.get("day")
-            val lines = listOfNotNull(plan?.focus?.takeIf { it.isNotBlank() }?.let { "Focus · $it" }) + reminders.map { "${Prompts.time(it.remindAt!!)} · ${it.title}" } +
+            val weather = runCatching { g.places.morningWeather() }.getOrNull()
+            val lines = listOfNotNull(weather?.let { "Weather · $it" }, plan?.focus?.takeIf { it.isNotBlank() }?.let { "Focus · $it" }) + reminders.map { "${Prompts.time(it.remindAt!!)} · ${it.title}" } +
                 due.map { "Due · ${it.title}" } + carry.take(3).map { "From yesterday · $it" } + plan?.missing.orEmpty().take(2).map { "Missing? · ${it.title}" }
             val suggested = g.db.tasks().suggestedCount().first()
             if (lines.isEmpty() && suggested == 0) return Result.success()

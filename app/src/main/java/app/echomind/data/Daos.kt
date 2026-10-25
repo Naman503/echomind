@@ -343,3 +343,15 @@ interface AnalysisDao {
     @Query("SELECT people FROM conversations WHERE people IS NOT NULL") suspend fun conversationPeople(): List<String>
     @Query("SELECT DISTINCT speaker FROM utterances WHERE speaker IS NOT NULL") suspend fun speakers(): List<String>
 }
+
+@Dao
+interface LocationDao {
+    @Insert suspend fun insert(l: LocationRow): Long
+    @Query("SELECT * FROM locations WHERE at >= :from AND at < :to ORDER BY at") suspend fun range(from: Long, to: Long): List<LocationRow>
+    @Query("SELECT * FROM locations WHERE at >= :from AND at < :to ORDER BY at") fun observeRange(from: Long, to: Long): Flow<List<LocationRow>>
+    @Query("SELECT * FROM locations ORDER BY at DESC LIMIT 1") suspend fun latest(): LocationRow?
+    @Query("SELECT COUNT(*) FROM locations") fun observeCount(): Flow<Int>
+    @Query("SELECT MIN(at) FROM locations") suspend fun first(): Long?
+    @Query("DELETE FROM locations WHERE at < :before") suspend fun deleteBefore(before: Long)
+    @Query("DELETE FROM locations") suspend fun clear()
+}

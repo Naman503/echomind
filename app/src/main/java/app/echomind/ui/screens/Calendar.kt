@@ -430,6 +430,7 @@ private fun DayHeader(d: LocalDate, e: DayEntry?, onPrev: () -> Unit, onNext: ()
         if (diary != null) app.echomind.ui.components.DiaryPage(diary, e.headline, null, maxLines = 4, modifier = Modifier.padding(top = Sp.s), onClick = { nav.go(app.echomind.ui.DayReviewRoute(d.toString())) })
         if (d <= LocalDate.now()) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
             TextButton(onClick = { nav.go(app.echomind.ui.DayReviewRoute(d.toString())) }) { Text("Day review") }
+            TextButton(onClick = { nav.go(app.echomind.ui.MapRoute(d.toString())) }) { Text("Map") }
             if (diary == null && e?.generatedAt == null && g.ai.ready(app.echomind.core.Feature.JOURNAL)) {
                 TextButton(enabled = !writing, onClick = { writing = true; scope.launch { g.journal.write(d, force = true); writing = false } }) { Text(if (writing) "Writing…" else "Write the diary") }
             }

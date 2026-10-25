@@ -70,6 +70,7 @@ class Briefing(private val db: Db, private val settings: SettingsStore, private 
         val events = runCatching { agenda().range(start(today), end) }.getOrDefault(emptyList()).filter { it.status == "confirmed" && (it.allDay || it.startAt >= now - 30 * 60_000L) }
         val parts = ArrayList<String>()
         parts.add("$greet${name()?.let { ", $it" } ?: ""}. It's ${Prompts.day(now)}.")
+        runCatching { app.echomind.App.graph.places.morningWeather() }.getOrNull()?.let { parts.add("Weather: ${it.replace("°C", " degrees")}.") }
         if (events.isNotEmpty()) {
             parts.add("On your calendar: ${count(events.size, "event")}.")
             events.take(6).forEach { parts.add(if (it.allDay) "${it.title}, all day." else "${it.title} at ${Prompts.time(it.startAt)}${it.location?.let { l -> ", at $l" } ?: ""}.") }
