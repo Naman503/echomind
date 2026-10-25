@@ -166,6 +166,7 @@ fun ConversationScreen(id: Long, lineId: Long?) {
                         }
                     }
                     if (lines.size >= 3) item { TalkShare(lines) }
+                    item { ThingsMentioned(conv.id) }
                     val points = decode(conv.keyPoints)
                     if (points.isNotEmpty()) {
                         item { SectionHeader("Key points") }
@@ -241,13 +242,7 @@ fun ConversationScreen(id: Long, lineId: Long?) {
 }
 
 /** "This was me" / "not me": fixes the line and teaches the voice model. */
-private suspend fun correct(u: Utterance, me: Boolean) {
-    val g = App.graph
-    g.db.utterances().update(u.copy(speaker = if (me) "me" else "S9"))
-    g.db.vectors().forOwners("s", listOf(u.id)).firstOrNull()?.let { v ->
-        g.voice.learn(app.echomind.stt.VoiceId.normalize(app.echomind.brain.Vectors.dequantize(v.vector, v.scale)), me)
-    }
-}
+private suspend fun correct(u: Utterance, me: Boolean) = App.graph.voiceCheck.answer(u, me)
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -326,3 +321,25 @@ private fun TalkShare(lines: List<app.echomind.data.Utterance>) {
         }
     }
 }
+
+/** Named things from this conversation, one chip each; opens the thing. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun ThingsMentioned(conversationId: Long) {
+    val g = App.graph
+    val nav = LocalNav.current
+    val ms by remember(conversationId) { g.db.mentions().observeInConversation(conversationId) }.collectAsStateWithLifecycle(emptyList())
+    val all by remember { g.db.memory().observeEntities() }.collectAsStateWithLifecycle(emptyList())
+    val things = ms.map { it.entityId }.distinct().mapNotNull { id -> all.firstOrNull { it.id == id } }
+    if (things.isEmpty()) return
+    Column {
+        SectionHeader("Things mentioned")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
+            things.forEach { t ->
+                AssistChip(onClick = { nav.go(app.echomind.ui.ThingRoute(t.id)) }, label = { Text(t.name) },
+                    leadingIcon = { Icon(thingIcon(t.kind), null, tint = thingColor(t.kind), modifier = Modifier.size(18.dp)) })
+            }
+        }
+    }
+}
+

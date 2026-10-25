@@ -1,5 +1,6 @@
 package app.echomind.ui.screens
 
+import androidx.compose.material.icons.rounded.FactCheck
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
@@ -279,6 +280,7 @@ fun VoiceScreen() {
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 app.echomind.ui.components.SwitchRow("Keep learning my voice", "Long lines it is very sure about add to your voice sample (phone in a pocket, on a desk, outdoors)", st.voiceLearn) { v -> g.scope.launch { g.settings.update { it.copy(voiceLearn = v) } } }
                 app.echomind.ui.components.SwitchRow("Recognise people I talk to", "Name a speaker once — their voice is remembered and their lines get their name next time", st.recognisePeople) { v -> g.scope.launch { g.settings.update { it.copy(recognisePeople = v) } } }
+                if (g.voice.enrolled()) app.echomind.ui.components.NavRow(Icons.Rounded.FactCheck, "Check accuracy", "How well it tells you apart, and lines it isn't sure about") { nav.go(app.echomind.ui.VoiceCheckRoute) }
                 Text("Fix mistakes in any transcript: long-press a line → “This was me” or “That wasn't me”. Each fix teaches it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
                     OutlinedButton(enabled = !adding, onClick = {

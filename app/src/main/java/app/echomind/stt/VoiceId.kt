@@ -78,7 +78,15 @@ class VoiceId(private val context: Context, private val models: ModelManager, pr
     fun samples() = bank("me_bank").size
     fun corrections() = bank("me_neg").size
 
-    fun forget() = prefs.edit().remove("me").remove("me_bank").remove("me_neg").remove("me_thr").apply()
+    fun forget() = prefs.edit().remove("me").remove("me_bank").remove("me_neg").remove("me_thr").remove("me_thr_auto").apply()
+
+    /** The threshold from enrolment (how alike your own samples are). */
+    fun baseThreshold(): Float = prefs.getFloat("me_thr", ME_THRESHOLD)
+
+    /** The threshold re-fitted from your recent recordings, if the data allowed one. */
+    fun autoThreshold(): Float? = if (prefs.contains("me_thr_auto")) prefs.getFloat("me_thr_auto", ME_THRESHOLD) else null
+
+    fun setAutoThreshold(t: Float?) = prefs.edit().apply { if (t == null) remove("me_thr_auto") else putFloat("me_thr_auto", t) }.apply()
 
     private fun recompute() {
         val bank = bank("me_bank")
@@ -100,7 +108,7 @@ class VoiceId(private val context: Context, private val models: ModelManager, pr
     private fun me(): FloatArray? = prefs.getString("me", null)?.split(',')?.mapNotNull { it.toFloatOrNull() }?.toFloatArray()
 
     /** The owner's calibrated threshold, shifted by the sensitivity setting. */
-    fun threshold(): Float = prefs.getFloat("me_thr", ME_THRESHOLD) + when (sensitivity()) { "strict" -> 0.06f; "lenient" -> -0.06f; else -> 0f }
+    fun threshold(): Float = (autoThreshold() ?: baseThreshold()) + when (sensitivity()) { "strict" -> 0.06f; "lenient" -> -0.06f; else -> 0f }
 
     /** Similarity to the owner's voice: the closer of the average and the best two samples. */
     fun meScore(print: FloatArray): Float? {

@@ -127,6 +127,10 @@ data class Settings(
     val locationKeepDays: Int = 365,
     /** Weather and place names from the internet (rough location sent to Open-Meteo and OpenStreetMap). */
     val placesOnline: Boolean = false,
+    /** Note named things (places, shows, books, tech…) from conversations, so they can be recalled. */
+    val extractThings: Boolean = true,
+    /** Look things up on Wikidata by name (only the name is sent) for a one-line description. */
+    val thingsOnline: Boolean = false,
     /** Map pictures from OpenStreetMap. */
     val mapTiles: Boolean = true,
     /** auto (follows the app theme) | light | dark | terrain */

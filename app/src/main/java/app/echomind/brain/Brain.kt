@@ -57,6 +57,8 @@ class Brain(
     private val book: Book,
     private val nightlyExtras: suspend () -> Unit,
 ) {
+    /** One small catch-up job at night once days and the book are done (e.g. names in older conversations); true if it did work. */
+    var catchUp: suspend () -> Boolean = { false }
     enum class Phase { IDLE, TRANSCRIBING, THINKING, JOURNAL, REVIEW, WAITING }
 
     data class State(
@@ -224,7 +226,13 @@ class Brain(
         val began = System.currentTimeMillis()
         val wrote = runCatching { book.step() }.onFailure { Log.w(TAG, "book step failed", it) }.getOrDefault(false)
         governor.workDone(System.currentTimeMillis() - began)
-        return wrote
+        if (wrote) return true
+        governor.awaitTurn()
+        _state.value = _state.value.copy(phase = Phase.REVIEW, detail = "Noting names in older conversations")
+        val began2 = System.currentTimeMillis()
+        val caught = runCatching { catchUp() }.onFailure { Log.w(TAG, "catch-up failed", it) }.getOrDefault(false)
+        governor.workDone(System.currentTimeMillis() - began2)
+        return caught
     }
 
     /** Whether the session mode wants the AI to run now. */

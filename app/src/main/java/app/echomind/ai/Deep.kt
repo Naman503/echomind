@@ -75,6 +75,33 @@ Rules:
 4. note_updates: information about an ongoing topic (a project, a trip, a purchase, a health issue). Reuse an existing note title when it is the same topic.
 5. Every item lists the transcript line numbers it comes from. Empty lists when nothing is worth keeping."""
 
+    // ── 3b. Things (named things worth recalling) ────────────────
+
+    val THING_KINDS = listOf("place", "movie", "show", "book", "music", "tech", "product", "company", "food", "event", "game", "other")
+
+    val things = S.obj(
+        "things" to S.arr(S.obj(
+            "name" to S.str("the name as said in the line, with the right spelling if you are sure ('Panchayat', 'Kotlin', 'Hampi')"),
+            "kind" to S.enum(*THING_KINDS.toTypedArray()),
+            "line" to S.int("the L number where it is named"),
+            "quote" to S.str("the exact words from that line that contain the name"),
+            "intent" to S.enum("none", "want", "recommended", "done", "liked", "disliked"),
+            "about" to S.str("a few words on what was said about it, from the transcript; empty if nothing"),
+        ), "Named things a person may want to recall later; empty when none"),
+    )
+
+    fun thingsSystem(lang: String) = """You list the named things mentioned in part of one conversation, so the owner can recall them later.
+
+${Prompts.languageRules(lang)}
+
+Rules:
+1. $ASR
+2. A thing has a proper name: a place (city, area, restaurant, shop, landmark), a movie, a TV or web show, a book, a song/album/artist, a technology (app, tool, programming language, framework, gadget, AI model), a product or brand, a company, a dish or cuisine, an event, a game, a course. Never people (they are handled elsewhere), never common nouns ("the office", "a phone", "dinner").
+3. kind: show for TV/web series, movie for films, tech for software, apps, languages and devices, company for businesses and organisations, other when none fits.
+4. intent: want when someone wants to watch/read/visit/try/buy it; recommended when someone suggests it to another; done when someone already watched/read/visited/used it; liked or disliked when an opinion was given; else none.
+5. name must be words that are really in that line (or their spelling in the other script: "पंचायत" is Panchayat). If a name is garbled beyond recognition, leave it out.
+6. One entry per thing per part. Return an empty list when nothing was named — that is the right answer for most chat."""
+
     // ── 4. Speaking coach (owner only) ────────────────────────────
 
     val coach = S.obj(

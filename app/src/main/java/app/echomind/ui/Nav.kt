@@ -69,6 +69,9 @@ import kotlinx.serialization.Serializable
 @Serializable data object DayNumbersRoute : Route
 @Serializable data object TravelRoute : Route
 @Serializable data class MapRoute(val day: String? = null) : Route
+@Serializable data object ThingsRoute : Route
+@Serializable data class ThingRoute(val id: Long) : Route
+@Serializable data object VoiceCheckRoute : Route
 @Serializable data class ChapterRoute(val week: String) : Route
 
 val tabs: List<Route> = listOf(TodayRoute, CalendarRoute, TasksRoute, InsightsRoute, LibraryRoute)

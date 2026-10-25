@@ -336,6 +336,26 @@ fun DayReviewScreen(day: String) {
             val lang by produceState<app.echomind.brain.Languages.Day?>(null, date, convs.size) { value = app.echomind.brain.Analytics.languages(g.db, d, d).first }
             lang?.takeIf { it.mine.total > 0 }?.let { app.echomind.ui.components.LanguageCard(it) }
         }
+        if (show("topics")) item(key = "things") {
+            val ms by produceState(emptyList<app.echomind.data.Mention>(), date, convs.size) { value = g.db.mentions().inRange(from, to) }
+            val byThing = ms.groupBy { it.entityId }.mapNotNull { (id, l) -> entities.firstOrNull { it.id == id }?.let { it to l } }.sortedByDescending { it.second.size }
+            if (byThing.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(Sp.s)) {
+                SectionHeader("Things mentioned · ${byThing.size}", action = "All things", onAction = { nav.go(app.echomind.ui.ThingsRoute) })
+                byThing.take(12).forEach { (t, l) ->
+                    EchoCard(onClick = { nav.go(app.echomind.ui.ThingRoute(t.id)) }) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ThingBadge(t.kind, 34)
+                            Spacer(Modifier.width(Sp.m))
+                            Column(Modifier.weight(1f)) {
+                                Text(t.name, style = MaterialTheme.typography.titleSmall)
+                                Text("“${l.first().quote.take(110)}”", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                            }
+                            app.echomind.brain.Things.statusLabel(t.kind, t.status)?.let { Pill(it) }
+                        }
+                    }
+                }
+            }
+        }
         if (review != null && show("people")) peopleSection(review, entities) { id -> nav.go(PersonRoute(id)) }
         if (review != null && show("topics")) topicsSection(review, convs) { nav.go(ConversationRoute(it)) }
         if (show("coach")) coachSection(convs, analyses, review, s) { cid, line -> nav.go(ConversationRoute(cid, line)) }

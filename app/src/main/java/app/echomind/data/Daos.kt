@@ -355,3 +355,17 @@ interface LocationDao {
     @Query("DELETE FROM locations WHERE at < :before") suspend fun deleteBefore(before: Long)
     @Query("DELETE FROM locations") suspend fun clear()
 }
+
+@Dao
+interface MentionDao {
+    @Insert suspend fun insert(m: Mention): Long
+    @Query("SELECT * FROM mentions WHERE entityId = :id ORDER BY at DESC") fun observeFor(id: Long): Flow<List<Mention>>
+    @Query("SELECT * FROM mentions WHERE conversationId = :id ORDER BY at") fun observeInConversation(id: Long): Flow<List<Mention>>
+    @Query("SELECT * FROM mentions WHERE at >= :from AND at < :to ORDER BY at") suspend fun inRange(from: Long, to: Long): List<Mention>
+    @Query("SELECT * FROM mentions ORDER BY at DESC LIMIT :n") fun observeRecent(n: Int): Flow<List<Mention>>
+    @Query("SELECT EXISTS(SELECT 1 FROM mentions WHERE entityId = :entityId AND conversationId = :conversationId AND quote = :quote)") suspend fun exists(entityId: Long, conversationId: Long, quote: String): Boolean
+    @Query("UPDATE mentions SET entityId = :into WHERE entityId = :from") suspend fun move(from: Long, into: Long)
+    @Query("DELETE FROM mentions WHERE entityId = :id") suspend fun deleteFor(id: Long)
+    @Query("DELETE FROM mentions WHERE conversationId = :id") suspend fun deleteInConversation(id: Long)
+}
+

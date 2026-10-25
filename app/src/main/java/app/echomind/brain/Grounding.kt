@@ -44,6 +44,18 @@ object Grounding {
         return k.isNotEmpty() && k.any { it in p.keys }
     }
 
+    /** A thing's name must be on the line it cites (any script), and its quote must be from that line. */
+    fun thingIn(t: JsonObject, p: Part): Boolean {
+        val n = (t["line"] as? JsonPrimitive)?.intOrNull ?: return false
+        val line = p.byNumber[n] ?: return false
+        val keys = TextNorm.keyTerms(line).toSet()
+        val name = str(t, "name")
+        val nk = TextNorm.keyTerms(name)
+        if (name.length < 2 || nk.isEmpty() || nk.none { it in keys }) return false
+        val q = str(t, "quote")
+        return q.length < 4 || support(q, keys) >= 0.6
+    }
+
     /** Drops unsupported tasks, events, facts, people, relations, note points and topics from one pass's answer. */
     fun check(o: JsonObject, p: Part): JsonObject {
         val out = LinkedHashMap<String, JsonElement>(o)
@@ -60,6 +72,7 @@ object Grounding {
         filter("note_updates") { n -> lines(n).let { it.isEmpty() || it.all(p::has) } }
         filter("topics") { t -> lines(t).let { it.isEmpty() || it.all(p::has) } }
         filter("speakers") { s -> nameIn(str(s, "name"), p) }
+        filter("things") { t -> thingIn(t, p) }
         return JsonObject(out)
     }
 

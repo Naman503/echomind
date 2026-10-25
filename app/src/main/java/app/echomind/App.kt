@@ -17,6 +17,8 @@ import app.echomind.ai.OpenAiLlm
 import app.echomind.brain.Actions
 import app.echomind.brain.Analyzer
 import app.echomind.brain.Book
+import app.echomind.brain.Things
+import app.echomind.brain.VoiceCheck
 import app.echomind.brain.Travel
 import app.echomind.brain.Places
 import app.echomind.telemetry.UsageReporter
@@ -117,7 +119,9 @@ class Graph(val app: Application) {
     val memory = Memory(db, ai, settings, embedder)
     val notes = Notes(db, ai, settings, embedder)
     val analyzer = Analyzer(db, ai, settings)
-    val enricher = Enricher(db, ai, settings, memory, notes, tasks, embedder, { nudges }, { people }, { agenda }, voicePrints, voice, analyzer)
+    val voiceCheck: VoiceCheck by lazy { VoiceCheck(db, voice) }
+    val things: Things by lazy { Things(db, settings, cloud) { web } }
+    val enricher = Enricher(db, ai, settings, memory, notes, tasks, embedder, { nudges }, { people }, { agenda }, voicePrints, voice, analyzer, { things })
     val journal = Journal(db, ai, settings, memory)
     val ask = Ask(db, ai, settings, embedder, { agenda }, { people }, { web }) { plans }
     val sessionizer = Sessionizer(db, settings)
@@ -132,6 +136,18 @@ class Graph(val app: Application) {
         // Nightly extras after the journal and memory review: file new notes, refresh people's pages.
         if (settings.value.organizeNightly) runCatching { organizer.tidyNew() }
         if (settings.value.storiesNightly) runCatching { people.refreshStories(if (ai.llm(Feature.MEMORY).local) 3 else 12) }
+        // Your voice: re-fit the "is it me" line to how your voice actually scored lately.
+        runCatching { voiceCheck.calibrate() }
+        runCatching { things.lookUp() }
+    }.also { b ->
+        b.catchUp = {
+            // One older conversation per step (last 30 days) for the things pass.
+            val c = if (settings.value.extractThings) things.unscanned(System.currentTimeMillis() - 30 * 86_400_000L, 1).firstOrNull() else null
+            if (c == null) false else {
+                val utts = db.utterances().forConversation(c.id)
+                things.record(c, utts, if (utts.size >= 2) analyzer.thingsOnly(c, utts) else emptyList()); true
+            }
+        }
     }
     val capture = CaptureController(app, db, settings, scope, { brain }) { sounds }
     val travel: Travel = Travel(app, settings,

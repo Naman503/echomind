@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.StickyNote2
@@ -133,6 +134,7 @@ fun LibraryScreen() {
             app.echomind.ui.components.NavGroup {
                 app.echomind.ui.components.NavRow(Icons.Rounded.StickyNote2, "Notes", "Living notes on your projects and topics", trailing = "${live.size}") { nav.go(NotesRoute) }
                 app.echomind.ui.components.NavRow(Icons.Rounded.Groups, "People", "Who they are, how you know them", trailing = "$persons") { nav.go(PeopleRoute) }
+                app.echomind.ui.components.NavRow(Icons.Rounded.Category, "Things", "Shows, places, apps, books… you talked about", trailing = "${people.count { it.kind in app.echomind.brain.Things.KEYS }}") { nav.go(app.echomind.ui.ThingsRoute) }
                 app.echomind.ui.components.NavRow(Icons.Rounded.Psychology, "Memory", "Facts EchoMind remembers — fix anything wrong", trailing = "${facts.size}") { nav.go(MemoryRoute) }
                 app.echomind.ui.components.NavRow(Icons.Rounded.Forum, "Past questions", "Everything you asked") { nav.go(app.echomind.ui.ChatsRoute) }
             }

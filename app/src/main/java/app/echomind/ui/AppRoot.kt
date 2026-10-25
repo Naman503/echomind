@@ -159,6 +159,8 @@ fun AppRoot(pending: MutableState<String?>) {
             "settings" -> { nav.tab(TodayRoute); nav.go(SettingsRoute) }
             "travel" -> { nav.tab(TodayRoute); nav.go(TravelRoute) }
             "map" -> { nav.tab(InsightsRoute); nav.go(MapRoute()) }
+            "things" -> { nav.tab(LibraryRoute); nav.go(ThingsRoute) }
+            "voice" -> nav.go(VoiceCheckRoute)
             else -> if (r.startsWith("checkin:")) { nav.tab(TodayRoute); nav.go(CheckInRoute(r.removePrefix("checkin:"))) }
             else if (r.startsWith("note:")) { nav.tab(LibraryRoute); r.removePrefix("note:").toLongOrNull()?.let { nav.go(NoteRoute(it)) } }
             else if (r.startsWith("conversation:")) { nav.tab(TodayRoute); r.removePrefix("conversation:").toLongOrNull()?.let { nav.go(ConversationRoute(it)) } } else nav.tab(TodayRoute)
@@ -258,6 +260,9 @@ fun AppRoot(pending: MutableState<String?>) {
                         entry<DayNumbersRoute> { app.echomind.ui.screens.DayNumbersScreen() }
                         entry<TravelRoute> { app.echomind.ui.screens.TravelScreen() }
                         entry<MapRoute> { app.echomind.ui.screens.MapScreen(it.day) }
+                        entry<ThingsRoute> { app.echomind.ui.screens.ThingsScreen() }
+                        entry<ThingRoute> { app.echomind.ui.screens.ThingScreen(it.id) }
+                        entry<VoiceCheckRoute> { app.echomind.ui.screens.VoiceCheckScreen() }
                         entry<ChapterRoute> { app.echomind.ui.screens.ChapterScreen(it.week) }
                     },
                 )

@@ -265,6 +265,24 @@ class Ask(private val db: Db, private val ai: Ai, private val settings: Settings
             if (Regex("\\b(day|yesterday|today|week|topic|discuss|talk|english|grammar|mistake|wrong|nervous|coach|speak|said|people|met|lesson|learn|improve|kal|aaj)", RegexOption.IGNORE_CASE).containsMatchIn(question)) {
                 append(reviews(if (Regex("\\bweek\\b", RegexOption.IGNORE_CASE).containsMatchIn(question)) 7 else 3))
             }
+            // Named things: the ones the question names, or recent ones of the kind it asks about.
+            val things = db.memory().allEntities().filter { it.kind in Things.KEYS }
+            val qk = Things.key(question)
+            val kindWords = mapOf("movie" to "movie|film|picture", "show" to "show|series|serial|season|episode|web series|netflix|prime|hotstar", "book" to "book|novel|read",
+                "music" to "song|album|music|singer|band|gaana", "tech" to "app|tool|tech|software|framework|library|language|laptop|phone|gadget|model|ai\\b",
+                "place" to "place|restaurant|cafe|where|visit|trip|jagah", "food" to "food|dish|eat|khana|restaurant", "org" to "company|startup|brand|firm", "game" to "game", "product" to "product|buy|bought|brand")
+            val askedKinds = kindWords.filter { (_, w) -> Regex("\\b($w)", RegexOption.IGNORE_CASE).containsMatchIn(question) }.keys
+            val hitThings = (things.filter { t -> (listOf(t.name) + Things.aliases(t)).any { n -> Things.key(n).let { k -> k.length >= 3 && qk.contains(k) } } } +
+                things.filter { it.kind in askedKinds }.sortedByDescending { it.lastSeenAt }.take(15)).distinctBy { it.id }.take(20)
+            if (hitThings.isNotEmpty()) {
+                append("\nThings mentioned in conversations (can be cited as [things]):\n")
+                for (t in hitThings) {
+                    val m = db.mentions().inRange(t.firstSeenAt, t.lastSeenAt + 1).filter { it.entityId == t.id }.takeLast(2)
+                    append("- ${t.name} (${Things.Kind.of(t.kind)?.label ?: t.kind}${Things.statusLabel(t.kind, t.status)?.let { ", $it" } ?: ""})${t.detail?.let { ": $it" } ?: ""}")
+                    m.forEach { append(" | ${Prompts.day(it.at)}, ${if (it.speaker == "me") "you" else it.speaker ?: "someone"}: \"${it.quote.take(140)}\"") }
+                    append('\n')
+                }
+            }
             if (named.isNotEmpty()) {
                 append("\nPeople mentioned (can be cited as [people]):\n")
                 for (p in named) append("- ${p.name}: ${people().clue(p)}${p.story?.let { " — ${it.take(300)}" } ?: ""}\n")

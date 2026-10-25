@@ -51,6 +51,7 @@ class Enricher(
     private val voicePrints: VoicePrints,
     private val voice: VoiceId,
     private val analyzer: Analyzer,
+    private val things: () -> Things,
 ) {
     data class Result(val tasks: Int, val facts: Int, val notes: Int)
 
@@ -117,6 +118,12 @@ class Enricher(
             val name = s.str("name")?.trim()?.takeIf { it.length in 2..40 } ?: continue
             if (label.startsWith("S")) db.utterances().renameSpeaker(c.id, label, name)
         }
+
+        // Named things: from the focused passes, or one extra pass when the all-in-one extraction ran.
+        if (settings.value.extractThings && !media) runCatching {
+            val thingOuts = if (outputs.any { it.containsKey("things") }) outputs else analyzer.thingsOnly(c, utts)
+            things().record(c, utts, thingOuts)
+        }.onFailure { Log.w(TAG, "things failed", it) }
 
         val at = c.endAt
         var factCount = 0
@@ -261,29 +268,66 @@ class Enricher(
     }
 
     /**
-     * Lines that are not the owner are grouped into speakers by voice. A group whose
-     * voice as a whole is the owner's becomes "me" (single short lines can miss);
-     * a group matching someone you've talked to before gets their name; the rest
-     * are Speaker 1, 2…
+     * Who said each line, decided per voice rather than per line: all automatically labelled
+     * lines are grouped by voice, and a group is "me" when its voice as a whole (more audio,
+     * so more reliable) is the owner's. A single line keeps its own label only when its own
+     * score is clearly against its group. Other groups get a known person's name or Speaker 1, 2…
+     * Lines you confirmed are never changed. Lines too short to measure take their neighbours' speaker.
      */
     private suspend fun groupSpeakers(c: Conversation, lines: List<Utterance>) {
-        val candidates = lines.filter { it.speaker == null || (it.speaker.startsWith("S") && it.speaker.length <= 3) }
-        if (candidates.isEmpty()) return
-        val prints = candidates.map { it.id }.chunked(500).flatMap { db.vectors().forOwners("s", it) }.associateBy { it.ownerId }
-        val withPrints = candidates.map { u -> prints[u.id]?.let { VoiceId.normalize(Vectors.dequantize(it.vector, it.scale)) } }
-        if (withPrints.count { it != null } < 1) return
-        val clusters = VoiceId.cluster(withPrints)
-        val members = candidates.indices.filter { clusters[it] != null }.groupBy { clusters[it]!! }
-        var next = 1
-        for ((_, idx) in members.entries.sortedBy { it.value.first() }) {
-            val ps = idx.mapNotNull { withPrints[it] }
-            val avg = FloatArray(ps[0].size).also { a -> for (p in ps) for (i in a.indices) a[i] += p[i] / ps.size }.let { VoiceId.normalize(it) }
-            val label = when {
-                voice.enrolled() && voice.isMe(avg) && ps.size >= 2 -> "me"
-                settings.value.recognisePeople && (ps.size >= 2 || idx.sumOf { candidates[it].endAt - candidates[it].startAt } >= 4_000) -> voicePrints.match(avg)?.first?.name
-                else -> null
-            } ?: "S${next++}"
-            idx.forEach { db.utterances().update(candidates[it].copy(speaker = label)) }
+        fun auto(s: String?) = s == null || s == "me" || Regex("S\\d{1,2}").matches(s)
+        val fixed = lines.filter { db.memory().kv("voiceok:${it.id}") != null }.map { it.id }.toSet()
+        val pool = lines.filter { auto(it.speaker) && it.id !in fixed }
+        if (pool.isEmpty()) return
+        val prints = pool.map { it.id }.chunked(500).flatMap { db.vectors().forOwners("s", it) }.associateBy { it.ownerId }
+        val vec = pool.map { u -> prints[u.id]?.let { VoiceId.normalize(Vectors.dequantize(it.vector, it.scale)) } }
+        val labels = HashMap<Long, String?>()
+        if (vec.any { it != null }) {
+            val clusters = VoiceId.cluster(vec)
+            val members = pool.indices.filter { clusters[it] != null }.groupBy { clusters[it]!! }
+            val thr = voice.threshold()
+            var next = 1
+            for ((_, idx) in members.entries.sortedBy { it.value.first() }) {
+                // Longer lines count more in the group's voice.
+                val avg = FloatArray(vec[idx[0]]!!.size)
+                var wsum = 0f
+                for (i in idx) { val w = ((pool[i].endAt - pool[i].startAt) / 1000f).coerceIn(1f, 15f); val p = vec[i]!!; for (k in avg.indices) avg[k] += p[k] * w; wsum += w }
+                val center = VoiceId.normalize(avg)
+                val talkMs = idx.sumOf { pool[it].endAt - pool[it].startAt }
+                val enough = idx.size >= 2 || talkMs >= 4_000
+                val known = if (settings.value.recognisePeople && enough) voicePrints.match(center) else null
+                // Never you when the voice is closer to someone you've talked to before.
+                val groupIsMe = voice.enrolled() && enough && voice.isMe(center) && (known == null || known.second < (voice.meScore(center) ?: 0f))
+                val other = if (groupIsMe) null else known?.first?.name ?: "S${next++}"
+                for (i in idx) {
+                    val own = voice.meScore(vec[i]!!) ?: 0f
+                    labels[pool[i].id] = when {
+                        groupIsMe -> if (own < thr - 0.1f) "S${next++}" else "me"
+                        pool[i].speaker == "me" && own >= thr + 0.05f -> "me" // clearly you, whatever the group
+                        else -> other
+                    }
+                }
+            }
+        }
+        // Too short to measure: same speaker as the lines right around it.
+        val all = lines.sortedBy { it.startAt }
+        val unmeasured = pool.filter { !prints.containsKey(it.id) }.map { it.id }.toSet()
+        fun labelOf(u: Utterance) = if (u.id in labels) labels[u.id] else u.speaker
+        for ((i, u) in all.withIndex()) {
+            if (u.id !in unmeasured) continue
+            val before = all.getOrNull(i - 1)?.takeIf { it.id !in unmeasured }; val after = all.getOrNull(i + 1)?.takeIf { it.id !in unmeasured }
+            val gapBefore = before?.let { u.startAt - it.endAt } ?: Long.MAX_VALUE; val gapAfter = after?.let { it.startAt - u.endAt } ?: Long.MAX_VALUE
+            val prev = before?.let(::labelOf); val next = after?.let(::labelOf)
+            labels[u.id] = when {
+                prev != null && prev == next && gapBefore <= 1_500 && gapAfter <= 1_500 -> prev
+                prev != null && gapBefore <= 800 && gapBefore <= gapAfter -> prev
+                next != null && gapAfter <= 800 -> next
+                else -> u.speaker
+            }
+        }
+        for (u in pool) {
+            val l = labels[u.id] ?: continue
+            if (l != u.speaker) db.utterances().update(u.copy(speaker = l))
         }
     }
 

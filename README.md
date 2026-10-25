@@ -105,6 +105,27 @@ Which language you speak, and for how long: **Hindi** (Devanagari or Hindi typed
 - **Coach:** your English share over the last two weeks.
 - **Other screens:** a language bar on each conversation (next to who spoke how much), on Today and on Insights.
 
+### Things you talked about
+Places, movies, shows, books, music, tech and tools, products, companies, food, events and games are noted from your conversations, so you can find "that series Rahul suggested" later. Every mention keeps the exact words, who said them and when.
+- **Grounded:** a name is kept only if it really is on the line it cites, in either script. Names are matched across spellings and scripts, so "Panchayat", "Panchayath" and "पंचायत" are one thing, and so are "Koramangala" and "Kormangala".
+- **Status:** each thing can be marked want to watch, read or visit, recommended, done, liked or didn't like. This is taken from what was said, and you can change it.
+- **Where to find them:**
+  - the **Things** page, with search, kinds and a "to watch / try" filter;
+  - each conversation and day review;
+  - **Ask** ("which show did Rahul suggest?").
+- **Older conversations** are read at night, one at a time.
+- **Online look-up (optional):** only the name is sent to Wikidata, for a one-line description. It is logged in the data ledger.
+
+### Voice accuracy
+Which lines are yours is decided per voice, not per line. All lines in a conversation are grouped by voice, and a group counts as you when its voice as a whole sounds like you, because more audio gives a more reliable answer.
+- **Known people:** a voice closer to someone you've talked to before is never labelled as you.
+- **Short lines** take the speaker of the lines right around them.
+- **Automatic threshold:** every night it is re-fitted to how your voice and other voices actually scored over the last two weeks.
+- **Your voice → Check accuracy:**
+  - the separation between your voice and others;
+  - the current threshold;
+  - the lines it is least sure about, which you can answer with "Me" or "Not me". Each answer teaches the model, and lines you've confirmed are never changed again.
+
 ### Charts everywhere
 Shared chart pieces are used across the app: donuts, progress rings, stacked bars, sparklines, columns per hour and icon number chips.
 - **Today widget:** talk by hour, a language bar and task progress (switch them on or off in the widget settings).

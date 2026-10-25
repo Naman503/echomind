@@ -137,11 +137,28 @@ class Analyzer(private val db: Db, private val ai: Ai, private val settings: Set
                 runCatching {
                     ai.json(LlmRequest(Feature.NOTES, "Remembering · $label", Deep.knowledgeSystem(lang), known + head + "\nTranscript:\n" + text, Deep.knowledge, maxTokens = 750, noThink = true))
                 }.onSuccess { merged.putAll(it) }.onFailure { Log.w(TAG, "knowledge failed", it) }
+                if (settings.value.extractThings) merged.putAll(things(head, text, label))
             }
             // Nothing is kept that this part of the transcript doesn't back up.
             out.add(Grounding.check(clean(JsonObject(merged)) as JsonObject, Grounding.Part(part)))
         }
         return out
+    }
+
+    /** The named-things pass on one part (also used to scan older conversations). */
+    suspend fun things(head: String, text: String, label: String): JsonObject = runCatching {
+        ai.json(LlmRequest(Feature.NOTES, "Noting names · $label", Deep.thingsSystem(settings.value.notesLanguage), head + "\nTranscript:\n" + text, Deep.things, maxTokens = 500, noThink = true))
+    }.onFailure { Log.w(TAG, "things failed", it) }.getOrDefault(JsonObject(emptyMap()))
+
+    /** Things only, for a conversation analysed before this pass existed. Grounded like the rest. */
+    suspend fun thingsOnly(c: Conversation, utts: List<Utterance>): List<JsonObject> {
+        val llm = ai.llm(Feature.NOTES)
+        val lines = numbered(utts)
+        val parts = parts(lines, llm, tok(Deep.thingsSystem(settings.value.notesLanguage)) + 450, 500)
+        return parts.mapIndexed { i, part ->
+            val label = Prompts.time(c.startAt) + if (parts.size > 1) " (${i + 1}/${parts.size})" else ""
+            Grounding.check(things(header(c, i + 1, parts.size), part.joinToString("\n"), label), Grounding.Part(part))
+        }
     }
 
     /** "Not specified" and friends become empty strings, so they never show up as dates or places. */

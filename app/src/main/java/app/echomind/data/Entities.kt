@@ -114,7 +114,7 @@ data class Conversation(
 @Entity(tableName = "entities", indices = [Index(value = ["kind", "name"]), Index("lastSeenAt")])
 data class EntityRow(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    /** person | project | place | org | topic */
+    /** person | project | place | org | topic, or a thing: movie | show | book | music | tech | product | food | event | game | other */
     val kind: String,
     val name: String,
     /** JSON string list of other names and spellings */
@@ -141,6 +141,27 @@ data class EntityRow(
     @ColumnInfo(defaultValue = "NULL") val storyAt: Long? = null,
     /** Mentions when the story was last written, so it is rewritten only when there's more to say. */
     @ColumnInfo(defaultValue = "0") val storyMentions: Int = 0,
+    /** For things: want | recommended | done | liked | disliked (from what was said, or set by you). */
+    @ColumnInfo(defaultValue = "NULL") val status: String? = null,
+    /** For things: a one-line description ("2020 Indian web series") from an online look-up, if allowed. */
+    @ColumnInfo(defaultValue = "NULL") val detail: String? = null,
+    /** For things: the Wikidata id it was matched to ("Q123"), or "none" when the look-up found nothing. */
+    @ColumnInfo(defaultValue = "NULL") val extId: String? = null,
+)
+
+/** One time a thing (a movie, place, app, book…) came up: where, who said it, and the words. */
+@Entity(tableName = "mentions", indices = [Index("entityId"), Index("conversationId"), Index("at")])
+data class Mention(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val entityId: Long,
+    val conversationId: Long,
+    val utteranceId: Long? = null,
+    val at: Long,
+    /** The words as they were said (verbatim from the transcript). */
+    val quote: String,
+    val speaker: String? = null,
+    /** want | recommended | done | liked | disliked | none */
+    val intent: String = "none",
 )
 
 /** A connection between two people or things: "Rahul — manager of — Priya", "Priya — works at — Eazeebox". */
