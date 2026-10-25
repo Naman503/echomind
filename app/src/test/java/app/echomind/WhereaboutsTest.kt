@@ -52,4 +52,11 @@ class WhereaboutsTest {
         assertNotNull(line)
         assertTrue(line, line!!.startsWith("22–28°C, mostly clear; rain around 4 PM–6 PM (4.0 mm)"))
     }
+
+    @Test fun roughReadingsDontInventDistance() {
+        val a = GeoFix(13.0270, 77.5823, 0, 2_000f); val b = GeoFix(13.0300, 77.5700, 60_000, 2_000f)
+        assertEquals(0.0, Whereabouts.distance(listOf(a, b)), 0.0)
+        val c = GeoFix(13.0270, 77.5823, 0, 30f); val e = GeoFix(13.0370, 77.5823, 60_000, 30f)
+        assertTrue(Whereabouts.distance(listOf(c, e)) > 1_000)
+    }
 }

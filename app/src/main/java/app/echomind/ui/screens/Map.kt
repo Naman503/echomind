@@ -328,8 +328,9 @@ private fun OsmMap(d: MapData?, s: Settings, selected: Int, ctl: MapCtl, onVisit
     val ctx = LocalContext.current
     val dark = isSystemInDarkTheme()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val path = MaterialTheme.colorScheme.primary.toArgb()
-    val accent = MaterialTheme.colorScheme.tertiary.toArgb()
+    // Pins use bold, fixed colours so they stand out on light, dark and terrain maps alike.
+    val path = android.graphics.Color.rgb(61, 90, 254)
+    val accent = android.graphics.Color.rgb(229, 57, 53)
     val density = ctx.resources.displayMetrics.density
     val map = remember {
         Configuration.getInstance().apply {
@@ -386,8 +387,10 @@ private fun OsmMap(d: MapData?, s: Settings, selected: Int, ctl: MapCtl, onVisit
         })
         val fixes = d?.fixes.orEmpty()
         val pts = fixes.map { GeoPoint(it.lat, it.lon) }
+        // Only trustworthy readings draw the path: a ±2 km one would draw a jump you never made.
+        val trusted = fixes.filter { it.accuracyM <= 500f }.map { GeoPoint(it.lat, it.lon) }
         // Consecutive readings at the same spot add nothing to a path (and a zero-length one breaks drawing).
-        val line = pts.fold(ArrayList<GeoPoint>()) { acc, p -> if (acc.isEmpty() || acc.last().distanceToAsDouble(p) > 15) acc.add(p); acc }
+        val line = trusted.fold(ArrayList<GeoPoint>()) { acc, p -> if (acc.isEmpty() || acc.last().distanceToAsDouble(p) > 15) acc.add(p); acc }
         if (line.size >= 2) {
             // A soft casing under the line keeps it readable on any map.
             map.overlays.add(Polyline(map).apply {
@@ -400,35 +403,43 @@ private fun OsmMap(d: MapData?, s: Settings, selected: Int, ctl: MapCtl, onVisit
                 outlinePaint.color = path; outlinePaint.strokeWidth = 4.5f * density; outlinePaint.strokeCap = Paint.Cap.ROUND; outlinePaint.strokeJoin = Paint.Join.ROUND
                 outlinePaint.isAntiAlias = true
             })
-            // Where the day's path starts.
+        }
+        // Every reading as a dot; rough ones faint, so they don't look like places you went.
+        val (good, rough) = fixes.partition { it.accuracyM <= 500f }
+        if (rough.isNotEmpty()) map.overlays.add(Dots(rough.map { GeoPoint(it.lat, it.lon) }, path, 2f * density, alpha = 70))
+        if (good.isNotEmpty()) map.overlays.add(Dots(good.map { GeoPoint(it.lat, it.lon) }, path, 2.5f * density))
+        // Where the day's path starts (beside the spot, so it never hides a pin).
+        if (line.size >= 2) map.overlays.add(Marker(map).apply {
+            position = line.first(); setAnchor(0.15f, 1f); infoWindow = null
+            icon = BitmapDrawable(ctx.resources, flagPin(flagIcon, positive, density)); setOnMarkerClickListener { _, _ -> true }
+        })
+        val visits = d?.visits.orEmpty()
+        fun kindIcon(kind: String) = when (kind) { "home" -> homeIcon; "work" -> workIcon; else -> placeIcon }
+        // Your places that no stop sits on: a teardrop pin with their kind's icon.
+        s.places.filter { p -> visits.none { it.place?.id == p.id } }.forEach { p ->
             map.overlays.add(Marker(map).apply {
-                position = line.first(); setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER); infoWindow = null
-                icon = BitmapDrawable(ctx.resources, iconPin(flagIcon, positive, density, 26)); setOnMarkerClickListener { _, _ -> true }
+                position = GeoPoint(p.lat, p.lon); setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM); infoWindow = null
+                icon = BitmapDrawable(ctx.resources, teardrop(kindIcon(p.kind), null, accent, density, 36)); setOnMarkerClickListener { _, _ -> true }
             })
         }
-        // Every reading as a small dot.
-        if (pts.isNotEmpty()) map.overlays.add(Dots(pts, path, 2.5f * density))
-        // Your saved places, with their kind's icon.
-        s.places.forEach { p ->
-            map.overlays.add(Marker(map).apply {
-                position = GeoPoint(p.lat, p.lon); setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER); infoWindow = null
-                icon = BitmapDrawable(ctx.resources, iconPin(when (p.kind) { "home" -> homeIcon; "work" -> workIcon; else -> placeIcon }, accent, density, 32))
-                setOnMarkerClickListener { _, _ -> true }
-            })
-        }
-        // Stops, numbered in the order of the timeline; a chat badge where something was said.
-        d?.visits.orEmpty().forEachIndexed { i, v ->
+        // Stops: a teardrop pin numbered in timeline order — with the place's icon when it is one of
+        // your places (one pin, not two on top of each other), and a chat badge where something was said.
+        visits.forEachIndexed { i, v ->
             val talked = d!!.convs.any { it.startAt in (v.start - 10 * 60_000L)..(v.end + 10 * 60_000L) }
+            val color = if (i == selected) android.graphics.Color.rgb(255, 109, 0) else path
+            val bmp = teardrop(v.place?.let { kindIcon(it.kind) }, "${i + 1}", if (v.place != null && i != selected) accent else color, density, if (i == selected) 44 else 38)
             map.overlays.add(Marker(map).apply {
-                position = GeoPoint(v.lat, v.lon); setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER); infoWindow = null
-                icon = BitmapDrawable(ctx.resources, pin("${i + 1}", if (i == selected) accent else path, density, big = i == selected).let { if (talked) withBadge(it, chatIcon, accent, density) else it })
+                position = GeoPoint(v.lat, v.lon); setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM); infoWindow = null
+                icon = BitmapDrawable(ctx.resources, if (talked) withBadge(bmp, chatIcon, accent, density) else bmp)
                 setOnMarkerClickListener { _, _ -> onVisit(i); true }
             })
         }
-        // You are here: the latest reading (if recent), with how sure it is.
+        // You are here: the latest reading (if recent), with how sure it is. A rough reading taken
+        // during a stop is shown at the stop (the better estimate), not where the blur put it.
         fixes.lastOrNull()?.takeIf { System.currentTimeMillis() - it.at < 45 * 60_000L }?.let { f ->
-            val centre = GeoPoint(f.lat, f.lon)
-            map.overlays.add(org.osmdroid.views.overlay.Polygon(map).apply {
+            val atStop = visits.lastOrNull()?.takeIf { f.accuracyM > 500f && f.at <= it.end + 20 * 60_000L && Geo.meters(f.lat, f.lon, it.lat, it.lon) <= f.accuracyM }
+            val centre = atStop?.let { GeoPoint(it.lat, it.lon) } ?: GeoPoint(f.lat, f.lon)
+            if (atStop == null) map.overlays.add(org.osmdroid.views.overlay.Polygon(map).apply {
                 points = org.osmdroid.views.overlay.Polygon.pointsAsCircle(centre, f.accuracyM.toDouble().coerceAtLeast(10.0))
                 fillPaint.color = here; fillPaint.alpha = if (f.accuracyM > 500) 18 else 40
                 outlinePaint.color = here; outlinePaint.alpha = 120; outlinePaint.strokeWidth = 1.5f * density
@@ -452,9 +463,9 @@ private fun OsmMap(d: MapData?, s: Settings, selected: Int, ctl: MapCtl, onVisit
 }
 
 /** Readings as small dots: drawn straight from the projection, cheap for thousands, no bounding-box maths. */
-private class Dots(private val points: List<GeoPoint>, color: Int, private val radius: Float) : org.osmdroid.views.overlay.Overlay() {
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color; alpha = 200 }
-    private val halo = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = android.graphics.Color.WHITE; alpha = 180 }
+private class Dots(private val points: List<GeoPoint>, color: Int, private val radius: Float, alpha: Int = 200) : org.osmdroid.views.overlay.Overlay() {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color; this.alpha = alpha }
+    private val halo = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = android.graphics.Color.WHITE; this.alpha = (alpha * 0.9f).toInt() }
     private val p = android.graphics.Point()
     override fun draw(c: Canvas, projection: org.osmdroid.views.Projection) {
         for (g in points) {
@@ -464,6 +475,52 @@ private class Dots(private val points: List<GeoPoint>, color: Int, private val r
         }
     }
 }
+
+/**
+ * A classic location pin: a teardrop whose tip marks the spot (anchor it at the bottom centre),
+ * with a Material icon and/or a number inside, a white rim and a soft shadow.
+ */
+private fun teardrop(icon: androidx.compose.ui.graphics.vector.VectorPainter?, label: String?, color: Int, density: Float, widthDp: Int): Bitmap {
+    val w = (widthDp * density); val h = w * 1.32f
+    val bmp = Bitmap.createBitmap(w.toInt() + 2, h.toInt() + 2, Bitmap.Config.ARGB_8888)
+    val c = Canvas(bmp)
+    val r = w / 2f
+    fun drop(inset: Float, dy: Float = 0f) = android.graphics.Path().apply {
+        val cx = r; val cy = r + dy; val rr = r - inset
+        addCircle(cx, cy, rr, android.graphics.Path.Direction.CW)
+        moveTo(cx - rr * 0.62f, cy + rr * 0.78f); lineTo(cx, h - inset * 0.6f + dy * 0); lineTo(cx + rr * 0.62f, cy + rr * 0.78f); close()
+    }
+    c.drawPath(drop(1.5f * density, 1.2f * density), Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = android.graphics.Color.BLACK; alpha = 60 })
+    c.drawPath(drop(1.5f * density), Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = android.graphics.Color.WHITE })
+    c.drawPath(drop(4f * density), Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color })
+    if (icon != null) {
+        val inner = w * (if (label != null) 0.42f else 0.52f)
+        val img = androidx.compose.ui.graphics.ImageBitmap(inner.toInt(), inner.toInt())
+        androidx.compose.ui.graphics.drawscope.CanvasDrawScope().draw(androidx.compose.ui.unit.Density(density), androidx.compose.ui.unit.LayoutDirection.Ltr,
+            androidx.compose.ui.graphics.Canvas(img), androidx.compose.ui.geometry.Size(inner, inner)) {
+            with(icon) { draw(androidx.compose.ui.geometry.Size(inner, inner), colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.White)) }
+        }
+        c.drawBitmap(img.asAndroidBitmap(), r - inner / 2, r - inner / 2 - (if (label != null) 3 * density else 0f), null)
+    }
+    if (label != null) {
+        val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = android.graphics.Color.WHITE; textAlign = Paint.Align.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD }
+        if (icon != null) {
+            // The number as a small badge at the top right of the pin.
+            val br = 8f * density
+            c.drawCircle(w - br, br, br, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = android.graphics.Color.WHITE })
+            c.drawCircle(w - br, br, br - 1.5f * density, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = android.graphics.Color.DKGRAY })
+            tp.textSize = 9.5f * density
+            c.drawText(label, w - br, br - (tp.descent() + tp.ascent()) / 2, tp)
+        } else {
+            tp.textSize = r * 0.8f
+            c.drawText(label, r, r - (tp.descent() + tp.ascent()) / 2, tp)
+        }
+    }
+    return bmp
+}
+
+/** A small flag on a pole for where the path starts (anchor at the pole's foot). */
+private fun flagPin(icon: androidx.compose.ui.graphics.vector.VectorPainter, color: Int, density: Float): Bitmap = iconPin(icon, color, density, 24)
 
 /** A round pin with a Material icon in it. */
 private fun iconPin(icon: androidx.compose.ui.graphics.vector.VectorPainter, color: Int, density: Float, sizeDp: Int): Bitmap {
@@ -493,12 +550,13 @@ private fun withBadge(pin: Bitmap, icon: androidx.compose.ui.graphics.vector.Vec
 
 /** The blue "you are here" dot. */
 private fun meDot(color: Int, density: Float): Bitmap {
-    val px = (22 * density).toInt()
+    val px = (34 * density).toInt()
     val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
     val c = Canvas(bmp); val r = px / 2f
-    c.drawCircle(r, r, r, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color; alpha = 60 })
-    c.drawCircle(r, r, r * 0.55f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = android.graphics.Color.WHITE })
-    c.drawCircle(r, r, r * 0.42f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color })
+    c.drawCircle(r, r, r, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color; alpha = 55 })
+    c.drawCircle(r, r + density, r * 0.5f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = android.graphics.Color.BLACK; alpha = 50 })
+    c.drawCircle(r, r, r * 0.5f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = android.graphics.Color.WHITE })
+    c.drawCircle(r, r, r * 0.36f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color })
     return bmp
 }
 
@@ -560,6 +618,28 @@ private fun Timeline(
                         Text("Allow precise location for Wi-Fi-level accuracy. Still no constant GPS.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
                     }
                     TextButton(onClick = onPrecise) { Text("Allow") }
+                }
+            }
+        }
+        // A place saved from a rough reading can sit a kilometre off. When a precise reading says
+        // you're near (but not on) one of your places, offer to move its pin here.
+        val latest = d.fixes.lastOrNull()?.takeIf { it.accuracyM <= 100f && System.currentTimeMillis() - it.at < 30 * 60_000L }
+        val off = latest?.let { f -> s.places.map { it to Geo.meters(f.lat, f.lon, it.lat, it.lon) }.filter { (p, m) -> m > p.radiusM.coerceAtLeast(250) && m < 3_000 }.minByOrNull { it.second } }
+        if (latest != null && off != null) item(key = "move") {
+            val g = App.graph
+            val scope = rememberCoroutineScope()
+            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth().padding(bottom = Sp.s)) {
+                Row(Modifier.padding(Sp.m), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Place, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                    Spacer(Modifier.width(Sp.m))
+                    Column(Modifier.weight(1f)) {
+                        Text("Are you at ${off.first.name}?", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Text("Its pin is ${Geo.km(off.second)} from where you are now (accurate to ${latest.accuracyM.toInt()} m). If you're there, move it here.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                    }
+                    TextButton(onClick = {
+                        scope.launch { g.settings.update { st -> st.copy(places = st.places.map { if (it.id == off.first.id) it.copy(lat = latest.lat, lon = latest.lon) else it }) } }
+                    }) { Text("Move here") }
                 }
             }
         }

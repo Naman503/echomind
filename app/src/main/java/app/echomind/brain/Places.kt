@@ -60,6 +60,9 @@ class Places(
     /** A reading right now (from the map's "I'm here" or after turning history on). */
     suspend fun recordNow(): GeoFix? {
         val f = travel().locate(now = true) ?: return null
+        // Tapping "where am I" again and again shouldn't store the same spot again and again.
+        val last = db.locations().latest()
+        if (last != null && System.currentTimeMillis() - last.at < 60_000L && Geo.meters(last.lat, last.lon, f.lat, f.lon) < 20 && last.accuracyM <= f.accuracyM) return f
         db.locations().insert(LocationRow(at = System.currentTimeMillis(), lat = f.lat, lon = f.lon, accuracyM = f.accuracyM, source = "manual"))
         return f
     }
@@ -73,7 +76,9 @@ class Places(
 
     suspend fun visits(fixes: List<GeoFix>, lookUp: Boolean = true): List<Visit> {
         val s = settings.value
-        return Whereabouts.visits(fixes).map { v ->
+        // When there are precise readings, the ±2 km ones only blur stops: leave them out.
+        val precise = fixes.filter { it.accuracyM <= 500f }
+        return Whereabouts.visits(if (precise.size >= 2) precise else fixes).map { v ->
             val labelled = Whereabouts.label(v, s.places)
             if (labelled.name.isNotBlank()) labelled
             else labelled.copy(name = (if (lookUp) name(v.lat, v.lon) else cachedName(v.lat, v.lon)) ?: near(v.lat, v.lon, s.places))

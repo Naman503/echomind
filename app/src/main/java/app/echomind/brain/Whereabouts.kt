@@ -64,7 +64,14 @@ object Whereabouts {
     fun at(visits: List<Visit>, t: Long, slackMs: Long = 10 * 60_000L): Visit? = visits.firstOrNull { t >= it.start - slackMs && t <= it.end + slackMs }
 
     /** Total metres moved over the readings (straight lines between them). */
-    fun distance(fixes: List<GeoFix>): Double = fixes.sortedBy { it.at }.zipWithNext().sumOf { (a, b) -> Geo.meters(a.lat, a.lon, b.lat, b.lon) }
+    /**
+     * Metres really moved: a step only counts when it is bigger than the readings' uncertainty
+     * (two ±2 km readings 1.5 km apart are the same place, not a 1.5 km walk).
+     */
+    fun distance(fixes: List<GeoFix>): Double = fixes.sortedBy { it.at }.zipWithNext().sumOf { (a, b) ->
+        val d = Geo.meters(a.lat, a.lon, b.lat, b.lon)
+        if (d > maxOf(a.accuracyM, b.accuracyM, 30f)) d else 0.0
+    }
 
     // ── Weather ──
 
