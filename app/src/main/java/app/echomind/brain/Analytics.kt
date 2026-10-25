@@ -228,4 +228,12 @@ object Analytics {
         val start = from.atStartOfDay(zone).toInstant().toEpochMilli(); val end = to.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
         return db.utterances().range(start, end).filter { it.speaker != "Song" && it.speaker != "EchoMind" }.map { it.startAt to it.endAt }
     }
+
+    /** Languages over [from]..[to]: the whole period, and your own seconds per language each day. */
+    suspend fun languages(db: Db, from: LocalDate, to: LocalDate): Pair<Languages.Day, Map<LocalDate, Languages.Split>> {
+        val start = from.atStartOfDay(zone).toInstant().toEpochMilli(); val end = to.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        val lines = db.utterances().range(start, end).map { Languages.Line(it.speaker, it.text, it.startAt, it.endAt, it.conversationId) }
+        val perDay = lines.groupBy { Instant.ofEpochMilli(it.startAt).atZone(zone).toLocalDate() }.mapValues { (_, ls) -> Languages.day(ls, zone).mine }
+        return Languages.day(lines, zone) to perDay
+    }
 }

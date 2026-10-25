@@ -90,8 +90,8 @@ class WidgetConfigActivity : ComponentActivity() {
                                 }
                                 "Day" -> {
                                     SectionHeader("Show")
-                                    val show = remember { mutableStateListOf(*WidgetPrefs.get(c, id, "show", "focus,next,tasks,talk,health").split(',').toTypedArray()) }
-                                    listOf("focus" to "Today's focus", "next" to "Next event", "tasks" to "Tasks left", "talk" to "Talk time", "productivity" to "Productivity", "health" to "Phone temperature").forEach { (k, l) ->
+                                    val show = remember { mutableStateListOf(*WidgetPrefs.get(c, id, "show", DEFAULT_SHOW).split(',').toTypedArray()) }
+                                    listOf("focus" to "Today's focus", "next" to "Next event", "tasks" to "Tasks left", "talk" to "Talk time", "chart" to "Talk by hour and languages", "productivity" to "Productivity", "health" to "Phone temperature").forEach { (k, l) ->
                                         SwitchRow(l, null, k in show) { v -> if (v) show.add(k) else show.remove(k); WidgetPrefs.set(c, id, "show", show.joinToString(",")) }
                                     }
                                 }

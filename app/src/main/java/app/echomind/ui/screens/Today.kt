@@ -630,6 +630,14 @@ private fun DayGlance() {
     val nav = LocalNav.current
     val tick = app.echomind.ui.components.rememberResumeTick()
     val st by produceState<app.echomind.brain.Stats.Day?>(null, tick) { value = g.stats.day(java.time.LocalDate.now()) }
+    val today = remember(tick) { java.time.LocalDate.now() }
+    val lang by produceState<app.echomind.brain.Languages.Day?>(null, tick) { value = app.echomind.brain.Analytics.languages(g.db, today, today).first }
+    // Minutes of talk in each hour so far, for the little line.
+    val hourly by produceState(emptyList<Float?>(), tick) {
+        val h = app.echomind.brain.Analytics.heatmap(app.echomind.brain.Analytics.spans(g.db, today, today))[today.dayOfWeek.value - 1]
+        val now = java.time.LocalTime.now().hour
+        value = (0..now).map { h[it].toFloat() }
+    }
     val planRaw by remember { g.plans.observe("day") }.collectAsStateWithLifecycle(null)
     val plan = g.plans.decode(planRaw)
     Row(horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
@@ -644,6 +652,12 @@ private fun DayGlance() {
             Text(if (s == null || s.talkMin == 0) "No talk yet" else "${s.talkMin} min talk", style = MaterialTheme.typography.bodyMedium)
             if (s != null && s.talkMin > 0) Text("You ${s.meShare}% · ${s.conversations} conv.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (s != null) Text("${s.tasksDone} tasks done", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            lang?.mine?.takeIf { it.total >= 30 }?.let { m ->
+                val lc = app.echomind.ui.components.langColors()
+                app.echomind.ui.components.StackedBar(app.echomind.ui.components.langSlices(m, lc), Modifier.padding(top = 6.dp), height = 6.dp)
+                m.main?.let { Text("${m.pct(it)}% ${it.label}", style = MaterialTheme.typography.labelSmall, color = lc.getValue(it)) }
+            }
+            if (hourly.count { (it ?: 0f) > 0f } >= 2) app.echomind.ui.components.Sparkline(hourly, Modifier.padding(top = 4.dp), height = 24.dp)
         }
     }
 }

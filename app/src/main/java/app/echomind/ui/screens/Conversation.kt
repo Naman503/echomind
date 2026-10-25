@@ -165,6 +165,7 @@ fun ConversationScreen(id: Long, lineId: Long?) {
                             Text(conv.summary.orEmpty(), style = MaterialTheme.typography.bodyLarge)
                         }
                     }
+                    if (lines.size >= 3) item { TalkShare(lines) }
                     val points = decode(conv.keyPoints)
                     if (points.isNotEmpty()) {
                         item { SectionHeader("Key points") }
@@ -299,3 +300,29 @@ private fun Transcript(lines: List<Utterance>, focus: Long?, onPlay: (Long) -> U
 }
 
 private fun decode(json: String?): List<String> = json?.let { runCatching { Js.json.decodeFromString(ListSerializer(String.serializer()), it) }.getOrNull() }.orEmpty()
+
+/** Who spoke how much, and in which language: two thin bars with legends. */
+@Composable
+private fun TalkShare(lines: List<app.echomind.data.Utterance>) {
+    val palette = listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary, app.echomind.ui.theme.LocalSemantic.current.warning, MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.outline)
+    val talk = lines.filter { it.speaker != "Song" && it.speaker != "EchoMind" }
+    val bySpeaker = talk.groupBy { it.speaker ?: "?" }.mapValues { (_, ls) -> ls.sumOf { ((it.endAt - it.startAt) / 1000).coerceIn(1, 120) }.toFloat() }
+        .entries.sortedByDescending { it.value }
+    val who = bySpeaker.take(4).mapIndexed { i, (k, v) -> app.echomind.ui.components.Slice(v, palette[i], if (k == "me") "You" else k) } +
+        bySpeaker.drop(4).sumOf { it.value.toDouble() }.toFloat().takeIf { it > 0 }.let { if (it == null) emptyList() else listOf(app.echomind.ui.components.Slice(it, palette[4], "Others")) }
+    val lang = app.echomind.brain.Languages.day(talk.map { app.echomind.brain.Languages.Line(it.speaker, it.text, it.startAt, it.endAt, it.conversationId) })
+    val lc = app.echomind.ui.components.langColors()
+    val total = who.sumOf { it.value.toDouble() }.coerceAtLeast(1.0)
+    EchoCard {
+        Text("Who spoke", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        app.echomind.ui.components.StackedBar(who, Modifier.padding(vertical = 6.dp), height = 10.dp)
+        app.echomind.ui.components.ChartLegend(who) { "${(it.value / total * 100).toInt()}%" }
+        val all = lang.mine + lang.others
+        if (all.total > 0) {
+            Text("Language", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Sp.m))
+            val sl = app.echomind.ui.components.langSlices(all, lc)
+            app.echomind.ui.components.StackedBar(sl, Modifier.padding(vertical = 6.dp), height = 10.dp)
+            app.echomind.ui.components.ChartLegend(sl.filter { it.value > 0 }) { "${(it.value / all.total * 100).toInt()}%" }
+        }
+    }
+}

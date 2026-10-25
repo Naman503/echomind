@@ -291,13 +291,17 @@ class Notifier(private val context: Context) {
             .build())
     }
 
-    fun recap(headline: String, text: String, suggestions: Int) {
+    /** The evening recap; with [picture] (a day card) it expands to the chart, else to the text. */
+    fun recap(headline: String, text: String, suggestions: Int, picture: android.graphics.Bitmap? = null, icon: android.graphics.Bitmap? = null) {
         if (!can()) return
+        val more = if (suggestions > 0) "\n\n$suggestions suggestions waiting for review." else ""
         nm.notify(RECAP_ID, NotificationCompat.Builder(context, RECAP)
             .setSmallIcon(R.drawable.ic_stat_idle)
             .setContentTitle(headline)
             .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text + if (suggestions > 0) "\n\n$suggestions suggestions waiting for review." else ""))
+            .also { b -> icon?.let { b.setLargeIcon(it) } }
+            .setStyle(if (picture != null) NotificationCompat.BigPictureStyle().bigPicture(picture).bigLargeIcon(null as android.graphics.Bitmap?).setSummaryText(text.take(140) + more)
+                else NotificationCompat.BigTextStyle().bigText(text + more))
             .setAutoCancel(true)
             .setContentIntent(open("journal", 302))
             .build())

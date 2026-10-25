@@ -27,6 +27,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.Forum
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material.icons.rounded.Today
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,7 +66,12 @@ import app.echomind.ui.DayReviewRoute
 import app.echomind.ui.Fmt
 import app.echomind.ui.LocalNav
 import app.echomind.ui.components.EchoCard
+import app.echomind.ui.components.ChartLegend
 import app.echomind.ui.components.EmptyState
+import app.echomind.ui.components.LanguageCard
+import app.echomind.ui.components.MetricChip
+import app.echomind.ui.components.StackedColumns
+import app.echomind.ui.components.langSlices
 import app.echomind.ui.components.Pill
 import app.echomind.ui.components.ScreenTopBar
 import app.echomind.ui.components.SectionHeader
@@ -107,6 +118,7 @@ fun DashboardScreen() {
         value = Triple(cur, prev, usual)
     }
     val heat by produceState<Array<IntArray>?>(null, spanName, anchorStr) { value = Analytics.heatmap(Analytics.spans(g.db, from, end)) }
+    val langs by produceState<Pair<app.echomind.brain.Languages.Day, Map<LocalDate, app.echomind.brain.Languages.Split>>?>(null, spanName, anchorStr) { value = Analytics.languages(g.db, from, end) }
 
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         ScreenTopBar("Dashboard", onBack = { nav.back() }) { IconButton(onClick = { nav.go(DayNumbersRoute) }) { Icon(Icons.Rounded.Today, "A day in numbers") } }
@@ -157,10 +169,17 @@ fun DashboardScreen() {
             // 2. Against your usual (30-day average per recorded day).
             item {
                 val perDay = { l: List<DayPoint>, f: (DayPoint) -> Int -> l.filter { it.recorded }.map(f).takeIf { it.isNotEmpty() }?.average() }
+                val sem = LocalSemantic.current
                 Row(horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
-                    Tile("talk a day", perDay(cur) { it.talkMin }?.let { hm(it.toInt()) } ?: "–", Modifier.weight(1f), hint = usualHint(perDay(cur) { it.talkMin }, perDay(usual) { it.talkMin }))
-                    Tile("people a day", perDay(cur) { it.people.size }?.let { "%.1f".format(it) } ?: "–", Modifier.weight(1f), hint = usualHint(perDay(cur) { it.people.size }, perDay(usual) { it.people.size }))
-                    Tile("productivity", Analytics.avg(cur) { it.productivity }?.let { "${it.toInt()}" } ?: "–", Modifier.weight(1f), hint = usualHint(Analytics.avg(cur) { it.productivity }, Analytics.avg(usual) { it.productivity }))
+                    MetricChip(Icons.Rounded.RecordVoiceOver, perDay(cur) { it.talkMin }?.let { hm(it.toInt()) } ?: "–", "talk a day", Modifier.weight(1f), hint = usualHint(perDay(cur) { it.talkMin }, perDay(usual) { it.talkMin }))
+                    MetricChip(Icons.Rounded.Groups, perDay(cur) { it.people.size }?.let { "%.1f".format(it) } ?: "–", "people a day", Modifier.weight(1f), tint = MaterialTheme.colorScheme.tertiary, hint = usualHint(perDay(cur) { it.people.size }, perDay(usual) { it.people.size }))
+                    MetricChip(Icons.Rounded.Bolt, Analytics.avg(cur) { it.productivity }?.let { "${it.toInt()}" } ?: "–", "productivity", Modifier.weight(1f), tint = sem.warning, hint = usualHint(Analytics.avg(cur) { it.productivity }, Analytics.avg(usual) { it.productivity }))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(Sp.s), modifier = Modifier.padding(top = Sp.s)) {
+                    val made = Analytics.sum(cur) { it.tasksMade }; val done = Analytics.sum(cur) { it.tasksDone }
+                    MetricChip(Icons.Rounded.TaskAlt, "$done / $made", "tasks done", Modifier.weight(1f), tint = sem.positive, hint = if (made > 0) "${done * 100 / made}% finished" else null)
+                    MetricChip(Icons.Rounded.Forum, "${Analytics.sum(cur) { it.conversations }}", "conversations", Modifier.weight(1f), tint = MaterialTheme.colorScheme.secondary)
+                    MetricChip(Icons.Rounded.Bedtime, hm(Analytics.sum(cur) { it.lateMin }), "talk after 11 PM", Modifier.weight(1f), tint = MaterialTheme.colorScheme.outline)
                 }
             }
 
@@ -179,6 +198,22 @@ fun DashboardScreen() {
             heat?.takeIf { h -> h.any { r -> r.any { it > 0 } } }?.let { h ->
                 item { SectionHeader("When you talk") }
                 item { Heatmap(h) }
+            }
+            langs?.takeIf { it.first.mine.total > 0 }?.let { (all, perDay) ->
+                item { SectionHeader("Languages") }
+                item { LanguageCard(all, "Your languages this ${span.label.lowercase()}") }
+                if (span != Span.YEAR) item {
+                    val lc = app.echomind.ui.components.langColors()
+                    EchoCard {
+                        Text("Language each day", style = MaterialTheme.typography.titleSmall)
+                        StackedColumns(
+                            cur.map { p -> langSlices(perDay[p.date] ?: app.echomind.brain.Languages.Split(), lc) },
+                            cur.map { if (span == Span.WEEK) it.date.dayOfWeek.name.take(1) else if (it.date.dayOfMonth % 5 == 1) "${it.date.dayOfMonth}" else "" },
+                            Modifier.padding(top = Sp.s), highlight = cur.indexOfFirst { it.date == today },
+                        )
+                        ChartLegend(langSlices(all.mine, lc), Modifier.padding(top = Sp.s))
+                    }
+                }
             }
             item { SectionHeader("By weekday") }
             item {

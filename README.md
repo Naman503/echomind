@@ -98,6 +98,19 @@ Each finished week of diary entries becomes a memoir chapter, with a title, an e
 ### Dashboard
 Week, month or year: a headline, key numbers against the period before and your 30-day usual, the most unusual day, talk per day, mood and productivity, when you talk (weekday × hour), weekday pattern, who you talked with, topics, how you speak, influences ("happier on days you talk with X") with honest confidence labels and next-day effects, streaks, and a year in pixels.
 
+### Languages
+Which language you speak, and for how long: **Hindi** (Devanagari or Hindi typed in Latin letters), **English**, or **Hinglish** (a real mix), worked out from the words on the phone, with no AI. You see it in several places:
+- **Day review:** a donut of your minutes, the hours you spoke each language, what the people around you spoke, the language you use with each person, how often you switched language mid-conversation, how many different words you used, and your most used words.
+- **Dashboard:** the same for a week, month or year, plus the language you spoke each day.
+- **Coach:** your English share over the last two weeks.
+- **Other screens:** a language bar on each conversation (next to who spoke how much), on Today and on Insights.
+
+### Charts everywhere
+Shared chart pieces are used across the app: donuts, progress rings, stacked bars, sparklines, columns per hour and icon number chips.
+- **Today widget:** talk by hour, a language bar and task progress (switch them on or off in the widget settings).
+- **Tasks:** a progress line in the widget, and a chart of tasks finished in the last seven days.
+- **Evening recap notification:** expands to a day card with talk, conversations, people and tasks, talk by hour and your language split.
+
 ### Travel mode
 For trips and long days out, EchoMind rests so the battery lasts. Listening stops (or keeps recording for later, if you choose), and there is no transcription, AI or night review, even on the charger. The AI model is freed from memory. Reminders still ring. A persistent notification has an **I'm back** button, and a Quick Settings tile switches it from the shade.
 - **Turns on by itself if you forget:** you add your places (several homes, work, others, each with a radius). About every 30 minutes, a low-power Wi-Fi/mobile-network location (never GPS) checks whether you're far from all of them and not on your home–work commute. It needs two readings 20 minutes apart (or clearly fast movement), so one odd reading never switches it. Once it's on, there are no location checks at all. "Not travelling" undoes it for 12 hours.

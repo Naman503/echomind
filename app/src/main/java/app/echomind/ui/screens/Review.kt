@@ -98,6 +98,13 @@ import app.echomind.ui.ReviewSettingsRoute
 import app.echomind.ui.TaskRoute
 import app.echomind.ui.TopicsRoute
 import app.echomind.ui.components.EchoCard
+import app.echomind.ui.components.MetricChip
+import androidx.compose.material.icons.rounded.Forum
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Replay
 import app.echomind.ui.components.EmptyState
 import app.echomind.ui.components.Pill
 import app.echomind.ui.components.ScreenTopBar
@@ -163,6 +170,15 @@ fun InsightsScreen() {
                     Glance("$people", "people", null)
                     Glance("$journals/7", "diary days", null)
                     Glance("$coach", "coach tips", null)
+                }
+                val daily = (6 downTo 0).map { k -> val d = today.minusDays(k.toLong()).toString(); days.firstOrNull { it.day == d }?.metrics?.let { m -> runCatching { app.echomind.util.Js.json.decodeFromString(app.echomind.brain.DayMetrics.serializer(), m).talkMinutes.toFloat() }.getOrNull() } }
+                if (daily.count { it != null } >= 2) app.echomind.ui.components.Sparkline(daily, Modifier.padding(top = Sp.s), color = MaterialTheme.colorScheme.onPrimaryContainer, height = 36.dp)
+                val wl by produceState<app.echomind.brain.Languages.Split?>(null, days.size) { value = app.echomind.brain.Analytics.languages(g.db, weekStart, today).first.mine }
+                wl?.takeIf { it.total >= 60 }?.let { m ->
+                    val lc = app.echomind.ui.components.langColors()
+                    val sl = app.echomind.ui.components.langSlices(m, lc)
+                    app.echomind.ui.components.StackedBar(sl, Modifier.padding(top = Sp.s), height = 8.dp)
+                    app.echomind.ui.components.ChartLegend(sl.filter { it.value > 0 }, Modifier.padding(top = 4.dp)) { "${(it.value / m.total * 100).toInt()}%" }
                 }
                 val p = progress
                 if (p != null) {
@@ -316,6 +332,10 @@ fun DayReviewScreen(day: String) {
                 }
             }
         }
+        if (show("overview")) item(key = "langs") {
+            val lang by produceState<app.echomind.brain.Languages.Day?>(null, date, convs.size) { value = app.echomind.brain.Analytics.languages(g.db, d, d).first }
+            lang?.takeIf { it.mine.total > 0 }?.let { app.echomind.ui.components.LanguageCard(it) }
+        }
         if (review != null && show("people")) peopleSection(review, entities) { id -> nav.go(PersonRoute(id)) }
         if (review != null && show("topics")) topicsSection(review, convs) { nav.go(ConversationRoute(it)) }
         if (show("coach")) coachSection(convs, analyses, review, s) { cid, line -> nav.go(ConversationRoute(cid, line)) }
@@ -345,34 +365,35 @@ private fun LazyListScope.overview(entry: app.echomind.data.DayEntry?, review: D
     val sp = review?.speech
     item(key = "tiles1") {
         Row(horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
-            Tile("conversations", "${convs.size}", Modifier.weight(1f))
-            Tile("people", "${review?.people?.count { it.named } ?: 0}", Modifier.weight(1f), hint = review?.unnamedVoices?.takeIf { it > 0 }?.let { "+$it unnamed voices" })
-            Tile("you spoke", sp?.let { "${it.seconds / 60} min" } ?: "–", Modifier.weight(1f), hint = sp?.let { "${it.words} words" })
+            MetricChip(Icons.Rounded.Forum, "${convs.size}", "conversations", Modifier.weight(1f), tint = MaterialTheme.colorScheme.secondary)
+            MetricChip(Icons.Rounded.Groups, "${review?.people?.count { it.named } ?: 0}", "people", Modifier.weight(1f), tint = MaterialTheme.colorScheme.tertiary, hint = review?.unnamedVoices?.takeIf { it > 0 }?.let { "+$it unnamed" })
+            MetricChip(Icons.Rounded.RecordVoiceOver, sp?.let { "${it.seconds / 60}m" } ?: "–", "you spoke", Modifier.weight(1f), hint = sp?.let { "${it.words} words" })
         }
     }
     if (sp != null && sp.words > 0) item(key = "tiles2") {
         Row(horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
-            Tile("words / min", if (sp.wpm > 0) "${sp.wpm}" else "–", Modifier.weight(1f), hint = when { sp.wpm == 0 -> null; sp.wpm > 170 -> "fast"; sp.wpm < 100 -> "slow"; else -> "comfortable" })
-            Tile("fillers / 100 words", "%.1f".format(sp.fillerPer100), Modifier.weight(1f), hint = if (sp.fillerPer100 > 5) "high" else if (sp.fillerPer100 > 2) "some" else "low")
-            Tile("restarts", "${sp.restarts}", Modifier.weight(1f), hint = "${(sp.hindiShare * 100).toInt()}% Hindi")
+            MetricChip(Icons.Rounded.Speed, if (sp.wpm > 0) "${sp.wpm}" else "–", "words / min", Modifier.weight(1f), hint = when { sp.wpm == 0 -> null; sp.wpm > 170 -> "fast"; sp.wpm < 100 -> "slow"; else -> "comfortable" })
+            MetricChip(Icons.Rounded.GraphicEq, "%.1f".format(sp.fillerPer100), "fillers / 100", Modifier.weight(1f), tint = LocalSemantic.current.warning, hint = if (sp.fillerPer100 > 5) "high" else if (sp.fillerPer100 > 2) "some" else "low")
+            MetricChip(Icons.Rounded.Replay, "${sp.restarts}", "restarts", Modifier.weight(1f), tint = MaterialTheme.colorScheme.outline)
         }
     }
     if (review != null && (review.confidence != null || review.clarity != null || review.communication != null)) item(key = "scores") {
         EchoCard {
-            review.confidence?.let { Score("Confidence", it) }
-            review.clarity?.let { Score("Clarity", it) }
-            review.communication?.let { Score("Communication", it) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                review.confidence?.let { ScoreRing("Confidence", it) }
+                review.clarity?.let { ScoreRing("Clarity", it) }
+                review.communication?.let { ScoreRing("Communication", it) }
+            }
         }
     }
 }
 
 @Composable
-private fun Score(label: String, v: Int) {
+private fun ScoreRing(label: String, v: Int) {
     val c = when { v >= 70 -> LocalSemantic.current.positive; v >= 45 -> MaterialTheme.colorScheme.tertiary; else -> MaterialTheme.colorScheme.error }
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(120.dp))
-        LinearProgressIndicator(progress = { v / 100f }, color = c, trackColor = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f).height(8.dp))
-        Text("$v", style = MaterialTheme.typography.labelLarge, modifier = Modifier.width(36.dp).padding(start = Sp.s))
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        app.echomind.ui.components.Ring(v / 100f, c, size = 64.dp, thickness = 7.dp) { Text("$v", style = MaterialTheme.typography.titleMedium) }
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
     }
 }
 
@@ -602,6 +623,14 @@ fun CoachScreen() {
             item { TrendCard("Words per minute", days.map { it.first to it.second.speech.wpm.toFloat() }) { "${it.toInt()}" } }
             item { TrendCard("Confidence", days.mapNotNull { (d, r) -> r.confidence?.let { d to it.toFloat() } }) { "${it.toInt()}" } }
             item { TrendCard("Coaching points", days.map { it.first to it.second.coachPoints.toFloat() }, lowerIsBetter = true) { "${it.toInt()}" } }
+            item {
+                val today = LocalDate.now()
+                val share by produceState(emptyList<Pair<LocalDate, Float>>()) {
+                    value = app.echomind.brain.Analytics.languages(g.db, today.minusDays(13), today).second.entries.sortedBy { it.key }
+                        .filter { it.value.total >= 60 }.map { it.key to it.value.pct(app.echomind.brain.Languages.Lang.ENGLISH).toFloat() }
+                }
+                if (share.size >= 2) TrendCard("English share of your talk", share) { "${it.toInt()}%" }
+            }
         }
         if (rules.isNotEmpty()) {
             item { SectionHeader("Your most common English mistakes") }
@@ -634,12 +663,7 @@ private fun TrendCard(title: String, points: List<Pair<LocalDate, Float>>, lower
             Text(if (last == first) "Steady" else "${if (better) "Better" else "Worse"} than ${Fmt.day(points.first().first)} (${fmt(first)})", style = MaterialTheme.typography.labelSmall,
                 color = if (last == first) MaterialTheme.colorScheme.outline else if (better) LocalSemantic.current.positive else MaterialTheme.colorScheme.error)
         }
-        val max = points.maxOfOrNull { it.second }?.takeIf { it > 0 } ?: 1f
-        Row(Modifier.fillMaxWidth().height(56.dp).padding(top = Sp.s), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
-            points.forEach { (_, v) ->
-                Box(Modifier.weight(1f).fillMaxHeight((v / max).coerceIn(0.04f, 1f)).clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.75f)))
-            }
-        }
+        app.echomind.ui.components.Sparkline(points.map { it.second }, Modifier.padding(top = Sp.s), height = 56.dp)
         if (points.isNotEmpty()) Row(Modifier.fillMaxWidth()) {
             Text(Fmt.day(points.first().first), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, modifier = Modifier.weight(1f))
             Text(Fmt.day(points.last().first), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)

@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -405,6 +407,7 @@ fun TasksScreen() {
                                 doneToday = doneToday.count { it.parentId == null }, leftToday = overdue.size + today.size, overdue = overdue.size,
                                 next = reminders.firstOrNull { it.remindAt!! >= System.currentTimeMillis() },
                                 onNext = { view = View.REMINDERS },
+                                week = (6 downTo 0).map { k -> val a = todayStart - k * 86_400_000L; done.count { it.parentId == null && (it.completedAt ?: 0) in a until a + 86_400_000L } },
                             )
                         }
                         if (looksDone.isNotEmpty()) {
@@ -491,7 +494,7 @@ fun TasksScreen() {
 
 /** The top of My tasks: today's progress, what's overdue, and the next reminder. */
 @Composable
-private fun TasksOverview(doneToday: Int, leftToday: Int, overdue: Int, next: TaskRow?, onNext: () -> Unit) {
+private fun TasksOverview(doneToday: Int, leftToday: Int, overdue: Int, next: TaskRow?, onNext: () -> Unit, week: List<Int> = emptyList()) {
     val total = doneToday + leftToday
     EchoCard(color = MaterialTheme.colorScheme.primaryContainer) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -508,6 +511,17 @@ private fun TasksOverview(doneToday: Int, leftToday: Int, overdue: Int, next: Ta
                 )
                 Text(listOfNotNull("$doneToday done", overdue.takeIf { it > 0 }?.let { "$it overdue" }).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall, color = if (overdue > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+            // Finished each of the last seven days, today on the right.
+            if (week.sum() > 0) Column(horizontalAlignment = Alignment.End) {
+                val max = week.max().coerceAtLeast(1)
+                Row(Modifier.height(32.dp), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.Bottom) {
+                    week.forEachIndexed { i, n ->
+                        Box(Modifier.width(7.dp).fillMaxHeight((n.toFloat() / max).coerceAtLeast(0.08f)).clip(RoundedCornerShape(2.dp))
+                            .background(if (i == week.lastIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = if (n > 0) 0.45f else 0.15f)))
+                    }
+                }
+                Text("${week.sum()} this week", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
             }
         }
         if (next != null) {

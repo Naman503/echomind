@@ -330,6 +330,11 @@ class TasksWidget : GlanceAppWidget() {
                 Header(R.drawable.ic_w_task_alt, when (which) { "all" -> "Open tasks"; "overdue" -> "Overdue"; else -> "Today" } + if (list.isNotEmpty()) " · ${list.size}" else "") {
                     RoundButton(R.drawable.ic_w_add, "Add a task", actionStartActivity(Intent(context, QuickAddActivity::class.java)), primary = true, size = 34)
                 }
+                if (done + list.size > 0) {
+                    Spacer(GlanceModifier.height(6.dp))
+                    androidx.glance.appwidget.LinearProgressIndicator(done.toFloat() / (done + list.size), GlanceModifier.fillMaxWidth().height(4.dp).cornerRadius(2.dp),
+                        color = GlanceTheme.colors.primary, backgroundColor = GlanceTheme.colors.surfaceVariant)
+                }
                 Spacer(GlanceModifier.height(6.dp))
                 if (list.isEmpty()) Small(if (done > 0) "All done — $done finished today" else "Nothing due today.", size = 13)
                 if (list.isEmpty() && upcoming.isNotEmpty()) { Spacer(GlanceModifier.height(8.dp)); Small("NEXT UP", GlanceTheme.colors.primary, 10) }
@@ -350,6 +355,8 @@ class TasksWidget : GlanceAppWidget() {
 }
 
 // ── Agenda ──
+
+const val DEFAULT_SHOW = "focus,next,tasks,talk,chart,health"
 
 /** Next events and timed reminders, today and tomorrow. */
 class AgendaWidget : GlanceAppWidget() {
@@ -440,7 +447,11 @@ class NotesWidget : GlanceAppWidget() {
 
 /** Focus, next event, tasks, talk and the phone — choose which in the widget's settings. */
 class DayWidget : GlanceAppWidget() {
-    data class D(val focus: String?, val next: String?, val left: Int, val done: Int, val talk: Int, val share: Int, val productivity: Int?, val temp: Float, val missing: Int)
+    data class D(
+        val focus: String?, val next: String?, val left: Int, val done: Int, val talk: Int, val share: Int, val productivity: Int?, val temp: Float, val missing: Int,
+        /** Minutes of talk in each hour so far today, and your seconds per language. */
+        val hours: List<Float> = emptyList(), val lang: app.echomind.brain.Languages.Split = app.echomind.brain.Languages.Split(),
+    )
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val (wid, lk) = look(context, id)
@@ -453,12 +464,19 @@ class DayWidget : GlanceAppWidget() {
         val d = D(plan?.focus?.takeIf { it.isNotBlank() }, next?.let { "${if (it.allDay) "" else Prompts.time(it.startAt) + " · "}${it.title}" },
             g.db.tasks().live().count { it.status == "open" && it.parentId == null && it.dueAt != null && it.dueAt < end }, g.db.tasks().completedIn(todayStart(), now).size,
             st?.talkMin ?: 0, st?.meShare ?: 0, st?.productivity, g.governor.read().tempC, plan?.missing?.size ?: 0)
-        val show = WidgetPrefs.get(context, wid, "show", "focus,next,tasks,talk,health").split(',').toSet()
+            .let { d0 ->
+                val today = LocalDate.now()
+                val heat = runCatching { app.echomind.brain.Analytics.heatmap(app.echomind.brain.Analytics.spans(g.db, today, today))[today.dayOfWeek.value - 1] }.getOrNull()
+                val lang = runCatching { app.echomind.brain.Analytics.languages(g.db, today, today).first.mine }.getOrNull()
+                d0.copy(hours = heat?.let { h -> (6..23).map { h[it].toFloat() } }.orEmpty(), lang = lang ?: app.echomind.brain.Languages.Split())
+            }
+        val show = WidgetPrefs.get(context, wid, "show", DEFAULT_SHOW).split(',').toSet()
         provideContent { Themed(lk) { Content(context, lk, d, show) } }
     }
 
     override suspend fun providePreview(context: Context, widgetCategory: Int) {
-        provideContent { Themed(Look()) { Content(context, Look(), D("Ship the pricing page", "12:00 PM · Team stand-up", 3, 2, 84, 46, 72, 35f, 1), setOf("focus", "next", "tasks", "talk", "health")) } }
+        provideContent { Themed(Look()) { Content(context, Look(), D("Ship the pricing page", "12:00 PM · Team stand-up", 3, 2, 84, 46, 72, 35f, 1,
+            listOf(0f, 0f, 0f, 4f, 12f, 8f, 3f, 0f, 14f, 9f, 6f, 2f, 0f, 5f, 0f, 0f, 0f, 0f), app.echomind.brain.Languages.Split(1200, 900, 600)), setOf("focus", "next", "tasks", "talk", "chart", "health")) } }
     }
 
     @Composable
@@ -474,6 +492,24 @@ class DayWidget : GlanceAppWidget() {
                 }
                 if ("next" in show) d.next?.let { Row(verticalAlignment = Alignment.CenterVertically) { Icon(R.drawable.ic_w_event, size = 14); Small("  $it", GlanceTheme.colors.onSurface, 13) } }
                 Spacer(GlanceModifier.defaultWeight())
+                if ("chart" in show && d.hours.any { it > 0 }) {
+                    val dens = context.resources.displayMetrics.density
+                    val w = ((LocalSize.current.width.value - 28) * dens).toInt().coerceAtLeast(120)
+                    val nowIdx = java.time.LocalTime.now().hour - 6
+                    Image(ImageProvider(ChartBitmaps.bars(w, (30 * dens).toInt(), d.hours, highlight = nowIdx)), "Talk through the day", GlanceModifier.fillMaxWidth().height(30.dp))
+                    Row(GlanceModifier.fillMaxWidth()) { Small("6a", size = 9); Spacer(GlanceModifier.defaultWeight()); Small("12p", size = 9); Spacer(GlanceModifier.defaultWeight()); Small("6p", size = 9); Spacer(GlanceModifier.defaultWeight()); Small("11p", size = 9) }
+                    if (d.lang.total >= 30) {
+                        Spacer(GlanceModifier.height(4.dp))
+                        Image(ImageProvider(ChartBitmaps.stackedBar(w, (6 * dens).toInt(), ChartBitmaps.langParts(d.lang))), "Languages today", GlanceModifier.fillMaxWidth().height(6.dp))
+                        Small(app.echomind.brain.Languages.Lang.entries.filter { d.lang[it] > 0 }.joinToString(" · ") { "${it.label} ${d.lang.pct(it)}%" }, size = 10)
+                    }
+                    Spacer(GlanceModifier.height(6.dp))
+                }
+                if ("tasks" in show && d.left + d.done > 0) {
+                    androidx.glance.appwidget.LinearProgressIndicator(d.done.toFloat() / (d.left + d.done), GlanceModifier.fillMaxWidth().height(4.dp).cornerRadius(2.dp),
+                        color = GlanceTheme.colors.primary, backgroundColor = GlanceTheme.colors.surfaceVariant)
+                    Spacer(GlanceModifier.height(6.dp))
+                }
                 Row(GlanceModifier.fillMaxWidth()) {
                     if ("tasks" in show) Stat("${d.left}", "left · ${d.done} done", GlanceModifier.defaultWeight())
                     if ("talk" in show) Stat("${d.talk}m", "talk · you ${d.share}%", GlanceModifier.defaultWeight())

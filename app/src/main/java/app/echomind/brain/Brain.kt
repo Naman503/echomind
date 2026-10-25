@@ -287,7 +287,20 @@ class Brain(
         val e = db.days().get(day.toString()) ?: return
         if (prefs.getString("recapSent", null) == day.toString()) return
         prefs.edit().putString("recapSent", day.toString()).apply()
-        notifier.recap(e.headline ?: "Your day", e.diary?.take(300) ?: "", db.tasks().suggestedCount().first())
+        val (card, ring) = runCatching {
+            val st = Stats(db).day(day)
+            val lang = Analytics.languages(db, day, day).first.mine
+            val hours = (6..23).map { (st.hourlyMe[it] + st.hourlyOthers[it]).toFloat() }
+            val nums = listOf(
+                (if (st.talkMin < 60) "${st.talkMin}m" else "${st.talkMin / 60}h ${st.talkMin % 60}m") to "talk",
+                "${st.conversations}" to "conversations",
+                "${st.byPerson.count { it.first != "Others" }}" to "people",
+                "${st.tasksDone}/${st.tasksMade}" to "tasks done",
+            )
+            app.echomind.surfaces.ChartBitmaps.dayCard(nums, hours, lang) to
+                (if (lang.total > 0) app.echomind.surfaces.ChartBitmaps.donut(128, app.echomind.surfaces.ChartBitmaps.langParts(lang)) else null)
+        }.getOrElse { null to null }
+        notifier.recap(e.headline ?: "Your day", e.diary?.take(300) ?: "", db.tasks().suggestedCount().first(), card, ring)
     }
 
     private suspend fun announceSuggestions() {
