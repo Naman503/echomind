@@ -27,6 +27,8 @@ class ReminderReceiver : BroadcastReceiver() {
         val g = App.graph
         async {
             val t = g.db.tasks().get(id) ?: return@async
+            // Anonymous usage: reminders fired and the button pressed on them (fixed names only).
+            app.echomind.telemetry.Usage.count("reminder_action", mapOf("action" to when (intent.action) { ACTION_FIRE -> "fired"; ACTION_DONE -> "done"; ACTION_SNOOZE -> "snooze"; ACTION_TOMORROW -> "tomorrow"; else -> "other" }))
             when (intent.action) {
                 ACTION_FIRE -> if (t.status == "open") g.notifier.reminder(t)
                 ACTION_DONE -> { g.tasks.complete(t); g.notifier.cancelReminder(id) }
@@ -55,8 +57,8 @@ class TravelReceiver : BroadcastReceiver() {
         val g = App.graph
         async {
             when (intent.action) {
-                ACTION_OFF -> g.travel.disable()
-                ACTION_NOT_TRAVELLING -> g.travel.disable(suppressHours = 12)
+                ACTION_OFF -> { app.echomind.telemetry.Usage.count("notification_action", mapOf("action" to "travel_off")); g.travel.disable() }
+                ACTION_NOT_TRAVELLING -> { app.echomind.telemetry.Usage.count("notification_action", mapOf("action" to "travel_not_travelling")); g.travel.disable(suppressHours = 12) }
             }
         }
     }
@@ -75,8 +77,8 @@ class NudgeReceiver : BroadcastReceiver() {
         val g = App.graph
         async {
             when (intent.action) {
-                ACTION_TASK -> g.nudges.act(id) { g.tasks.addQuick(it) }
-                ACTION_DISMISS -> g.nudges.dismiss(id)
+                ACTION_TASK -> { app.echomind.telemetry.Usage.count("nudge_action", mapOf("action" to "add_task", "where" to "notification")); g.nudges.act(id) { g.tasks.addQuick(it, via = "nudge") } }
+                ACTION_DISMISS -> { app.echomind.telemetry.Usage.count("nudge_action", mapOf("action" to "dismiss", "where" to "notification")); g.nudges.dismiss(id) }
             }
             g.notifier.cancelNudge(id)
         }
@@ -130,6 +132,7 @@ class EventReceiver : BroadcastReceiver() {
 class DailyReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val kind = if (intent.action == ACTION_MORNING) "morning" else "evening"
+        app.echomind.telemetry.Usage.count("daily_alarm", mapOf("kind" to kind))
         WorkManager.getInstance(context).enqueue(OneTimeWorkRequestBuilder<DailyWorker>().setInputData(workDataOf("kind" to kind)).build())
         val s = App.graph.settings.value
         App.graph.reminders.scheduleDaily(s.morningBriefAt, s.eveningRecapAt)
@@ -155,6 +158,7 @@ class BootReceiver : BroadcastReceiver() {
             g.agenda.rescheduleAll()
             g.checkIns.schedule()
             g.reminders.scheduleDaily(s.morningBriefAt, s.eveningRecapAt)
+            app.echomind.telemetry.Usage.count("device_event", mapOf("kind" to when (intent.action) { Intent.ACTION_MY_PACKAGE_REPLACED -> "app_updated"; Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED -> "time_changed"; else -> "boot" }, "listening_wanted" to s.captureWanted))
             if (s.captureWanted && intent.action != Intent.ACTION_TIME_CHANGED && intent.action != Intent.ACTION_TIMEZONE_CHANGED) {
                 g.notifier.resumePrompt(if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) "EchoMind was updated." else "Your phone restarted.")
             }

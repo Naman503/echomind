@@ -104,32 +104,50 @@ fun AskScreen(initialThread: Long?, initialQuestion: String?, startVoice: Boolea
         searching = "Searching your memory…"
         val speakIt = spoken || s.autoReadAnswers
         scope.launch {
+            val began = System.currentTimeMillis()
+            val webOn = useWeb
             // Commands ("what's pending", "remind me…", "mark X done") are done directly.
             val handled = runCatching { g.assistant.handle(q, speak = speakIt) }.getOrNull()
             // Anonymous usage: that Ask was used and how, never the question.
-            g.usage.event("ask_used", mapOf("kind" to if (handled != null) "command" else if (useWeb) "answer_web" else "answer"))
+            g.usage.event("ask_used", mapOf("kind" to if (handled != null) "command" else if (webOn) "answer_web" else "answer"))
+            g.usage.once("first_ask")
             if (handled != null) {
                 threadId = g.ask.record(threadId, q, handled.reply)
                 searching = null; pendingQuestion = null
+                g.usage.event("ask_result", mapOf("kind" to "command", "outcome" to if (handled.ok) "done" else "not_found", "cmd" to handled.kind,
+                    "voice" to spoken, "latency" to app.echomind.telemetry.UsageMath.latencyBucket(System.currentTimeMillis() - began)))
                 return@launch
             }
             var answer = ""
-            g.ask.answer(threadId, q, useWeb).collect { e ->
+            var outcome = "incomplete"
+            var err: String? = null
+            var sources = -1
+            var firstToken = -1L
+            g.ask.answer(threadId, q, webOn).collect { e ->
                 when (e) {
                     is Ask.Event.Searching -> searching = e.text
-                    is Ask.Event.Sources -> searching = if (e.citations.isEmpty()) "Nothing matched — answering honestly" else "Found ${e.citations.size} moments · thinking"
-                    is Ask.Event.Delta -> { searching = null; draft = (draft ?: "") + e.text; answer += e.text }
+                    is Ask.Event.Sources -> { sources = e.citations.size; searching = if (e.citations.isEmpty()) "Nothing matched — answering honestly" else "Found ${e.citations.size} moments · thinking" }
+                    is Ask.Event.Delta -> { if (firstToken < 0) firstToken = System.currentTimeMillis() - began; searching = null; draft = (draft ?: "") + e.text; answer += e.text }
                     is Ask.Event.Done -> {
                         threadId = e.threadId; draft = null; searching = null; pendingQuestion = null
+                        if (err == null) outcome = if (e.outcome == "not_ready") "not_ready" else if (sources == 0) "no_sources" else "answered"
                         if (speakIt && answer.isNotBlank()) g.speaker.speak("Answer", answer)
                     }
-                    is Ask.Event.Failed -> {}
+                    is Ask.Event.Failed -> { outcome = "failed"; err = e.category }
                 }
             }
             draft = null; searching = null; pendingQuestion = null
+            // Outcome, error kind, timings and how many sources matched (a bucket) — never the text.
+            g.usage.event("ask_result", mapOf(
+                "kind" to if (webOn) "answer_web" else "answer", "outcome" to outcome, "err" to err,
+                "provider" to if (Providers.isLocal(provider)) "on_device" else app.echomind.telemetry.UsageMath.provider(provider),
+                "sources" to if (sources < 0) null else app.echomind.telemetry.UsageMath.countBucket(sources),
+                "first_token" to if (firstToken < 0) null else app.echomind.telemetry.UsageMath.latencyBucket(firstToken),
+                "latency" to app.echomind.telemetry.UsageMath.latencyBucket(System.currentTimeMillis() - began), "voice" to spoken,
+            ))
         }
     }
-    val voice = app.echomind.ui.components.rememberVoiceInput(onPartial = { input = it }, onFinal = { heard -> input = ""; send(heard, spoken = true) })
+    val voice = app.echomind.ui.components.rememberVoiceInput(onPartial = { input = it }, onFinal = { heard -> input = ""; send(heard, spoken = true) }, surface = "ask")
     LaunchedEffect(initialQuestion) { if (!initialQuestion.isNullOrBlank()) send(initialQuestion) }
     LaunchedEffect(startVoice) { if (startVoice) voice.start() }
     LaunchedEffect(messages.size, draft) { if (messages.isNotEmpty() || draft != null) list.animateScrollToItem(maxOf(0, messages.size + 1)) }
@@ -155,7 +173,7 @@ fun AskScreen(initialThread: Long?, initialQuestion: String?, startVoice: Boolea
                     Spacer(Modifier.height(Sp.l))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(Sp.s), verticalArrangement = Arrangement.spacedBy(Sp.s)) {
                         listOf("Brief me", "What's pending?", "Read my reminders", "Summarise yesterday", "What did I promise to do today?", "Remind me to drink water in 1 hour", "Who did I talk to today?")
-                            .forEach { q -> AssistChip(onClick = { send(q) }, label = { Text(q) }) }
+                            .forEachIndexed { i, q -> AssistChip(onClick = { g.usage.count("ask_suggestion", mapOf("chip" to i)); send(q) }, label = { Text(q) }) }
                     }
                 }
             }

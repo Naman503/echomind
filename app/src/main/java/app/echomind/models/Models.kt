@@ -307,7 +307,9 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
 
 /** Downloads one model as a foreground job with its own progress notification. */
 class ModelDownloadWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = app.echomind.telemetry.Usage.worker("model_download") { work() }
+
+    private suspend fun work(): Result {
         val id = inputData.getString("id") ?: return Result.failure()
         val spec = ModelCatalog.get(id) ?: return Result.failure()
         val models = app.echomind.App.graph.models
@@ -323,12 +325,15 @@ class ModelDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
         }
         return try {
             models.install(spec)
+            // Anonymous usage: the kind of model (our own catalogue's categories), never more.
+            app.echomind.telemetry.Usage.event("model_download", mapOf("kind" to spec.kind.name.lowercase(), "outcome" to "ok", "attempt" to runAttemptCount + 1))
             Result.success()
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             val final = runAttemptCount >= 6
             models.failed(spec, if (final) "Download failed: ${e.message}. Tap Get to try again." else "Connection problem — retrying…", final)
+            app.echomind.telemetry.Usage.event("model_download", mapOf("kind" to spec.kind.name.lowercase(), "outcome" to if (final) "failed" else "retry", "err" to app.echomind.telemetry.UsageMath.errorCategory(e), "attempt" to runAttemptCount + 1))
             if (final) Result.failure() else Result.retry()
         } finally {
             progressJob.cancel()

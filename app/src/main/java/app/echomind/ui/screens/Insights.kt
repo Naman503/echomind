@@ -345,7 +345,7 @@ private fun MissingRow(m: Plans.Item) {
                 Text(m.title, style = MaterialTheme.typography.bodyLarge)
                 if (m.why.isNotBlank()) Text(m.why, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (added) Pill("Added") else IconButton(onClick = { added = true; scope.launch { g.tasks.addQuick(m.title, toToday = false) } }) { Icon(Icons.Rounded.Add, "Add as a task") }
+            if (added) Pill("Added") else IconButton(onClick = { added = true; scope.launch { g.tasks.addQuick(m.title, toToday = false, via = "insight") } }) { Icon(Icons.Rounded.Add, "Add as a task") }
         }
     }
 }

@@ -67,6 +67,7 @@ class Transcriber(
         } catch (e: Throwable) {
             // Anything unexpected (I/O, out of memory) fails this item with backoff instead of stalling the queue.
             Log.w(TAG, "processing ${item.id} crashed", e)
+            app.echomind.telemetry.Usage.error("transcriber", e)
             fail(item, Exception(e.message ?: e.javaClass.simpleName, e))
             Outcome.FAILED
         }
@@ -134,6 +135,7 @@ class Transcriber(
                 val fallback = localFallback(engineId)
                 Log.w(TAG, "$engineId failed on piece ${i + 1}: ${e.message}${if (fallback != null) " — falling back to ${fallback.id}" else ""}")
                 if (fallback != null && (engineId !in LOCAL || (e as? SpeechException)?.retryable == false)) {
+                    app.echomind.telemetry.Usage.count("transcribe_fallback", mapOf("from" to app.echomind.telemetry.UsageMath.provider(engineId), "to" to app.echomind.telemetry.UsageMath.provider(fallback.id), "err" to app.echomind.telemetry.UsageMath.errorCategory(e)))
                     try {
                         fallback.transcribe(req)
                     } catch (e2: Exception) {
@@ -219,6 +221,9 @@ class Transcriber(
     private suspend fun finish(item: AudioItem, file: File) {
         val latest = db.audio().get(item.id) ?: item
         db.audio().update(latest.copy(state = "done", progressMs = latest.durationMs, error = null))
+        // Anonymous usage: a recording was transcribed — engine id (our list), source, length bucket.
+        app.echomind.telemetry.Usage.count("transcribe", mapOf("outcome" to "ok", "engine" to app.echomind.telemetry.UsageMath.provider(latest.engine ?: ""), "source" to if (latest.source == "call") "call" else "mic",
+            "len" to app.echomind.telemetry.UsageMath.durationBucket(latest.durationMs)))
         // The working WAV goes once its words are safe; a small compressed copy stays as the record
         // for as long as the user chose. Imported call recordings are copies; the dialer's original is never touched.
         runCatching { sounds().fillLyrics(latest) }
@@ -233,6 +238,8 @@ class Transcriber(
         // 2, 4, 8, 16, 32 minutes: a network blip or a busy recogniser doesn't burn every attempt at once.
         val retryAt = System.currentTimeMillis() + (60_000L shl attempts.coerceAtMost(5))
         db.audio().update(latest.copy(state = if (permanent || attempts >= 6) "failed" else "pending", attempts = attempts, retryAt = retryAt, error = e.message))
+        app.echomind.telemetry.Usage.count("transcribe", mapOf("outcome" to if (permanent || attempts >= 6) "gave_up" else "will_retry", "engine" to app.echomind.telemetry.UsageMath.provider(latest.engine ?: ""),
+            "source" to if (latest.source == "call") "call" else "mic", "err" to app.echomind.telemetry.UsageMath.errorCategory(e)))
         _status.value = _status.value.copy(active = false, lastError = e.message)
     }
 

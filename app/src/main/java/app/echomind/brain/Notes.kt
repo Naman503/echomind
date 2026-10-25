@@ -114,6 +114,7 @@ class Notes(private val db: Db, private val ai: Ai, private val settings: Settin
     suspend fun createByUser(title: String, body: String): Long {
         val now = System.currentTimeMillis()
         val lines = body.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        app.echomind.telemetry.Usage.count("capture_added", mapOf("type" to "note", "source" to "user"))
         val id = db.notes().insert(Note(title = title.ifBlank { "Note" }, body = body, origin = "user", createdAt = now, updatedAt = now,
             userLines = Js.json.encodeToString(ListSerializer(String.serializer()), lines)))
         db.notes().insertRevision(NoteRevision(noteId = id, version = 1, createdAt = now, reason = "Written by you", before = "", after = body, by = "user"))

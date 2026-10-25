@@ -149,6 +149,7 @@ fun SettingsScreen() {
     val nav = LocalNav.current
     val s by g.settings.flow.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
+    app.echomind.telemetry.TrackSearch("settings", query)
     val index = remember { settingsIndex() }
     SettingsPage("Settings") {
         item {
@@ -414,8 +415,8 @@ private fun KeyRow(name: String, present: Boolean) {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
         )
         Spacer(Modifier.width(Sp.s))
-        if (value.isNotBlank()) TextButton(onClick = { g.secrets.set(name, value); value = ""; g.brain.poke() }) { Text("Save") }
-        else if (present) TextButton(onClick = { g.secrets.set(name, null) }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+        if (value.isNotBlank()) TextButton(onClick = { g.secrets.set(name, value); value = ""; g.usage.event("api_key_added", mapOf("provider" to app.echomind.telemetry.UsageMath.keyName(name), "where" to "settings")); g.brain.poke() }) { Text("Save") }
+        else if (present) TextButton(onClick = { g.secrets.set(name, null); g.usage.event("api_key_removed", mapOf("provider" to app.echomind.telemetry.UsageMath.keyName(name))) }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
     }
 }
 
@@ -745,8 +746,11 @@ fun DataScreen() {
             OutlinedButton(enabled = !exporting, onClick = {
                 exporting = true
                 scope.launch {
+                    val began = System.currentTimeMillis()
                     val file = withContext(Dispatchers.IO) { Export.toJson(ctx) }
                     exporting = false
+                    // Anonymous usage: an export was made, its size and time as buckets.
+                    g.usage.event("data_export", mapOf("kind" to "json", "outcome" to "ok", "size" to app.echomind.telemetry.UsageMath.sizeBucket(file.length()), "took" to app.echomind.telemetry.UsageMath.latencyBucket(System.currentTimeMillis() - began)))
                     val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.files", file)
                     ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("application/json").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Export EchoMind"))
                 }
@@ -761,6 +765,7 @@ fun DataScreen() {
         text = { Text("Transcripts, conversations, notes, memory, tasks and journal are permanently deleted. Downloaded models and settings are kept.") },
         confirmButton = { TextButton(onClick = {
             confirm = false
+            g.usage.event("data_deleted", mapOf("what" to "all"))
             scope.launch(Dispatchers.IO) {
                 g.capture.stop()
                 g.db.clearAllTables()

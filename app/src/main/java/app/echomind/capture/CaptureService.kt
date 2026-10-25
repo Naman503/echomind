@@ -90,11 +90,15 @@ class CaptureService : Service() {
         // Every start must reach startForeground quickly. Only actions that come
         // from the user may ask for the microphone type.
         val wantsMic = action in setOf(ACTION_START, ACTION_RESUME, ACTION_PAUSE, ACTION_NOTE) || (action == ACTION_RESTART && g.settings.value.captureWanted)
+        // Anonymous usage: which listening control was used (notification, widget, tile or app alike).
+        val actionName = when (action) { ACTION_START -> "start"; ACTION_RESTART -> "restart"; ACTION_STOP -> "stop"; ACTION_PAUSE -> "pause"; ACTION_RESUME -> "resume"; ACTION_NOTE -> "note"; ACTION_PROCESS -> "process_now"; else -> "other" }
         if (!enterForeground(wantMic = wantsMic || micGranted)) {
+            app.echomind.telemetry.Usage.count("listening_action", mapOf("action" to actionName, "ok" to false))
             if (action == ACTION_RESTART) g.notifier.resumePrompt("Android stopped EchoMind in the background.")
             stopSelf()
             return START_NOT_STICKY
         }
+        app.echomind.telemetry.Usage.count("listening_action", mapOf("action" to actionName, "ok" to true, "mic" to micGranted))
         when (action) {
             ACTION_START, ACTION_RESUME -> scope.launch {
                 g.notifier.clearResumePrompt()
@@ -256,6 +260,7 @@ class CaptureService : Service() {
     private suspend fun addTypedNote(text: String) {
         val now = System.currentTimeMillis()
         g.db.utterances().insert(Utterance(startAt = now, endAt = now + 1_000, text = text.trim(), speaker = "me", source = "typed", engine = "typed", searchText = TextNorm.searchable(text)))
+        app.echomind.telemetry.Usage.count("capture_added", mapOf("type" to "text", "source" to "notification_note"))
         g.brain.poke()
     }
 

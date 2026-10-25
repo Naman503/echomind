@@ -125,6 +125,7 @@ fun PeopleScreen() {
     val all by remember { g.db.memory().observeEntities() }.collectAsStateWithLifecycle(emptyList())
     var kind by rememberSaveable { mutableStateOf("person") }
     var query by rememberSaveable { mutableStateOf("") }
+    app.echomind.telemetry.TrackSearch("people", query)
     var practice by remember { mutableStateOf(false) }
     val since = System.currentTimeMillis() - g.settings.value.namesWindowDays * 86_400_000L
     val people = all.filter { it.kind == "person" }

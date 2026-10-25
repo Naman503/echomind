@@ -29,6 +29,7 @@ class CaptureTile : TileService() {
 
     override fun onClick() {
         val g = App.graph
+        app.echomind.telemetry.Usage.count("tile_tap", mapOf("tile" to "listen", "was_listening" to (g.capture.state.value.mode == CaptureController.Mode.LISTENING)))
         if (g.capture.state.value.mode == CaptureController.Mode.LISTENING) {
             g.capture.pause(0)
             onStartListening()

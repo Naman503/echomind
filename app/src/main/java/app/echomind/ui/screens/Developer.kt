@@ -96,7 +96,9 @@ fun DeveloperScreen() {
         uri ?: return@rememberLauncherForActivityResult
         scope.launch(Dispatchers.IO) {
             runCatching { g.db.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").close() }
-            ctx.contentResolver.openOutputStream(uri)?.use { out -> ctx.getDatabasePath("echomind.db").inputStream().use { it.copyTo(out) } }
+            val ok = runCatching { ctx.contentResolver.openOutputStream(uri)?.use { out -> ctx.getDatabasePath("echomind.db").inputStream().use { it.copyTo(out) } } }
+            g.usage.event("data_export", mapOf("kind" to "database", "outcome" to if (ok.isSuccess) "ok" else "failed", "err" to ok.exceptionOrNull()?.let { app.echomind.telemetry.UsageMath.errorCategory(it) }))
+            ok.getOrThrow()
         }
     }
     fun run(name: String, block: suspend () -> Any?) {

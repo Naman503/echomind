@@ -133,7 +133,7 @@ fun AppRoot(pending: MutableState<String?>) {
     // Once, for new and existing users: what anonymous usage sharing is.
     var termsSeen by remember { mutableStateOf(g.usage.termsSeen) }
     if (!termsSeen) {
-        app.echomind.telemetry.UsageTermsScreen { g.usage.acceptTerms(); termsSeen = true }
+        app.echomind.telemetry.UsageTermsScreen { g.usage.acceptTerms(); g.usage.once("terms_accepted"); termsSeen = true }
         return
     }
     val stack = rememberNavBackStack(TodayRoute)
@@ -168,6 +168,8 @@ fun AppRoot(pending: MutableState<String?>) {
     }
     val suggested by remember { g.db.tasks().suggestedCount() }.collectAsStateWithLifecycle(0)
     val top = stack.lastOrNull()
+    // Anonymous usage: which screen was opened, by its fixed name (never ids or contents).
+    LaunchedEffect(top) { top?.let { g.usage.count("screen_view", mapOf("screen" to app.echomind.telemetry.UsageMath.screen(it))) } }
     val showBar = top is Route && top.isTab() && stack.size == 1
 
     BackHandler(enabled = stack.size == 1 && top != TodayRoute) { nav.tab(TodayRoute) }
@@ -338,8 +340,11 @@ private fun WebQuestion() {
                 Text("Turn off this question in Settings → Web search.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
             }
         },
-        confirmButton = { androidx.compose.material3.TextButton(enabled = picked.isNotEmpty(), onClick = { g.web.answer(picked.toList()) }) { Text("Search") } },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = { g.web.answer(null) }) { Text("Don't search") } },
+        confirmButton = { androidx.compose.material3.TextButton(enabled = picked.isNotEmpty(), onClick = {
+            g.usage.count("web_search_prompt", mapOf("answer" to "search", "all_queries" to (picked.size == req.queries.size)))
+            g.web.answer(picked.toList())
+        }) { Text("Search") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = { g.usage.count("web_search_prompt", mapOf("answer" to "declined")); g.web.answer(null) }) { Text("Don't search") } },
     )
 }
 

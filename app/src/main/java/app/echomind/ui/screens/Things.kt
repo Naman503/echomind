@@ -105,6 +105,7 @@ fun ThingsScreen() {
     var kind by rememberSaveable { mutableStateOf<String?>(null) }
     var wanted by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
+    app.echomind.telemetry.TrackSearch("things", query)
     val q = Things.key(query)
     val shown = things.filter { (kind == null || it.kind == kind) && (!wanted || it.status == "want" || it.status == "recommended") }
         .filter { q.isBlank() || Things.key(it.name).contains(q) || Things.aliases(it).any { a -> Things.key(a).contains(q) } || it.summary.lowercase().contains(query.lowercase()) }

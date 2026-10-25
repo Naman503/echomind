@@ -259,6 +259,7 @@ class Memory(private val db: Db, private val ai: Ai, private val settings: Setti
         val now = System.currentTimeMillis()
         val id = db.memory().insertFact(Fact(subject = subject.ifBlank { "Me" }, statement = statement, kind = kind, importance = 4, pinned = true, origin = "user", validFrom = now, createdAt = now, updatedAt = now))
         embedder.index(listOf(Embedder.Item("f", id, subject, statement)))
+        app.echomind.telemetry.Usage.count("capture_added", mapOf("type" to "memory", "source" to "user"))
         return id
     }
 

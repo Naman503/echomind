@@ -186,6 +186,7 @@ class Nudges(
             }
             db.nudges().update(n.copy(state = "shown", shownAt = now))
             notifier.nudge(n)
+            app.echomind.telemetry.Usage.count("nudge_shown", mapOf("kind" to when (n.kind) { "question", "recap", "due_soon", "check_in", "audio", "insight" -> n.kind; else -> "other" }))
             if (s.speakNudges && speaker().headphonesConnected() && !speaker().state.value.active) speaker().speak(n.title, listOf(n.title + ".", n.body))
             return
         }

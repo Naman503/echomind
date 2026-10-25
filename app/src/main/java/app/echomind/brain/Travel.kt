@@ -47,6 +47,7 @@ class Travel(
         val s = settings.value
         settings.update { it.copy(travel = true, travelSince = System.currentTimeMillis(), travelReason = reason, travelWhere = where, travelWasListening = it.captureWanted) }
         log { it + Span(System.currentTimeMillis(), reason = reason) }
+        app.echomind.telemetry.Usage.event("travel_mode", mapOf("on" to true, "reason" to when (reason) { "manual", "auto", "plan" -> reason; else -> "other" }, "profile" to when (s.travelProfile) { "rest", "places", "record" -> s.travelProfile; else -> "other" }))
         prefs.edit().remove("recent").apply()
         onStart(s.travelRecords)
         showOngoing()
@@ -63,6 +64,7 @@ class Travel(
         settings.update { it.copy(travel = false, travelReason = "", travelWhere = "", travelSuppressUntil = until, trips = trips) }
         log { l -> l.dropLast(1) + (l.lastOrNull()?.copy(to = System.currentTimeMillis()) ?: Span(s.travelSince, System.currentTimeMillis())) }
         notify(false, "", "", false)
+        app.echomind.telemetry.Usage.event("travel_mode", mapOf("on" to false, "not_travelling" to (suppressHours > 0), "lasted" to app.echomind.telemetry.UsageMath.durationBucket(System.currentTimeMillis() - s.travelSince)))
         onStop(s.travelWasListening)
         Log.i(TAG, "travel mode off")
     }

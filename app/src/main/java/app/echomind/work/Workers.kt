@@ -24,7 +24,9 @@ import java.time.LocalDate
 private var lastTravelCheck = 0L
 
 class WatchdogWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = app.echomind.telemetry.Usage.worker("watchdog") { work() }
+
+    private suspend fun work(): Result {
         val g = App.graph
         val s = g.settings.awaitLoaded()
         if (s.captureWanted && !s.isPaused() && !CaptureService.running) {
@@ -51,7 +53,9 @@ class WatchdogWorker(context: Context, params: WorkerParameters) : CoroutineWork
 
 /** Catch-up processing when no service is running; Android decides when (charging / idle). */
 class ProcessWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = app.echomind.telemetry.Usage.worker("process") { work() }
+
+    private suspend fun work(): Result {
         if (CaptureService.running) return Result.success()
         // As a foreground job (a quiet notification) it may run past ten minutes and isn't
         // killed as an idle background app, so a night review isn't cut off mid-answer.
@@ -89,7 +93,9 @@ class ProcessWorker(context: Context, params: WorkerParameters) : CoroutineWorke
 
 /** Morning brief (no AI needed) and evening journal + recap. */
 class DailyWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = app.echomind.telemetry.Usage.worker("daily") { work() }
+
+    private suspend fun work(): Result {
         val g = App.graph
         val s = g.settings.awaitLoaded()
         val today = LocalDate.now()
