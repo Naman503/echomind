@@ -106,6 +106,8 @@ fun AskScreen(initialThread: Long?, initialQuestion: String?, startVoice: Boolea
         scope.launch {
             // Commands ("what's pending", "remind me…", "mark X done") are done directly.
             val handled = runCatching { g.assistant.handle(q, speak = speakIt) }.getOrNull()
+            // Anonymous usage: that Ask was used and how, never the question.
+            g.usage.event("ask_used", mapOf("kind" to if (handled != null) "command" else if (useWeb) "answer_web" else "answer"))
             if (handled != null) {
                 threadId = g.ask.record(threadId, q, handled.reply)
                 searching = null; pendingQuestion = null

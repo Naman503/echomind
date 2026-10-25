@@ -14,8 +14,8 @@ android {
         applicationId = "in.elecroom.echomind.kt"
         minSdk = 31 // setCommunicationDevice, mode listener, recording callbacks
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
         // The speech and AI runtimes ship arm64 native code; every phone this
         // app is meant for is arm64.
         ndk { abiFilters += "arm64-v8a" }

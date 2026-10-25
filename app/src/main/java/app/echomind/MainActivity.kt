@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
         App.graph.speaker.uiVisible = true
         // Opening the app is a good moment to catch up: recover, import calls, wake the pipeline.
         val g = App.graph
+        g.usage.count("app_open")
         lifecycleScope.launch {
             runCatching { g.capture.recoverOrphans() }
             g.models.refresh()
