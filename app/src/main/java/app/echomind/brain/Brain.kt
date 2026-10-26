@@ -81,7 +81,10 @@ class Brain(
     fun poke() { wake.trySend(Unit) }
 
     /** "Process now": runs the AI regardless of the session mode. */
-    fun processNow() { forceAi = true; poke() }
+    fun processNow() { forceAi = true; retryNow = true; poke() }
+
+    /** Set by "Process now": recordings waiting out a retry delay go again right away. */
+    @Volatile private var retryNow = false
 
     @Volatile private var reviewDay: LocalDate? = null
 
@@ -105,6 +108,7 @@ class Brain(
             db.audio().resetWorking()
             db.conversations().resetWorking()
             while (keepGoing()) {
+                if (retryNow) { retryNow = false; transcriber.wakeService(); runCatching { db.audio().clearBackoff() } }
                 val didWork = runCatching { cycle() }.onFailure { Log.w(TAG, "cycle failed", it); app.echomind.telemetry.Usage.error("brain_cycle", it) }.getOrDefault(false)
                 if (!didWork) {
                     _state.value = _state.value.copy(phase = Phase.IDLE, detail = "")

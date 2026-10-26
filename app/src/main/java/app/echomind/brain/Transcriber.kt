@@ -58,7 +58,14 @@ class Transcriber(
     enum class Outcome { EMPTY, DONE, FAILED }
 
     /** Transcribes the next waiting recording. */
+    /** When the phone's speech service stops answering, transcription rests until then instead of failing recordings. */
+    @Volatile var serviceRestUntil = 0L
+
+    /** "Process now" tries again straight away, even while resting. */
+    fun wakeService() { serviceRestUntil = 0L }
+
     suspend fun step(): Outcome {
+        if (System.currentTimeMillis() < serviceRestUntil) return Outcome.EMPTY
         val item = db.audio().next() ?: return Outcome.EMPTY
         return try {
             if (process(item)) Outcome.DONE else Outcome.FAILED
@@ -233,6 +240,14 @@ class Transcriber(
 
     private suspend fun fail(item: AudioItem, e: Exception) {
         val latest = db.audio().get(item.id) ?: item
+        // The recogniser never finishing is the phone's speech service being stuck, not this recording:
+        // don't use up its attempts; rest for 10 minutes and say so.
+        if ((e as? SpeechException)?.code == "timeout") {
+            serviceRestUntil = System.currentTimeMillis() + 10 * 60_000L
+            db.audio().update(latest.copy(state = "pending", retryAt = 0, error = e.message))
+            _status.value = _status.value.copy(active = false, lastError = "Android's speech service isn't answering — trying again in 10 minutes. If it keeps happening, restarting the phone fixes it.")
+            return
+        }
         val attempts = latest.attempts + 1
         val permanent = (e as? SpeechException)?.retryable == false
         // 2, 4, 8, 16, 32 minutes: a network blip or a busy recogniser doesn't burn every attempt at once.

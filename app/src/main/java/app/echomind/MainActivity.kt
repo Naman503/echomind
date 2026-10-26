@@ -97,6 +97,21 @@ class MainActivity : ComponentActivity() {
                 g.capture.processNow(); g.brain.reviewNow(java.time.LocalDate.parse(day))
             }
         }
+        // Debug builds only: `--es stt_test win_….wav [--el stt_from 0 --el stt_to 60000] [--es stt_lang hi-IN]` runs the
+        // Android recogniser on one queued recording and logs what it heard (tag EchoSttTest); the queue is untouched.
+        if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) intent.getStringExtra("stt_test")?.let { name ->
+            val g = App.graph
+            lifecycleScope.launch {
+                val f = java.io.File(filesDir, "audio/$name")
+                val from = intent.getLongExtra("stt_from", 0); val to = intent.getLongExtra("stt_to", 60_000)
+                val langs = intent.getStringExtra("stt_lang")?.let { listOf(it) } ?: g.settings.value.speechLanguages.ifEmpty { listOf("en-IN") }
+                val began = System.currentTimeMillis()
+                runCatching { g.androidSpeech.transcribe(app.echomind.stt.SpeechRequest(f, from, to, langs)) }
+                    .map { l -> "$name $langs ${System.currentTimeMillis() - began} ms: ${l.size} lines: ${l.joinToString(" | ") { it.text }.take(600)}" }
+                    .getOrElse { e -> "$name $langs failed after ${System.currentTimeMillis() - began} ms: ${e.message}" }
+                    .let { line -> android.util.Log.w("EchoSttTest", line); java.io.File(filesDir, "stt_test.txt").appendText(line + "\n") }
+            }
+        }
         when (intent.action) {
             Intent.ACTION_ASSIST -> { pendingRoute.value = "ask"; App.graph.usage.count("deep_link", mapOf("target" to "ask", "via" to "assist")) }
             Intent.ACTION_SEND -> {

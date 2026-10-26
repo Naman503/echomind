@@ -156,14 +156,24 @@ class AndroidSpeech(
 
     override suspend fun transcribe(req: SpeechRequest): List<SpokenLine> {
         if (!available()) throw SpeechException("unavailable", "On-device speech recognition is not available on this phone", retryable = false)
-        if (!online && installed == null) runCatching { support(req.languages) }
+        // The language check can go unanswered by the speech service; never wait on it for long.
+        if (!online && installed == null) runCatching { kotlinx.coroutines.withTimeoutOrNull(8_000) { support(req.languages) } ?: Log.w(TAG, "language check unanswered; going ahead") }
         // Only ask for languages the phone can actually recognise offline.
         val usable = (if (online) req.languages else installed?.let { inst -> req.languages.filter { l -> inst.any { it.equals(l, true) } } }.orEmpty().ifEmpty { req.languages })
             .let { if (singleLanguage()) it.take(1) else it }
-        val result = suspendCancellableCoroutine { cont ->
-            run(req.copy(languages = usable)) { r -> if (cont.isActive) cont.resume(r) }
-        }
-        return result.getOrThrow()
+        return attempt(req.copy(languages = usable, hints = cleanHints(req.hints))).getOrThrow()
+    }
+
+    private suspend fun attempt(req: SpeechRequest): Result<List<SpokenLine>> {
+        val r = once(req)
+        // "client" / "busy" right after another session closed is a hiccup: one more try after a pause.
+        val code = (r.exceptionOrNull() as? SpeechException)?.code
+        if (code == "client" || code == "busy") { kotlinx.coroutines.delay(1_500); return once(req) }
+        return r
+    }
+
+    private suspend fun once(req: SpeechRequest): Result<List<SpokenLine>> = suspendCancellableCoroutine { cont ->
+        run(req) { r -> if (cont.isActive) cont.resume(r) }
     }
 
     private fun run(req: SpeechRequest, done: (Result<List<SpokenLine>>) -> Unit) {
@@ -250,7 +260,11 @@ class AndroidSpeech(
                 putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, Wav.SAMPLE_RATE)
                 putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION, RecognizerIntent.EXTRA_AUDIO_SOURCE)
             }
-            timeout = Runnable { complete(Result.failure(SpeechException("timeout", "recogniser did not finish in time"))) }
+            // No end-of-session signal in time: keep what was heard if the whole piece was fed, else fail.
+            timeout = Runnable {
+                if (lines.isNotEmpty() && fedMs.get() >= pieceMs - 250) { Log.w(TAG, "no end-of-session; keeping ${lines.size} lines"); complete(Result.success(lines.toList())) }
+                else complete(Result.failure(SpeechException("timeout", "recogniser did not finish in time")))
+            }
             val feed = speed()
             main.postDelayed(timeout!!, (pieceMs / feed).toLong() + pieceMs + 30_000)
             try {
@@ -296,6 +310,12 @@ class AndroidSpeech(
 
     companion object {
         private const val TAG = "EchoSpeech"
+
+        /** Name hints the recogniser can take: plain words (any script), short, de-duplicated, at most 60. */
+        fun cleanHints(hints: List<String>): List<String> = hints.asSequence()
+            .map { it.replace(Regex("[^\\p{L}\\p{M}\\p{N} '-]"), " ").replace(Regex("\\s+"), " ").trim() }
+            .filter { it.length in 2..30 && it.any(Char::isLetter) }
+            .distinctBy { it.lowercase() }.take(60).toList()
         const val SPEED = 3.0
 
         fun errorName(code: Int): String = when (code) {

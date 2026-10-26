@@ -49,6 +49,8 @@ interface AudioDao {
     @Query("DELETE FROM audio WHERE state IN ('done','skipped') AND endedAt < :before AND keptPath IS NULL") suspend fun pruneDone(before: Long)
     @Query("SELECT * FROM audio WHERE state = 'failed' ORDER BY startedAt DESC LIMIT 50") fun failed(): Flow<List<AudioItem>>
     @Query("UPDATE audio SET state = 'pending', attempts = 0, retryAt = 0, error = NULL WHERE state = 'failed'") suspend fun retryFailed()
+    /** "Process now": recordings waiting out a retry delay are tried straight away. */
+    @Query("UPDATE audio SET retryAt = 0 WHERE state IN ('pending','working') AND retryAt > 0") suspend fun clearBackoff()
     @Query("SELECT * FROM audio WHERE startedAt < :to AND endedAt > :from") suspend fun overlapping(from: Long, to: Long): List<AudioItem>
     @Delete suspend fun delete(item: AudioItem)
 }
