@@ -1,5 +1,6 @@
 package app.echomind.stt
 
+import kotlinx.coroutines.sync.withLock
 import android.content.Context
 import android.content.Intent
 import android.media.AudioFormat
@@ -72,24 +73,44 @@ class AndroidSpeech(
     data class Support(val available: Boolean, val installed: List<String> = emptyList(), val pending: List<String> = emptyList(), val supported: List<String> = emptyList())
 
     /** Which languages are installed, downloading, or downloadable on this phone. */
-    suspend fun support(languages: List<String>): Support = suspendCancellableCoroutine { cont ->
+    private val supportLock = kotlinx.coroutines.sync.Mutex()
+    @Volatile private var lastSupport: Triple<List<String>, Long, Support>? = null
+
+    /**
+     * Which languages the phone can recognise offline. Asked at most every 10 minutes (screens ask on every
+     * resume), one question at a time, and the recogniser made for it is always closed — even when the
+     * answer never comes or the screen goes away. Open recognisers left behind can jam the speech service.
+     */
+    suspend fun support(languages: List<String>, force: Boolean = false): Support = supportLock.withLock {
+        lastSupport?.let { (langs, at, sup) -> if (!force && langs == languages && System.currentTimeMillis() - at < 10 * 60_000L) return@withLock sup }
+        val sup = kotlinx.coroutines.withTimeoutOrNull(8_000) { askSupport(languages) } ?: return@withLock lastSupport?.third ?: Support(available())
+        lastSupport = Triple(languages, System.currentTimeMillis(), sup)
+        sup
+    }
+
+    private suspend fun askSupport(languages: List<String>): Support = suspendCancellableCoroutine { cont ->
         if (!available()) {
             cont.resume(Support(false)); return@suspendCancellableCoroutine
         }
+        var recognizer: SpeechRecognizer? = null
+        val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+        fun close() { if (closed.compareAndSet(false, true)) main.post { runCatching { recognizer?.destroy() } } }
+        cont.invokeOnCancellation { close() }
         main.post {
-            val recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-            recognizer.checkRecognitionSupport(
+            if (!cont.isActive) return@post
+            val r = SpeechRecognizer.createOnDeviceSpeechRecognizer(context).also { recognizer = it }
+            r.checkRecognitionSupport(
                 intentFor(languages),
                 Executors.newSingleThreadExecutor(),
                 object : RecognitionSupportCallback {
                     override fun onSupportResult(s: RecognitionSupport) {
-                        main.post { recognizer.destroy() }
+                        close()
                         installed = s.installedOnDeviceLanguages.toList()
                         if (cont.isActive) cont.resume(Support(true, s.installedOnDeviceLanguages, s.pendingOnDeviceLanguages, s.supportedOnDeviceLanguages))
                     }
 
                     override fun onError(error: Int) {
-                        main.post { recognizer.destroy() }
+                        close()
                         if (cont.isActive) cont.resume(Support(true))
                     }
                 },
@@ -157,7 +178,7 @@ class AndroidSpeech(
     override suspend fun transcribe(req: SpeechRequest): List<SpokenLine> {
         if (!available()) throw SpeechException("unavailable", "On-device speech recognition is not available on this phone", retryable = false)
         // The language check can go unanswered by the speech service; never wait on it for long.
-        if (!online && installed == null) runCatching { kotlinx.coroutines.withTimeoutOrNull(8_000) { support(req.languages) } ?: Log.w(TAG, "language check unanswered; going ahead") }
+        if (!online && installed == null) runCatching { support(req.languages) }
         // Only ask for languages the phone can actually recognise offline.
         val usable = (if (online) req.languages else installed?.let { inst -> req.languages.filter { l -> inst.any { it.equals(l, true) } } }.orEmpty().ifEmpty { req.languages })
             .let { if (singleLanguage()) it.take(1) else it }
@@ -173,12 +194,17 @@ class AndroidSpeech(
     }
 
     private suspend fun once(req: SpeechRequest): Result<List<SpokenLine>> = suspendCancellableCoroutine { cont ->
-        run(req) { r -> if (cont.isActive) cont.resume(r) }
+        val stop = run(req) { r -> if (cont.isActive) cont.resume(r) }
+        // A cancelled transcription must not leave its session open in the speech service.
+        cont.invokeOnCancellation { stop() }
     }
 
-    private fun run(req: SpeechRequest, done: (Result<List<SpokenLine>>) -> Unit) {
+    /** Starts a session; the returned function ends it early (from any thread). */
+    private fun run(req: SpeechRequest, done: (Result<List<SpokenLine>>) -> Unit): () -> Unit {
+        val stopper = java.util.concurrent.atomic.AtomicReference<(() -> Unit)?>(null)
+        val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
         val pipe = try { ParcelFileDescriptor.createPipe() } catch (e: IOException) {
-            done(Result.failure(SpeechException("pipe", e.message ?: "pipe failed"))); return
+            done(Result.failure(SpeechException("pipe", e.message ?: "pipe failed"))); return {}
         }
         val readEnd = pipe[0]
         val writeEnd = pipe[1]
@@ -194,6 +220,7 @@ class AndroidSpeech(
 
             fun complete(result: Result<List<SpokenLine>>) {
                 if (finished) return
+                stopper.set(null)
                 finished = true
                 timeout?.let { main.removeCallbacks(it) }
                 try { recognizer.destroy() } catch (_: Exception) {}
@@ -227,6 +254,8 @@ class AndroidSpeech(
                 lines.add(SpokenLine(req.startMs + start, req.startMs + end, text, lang = lang))
             }
 
+            stopper.set { main.post { complete(Result.failure(SpeechException("cancelled", "transcription cancelled"))) } }
+            if (cancelled.get()) { complete(Result.failure(SpeechException("cancelled", "transcription cancelled"))); return@post }
             recognizer.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {}
                 override fun onBeginningOfSpeech() {}
@@ -306,6 +335,7 @@ class AndroidSpeech(
                 }
             }, "EchoMind-speech-feed").start()
         }
+        return { cancelled.set(true); stopper.get()?.invoke() }
     }
 
     companion object {

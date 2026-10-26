@@ -470,7 +470,7 @@ fun RecordingScreen() {
                     if (missing.isNotEmpty()) TextButton(onClick = { g.speechPacks.download(missing) }) { Text("Download speech packs") }
                     packStatus.forEach { (lang, st) -> Text("$lang · $st", style = MaterialTheme.typography.bodySmall) }
                     if (packFailed || missing.isNotEmpty()) TextButton(onClick = { g.speechPacks.openGoogleSettings() }) { Text("Open Google's speech languages") }
-                    LaunchedEffect(packStatus) { support = g.androidSpeech.support(s.speechLanguages) }
+                    LaunchedEffect(packStatus) { support = g.androidSpeech.support(s.speechLanguages, force = packStatus.isNotEmpty()) }
                 }
             }
         }
