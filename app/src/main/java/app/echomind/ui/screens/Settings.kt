@@ -218,9 +218,9 @@ fun SettingsScreen() {
                     }
                 })
                 SwitchRow("Wallpaper colours", "Use your wallpaper's colours (privacy colours never change)", s.dynamicColor) { v -> update { it.copy(dynamicColor = v) } }
-                SettingRow("Status notification", when (s.statusDetail) { "minimal" -> "Minimal"; "status" -> "Status and phone heat"; else -> "Full: status, heat, queue, today" }, Icons.Rounded.Notifications, trailing = {
+                SettingRow("Status notification", when (s.statusDetail) { "minimal" -> "Minimal"; "status" -> "Status and phone heat"; else -> "Dashboard: pinned card with today's numbers, travel mode and controls" }, Icons.Rounded.Notifications, trailing = {
                     SingleChoiceSegmentedButtonRow {
-                        listOf("minimal" to "Min", "status" to "Status", "full" to "Full").forEachIndexed { i, (k, l) ->
+                        listOf("minimal" to "Min", "status" to "Status", "full" to "Dashboard").forEachIndexed { i, (k, l) ->
                             SegmentedButton(s.statusDetail == k, { update { it.copy(statusDetail = k) } }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
                         }
                     }
@@ -436,7 +436,7 @@ fun RecordingScreen() {
             SectionHeader("Microphone")
             inputs.forEach { i ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(s.inputDeviceId == i.id, { update { it.copy(inputDeviceId = i.id) } })
+                    RadioButton(s.inputDeviceId == i.id, { update { it.copy(inputDeviceId = i.id) }; App.graph.capture.restartMic() })
                     Column {
                         Text(i.label, style = MaterialTheme.typography.bodyLarge)
                         if (i.kind == "bluetooth") Text("Uses the headset's call microphone; music on the buds drops to call quality while listening.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -490,10 +490,11 @@ fun RecordingScreen() {
             SwitchRow("Use only my first language", "More accurate when you mostly speak one language (Hindi mode still understands Hinglish). Off = switch automatically.", s.languageMode == "single") { v ->
                 update { it.copy(languageMode = if (v) "single" else "switch") }
             }
-            SwitchRow("Boost quiet speech", "Gain control for a phone on the table or in a pocket", s.boostQuietSpeech) { v -> update { it.copy(boostQuietSpeech = v) } }
+            SwitchRow("Phone's own gain control", "Android's automatic gain for a phone on the table or in a pocket (works with the room boost below)", s.boostQuietSpeech) { v -> update { it.copy(boostQuietSpeech = v) }; App.graph.capture.restartMic() }
             Text("Still not as good as voice typing? Voice typing uses Google's online model when you have internet. You can choose “Google online (like Gboard)” for speech in Privacy & providers — the audio then goes to Google. Speaking to the phone from further away also lowers accuracy.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        item { MicSection() }
         item {
             SectionHeader("Recording")
             var win by remember { mutableFloatStateOf(s.windowMinutes.toFloat()) }

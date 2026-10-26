@@ -203,6 +203,12 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/quick_widget_info" />
         </receiver>
+        <receiver android:name=".surfaces.TravelWidgetReceiver" android:exported="false" android:label="EchoMind · Travel mode">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/travel_widget_info" />
+        </receiver>
         <activity android:name=".surfaces.WidgetConfigActivity" android:exported="true" android:theme="@style/Theme.EchoMind" android:excludeFromRecents="true" android:taskAffinity="">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />

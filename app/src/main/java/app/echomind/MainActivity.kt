@@ -112,6 +112,21 @@ class MainActivity : ComponentActivity() {
                     .let { line -> android.util.Log.w("EchoSttTest", line); java.io.File(filesDir, "stt_test.txt").appendText(line + "\n") }
             }
         }
+        // Debug builds only: `--es notif_preview 1` draws the dashboard notification's expanded card to files/notif.png.
+        if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) intent.getStringExtra("notif_preview")?.let {
+            runCatching {
+                val n = getSystemService(android.app.NotificationManager::class.java).activeNotifications.first { it.id == app.echomind.notify.Notifier.CAPTURE_ID }.notification
+                @Suppress("DEPRECATION") val views = (if (it == "small") n.contentView else n.bigContentView) ?: n.contentView
+                val parent = android.widget.FrameLayout(this)
+                val v = views.apply(this, parent)
+                val w = resources.displayMetrics.widthPixels - 64
+                v.measure(android.view.View.MeasureSpec.makeMeasureSpec(w, android.view.View.MeasureSpec.EXACTLY), android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED))
+                v.layout(0, 0, v.measuredWidth, v.measuredHeight)
+                val bmp = android.graphics.Bitmap.createBitmap(v.measuredWidth, v.measuredHeight, android.graphics.Bitmap.Config.ARGB_8888)
+                v.draw(android.graphics.Canvas(bmp))
+                java.io.File(filesDir, "notif_$it.png").outputStream().use { o -> bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, o) }
+            }.onFailure { e -> java.io.File(filesDir, "notif.err").writeText(e.toString()) }
+        }
         when (intent.action) {
             Intent.ACTION_ASSIST -> { pendingRoute.value = "ask"; App.graph.usage.count("deep_link", mapOf("target" to "ask", "via" to "assist")) }
             Intent.ACTION_SEND -> {

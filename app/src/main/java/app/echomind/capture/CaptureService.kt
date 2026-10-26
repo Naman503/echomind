@@ -89,7 +89,7 @@ class CaptureService : Service() {
         val action = intent?.action ?: ACTION_RESTART
         // Every start must reach startForeground quickly. Only actions that come
         // from the user may ask for the microphone type.
-        val wantsMic = action in setOf(ACTION_START, ACTION_RESUME, ACTION_PAUSE, ACTION_NOTE) || (action == ACTION_RESTART && g.settings.value.captureWanted)
+        val wantsMic = action in setOf(ACTION_START, ACTION_RESUME, ACTION_PAUSE, ACTION_NOTE) || (action == ACTION_REMIC && Recorder.isRunning()) || (action == ACTION_RESTART && g.settings.value.captureWanted)
         // Anonymous usage: which listening control was used (notification, widget, tile or app alike).
         val actionName = when (action) { ACTION_START -> "start"; ACTION_RESTART -> "restart"; ACTION_STOP -> "stop"; ACTION_PAUSE -> "pause"; ACTION_RESUME -> "resume"; ACTION_NOTE -> "note"; ACTION_PROCESS -> "process_now"; else -> "other" }
         if (!enterForeground(wantMic = wantsMic || micGranted)) {
@@ -120,6 +120,10 @@ class CaptureService : Service() {
                 refreshNotification()
             }
             ACTION_PROCESS -> { ensureBrain(); g.brain.processNow() }
+            // The dashboard was swiped away while EchoMind works: put it back.
+            ACTION_REPOST -> refreshNotification()
+            // Microphone settings changed: reopen it with the new mode, device and gain.
+            ACTION_REMIC -> scope.launch { kotlinx.coroutines.delay(400); if (Recorder.isRunning()) { Recorder.stop(); startRecording() } }
             ACTION_STOP -> scope.launch {
                 g.settings.update { it.copy(captureWanted = false) }
                 cancelResumeAlarm()
@@ -167,7 +171,8 @@ class CaptureService : Service() {
             return
         }
         if (!Recorder.isRunning()) {
-            val ok = Recorder.start(this, g.capture.windowsDir, s.windowMinutes * 60_000L, s.inputDeviceId, boost = s.boostQuietSpeech)
+            val ok = Recorder.start(this, g.capture.windowsDir, s.windowMinutes * 60_000L, s.inputDeviceId,
+                source = MicTest.sourceFor(s.micMode), boost = s.boostQuietSpeech, gainMaxDb = RoomGain.maxFor(s.roomGain))
             if (!ok) {
                 g.notifier.attention("Microphone unavailable", "EchoMind couldn't open the microphone. Another app may be using it, or the permission was removed.", "settings")
                 publish(CaptureController.Mode.OFF)
@@ -321,7 +326,7 @@ class CaptureService : Service() {
 
     /** Numbers for the notification's expanded view, refreshed every minute (cheap queries only). */
     private data class Info(val pending: Int = 0, val pendingMin: Int = 0, val toRead: Int = 0, val talkMin: Int = 0, val convs: Int = 0, val tasksDone: Int = 0,
-                            val nextReminder: String? = null, val listenedMin: Int = 0)
+                            val nextReminder: String? = null, val listenedMin: Int = 0, val hours: List<Float> = emptyList())
     @Volatile private var info = Info()
 
     private suspend fun refreshInfo() = runCatching {
@@ -335,6 +340,10 @@ class CaptureService : Service() {
             convs = g.db.conversations().inRangeOnce(dayStart, now).count { it.state == "done" },
             tasksDone = g.db.tasks().completedIn(dayStart, now).size,
             nextReminder = g.db.tasks().upcomingReminders(now).firstOrNull()?.let { "${Prompts.time(it.remindAt!!)} · ${it.title.take(40)}" },
+            hours = runCatching {
+                val today = java.time.LocalDate.now()
+                app.echomind.brain.Analytics.heatmap(app.echomind.brain.Analytics.spans(g.db, today, today))[today.dayOfWeek.value - 1].let { h -> (6..23).map { h[it].toFloat() } }
+            }.getOrDefault(emptyList()),
             listenedMin = (g.db.audio().overlapping(dayStart, now).filter { it.source == "mic" }.sumOf { minOf(it.endedAt, now) - maxOf(it.startedAt, dayStart) } / 60_000).toInt(),
         )
     }
@@ -369,7 +378,16 @@ class CaptureService : Service() {
                 i.nextReminder?.let { add("Next: $it") }
             }
         }
-        return st.copy(sub = sub, details = details)
+        if (s.statusDetail != "full") return st.copy(sub = sub, details = details)
+        // The dashboard: four numbers, talk by hour, and the travel state for its buttons.
+        val tiles = listOf(
+            (if (i.talkMin < 60) "${i.talkMin}m" else "${i.talkMin / 60}h ${i.talkMin % 60}m") to "talk today",
+            "${i.convs}" to "conversations",
+            (if (i.pending == 0) "✓" else if (i.pendingMin < 60) "${i.pendingMin}m" else "${i.pendingMin / 60}h ${i.pendingMin % 60}m") to (if (i.pending == 0) "caught up" else "to transcribe"),
+            (if (p.tempC > 0) "${"%.0f".format(p.tempC)}°" else "–") to (if (p.percent >= 0) "phone · ${p.percent}%" else "phone"),
+        )
+        val text = listOfNotNull(st.text.takeIf { it.isNotBlank() }, i.nextReminder?.let { "Next: $it" }).joinToString(" · ")
+        return st.copy(sub = sub, details = details, tiles = tiles, hours = i.hours, travel = s.travel, text = text)
     }
 
     private fun baseStatus(): Notifier.Status {
@@ -436,6 +454,8 @@ class CaptureService : Service() {
         private const val TAG = "EchoService"
         const val ACTION_START = "app.echomind.START"
         const val ACTION_RESTART = "app.echomind.RESTART"
+        const val ACTION_REMIC = "app.echomind.REMIC"
+        const val ACTION_REPOST = "app.echomind.REPOST"
         const val ACTION_STOP = "app.echomind.STOP"
         const val ACTION_PAUSE = "app.echomind.PAUSE"
         const val ACTION_RESUME = "app.echomind.RESUME"

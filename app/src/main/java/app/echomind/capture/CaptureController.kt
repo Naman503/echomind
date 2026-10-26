@@ -129,6 +129,9 @@ class CaptureController(
 
     fun pause(minutes: Long) = send(CaptureService.ACTION_PAUSE) { putExtra(CaptureService.EXTRA_MINUTES, minutes) }
     fun resume() = send(CaptureService.ACTION_RESUME)
+
+    /** Reopens the microphone with the current mode, device and gain (only if listening). */
+    fun restartMic() { if (Recorder.isRunning()) send(CaptureService.ACTION_REMIC) }
     fun processNow() = send(CaptureService.ACTION_PROCESS)
 
     /**

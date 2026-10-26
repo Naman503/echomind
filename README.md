@@ -126,6 +126,29 @@ Which lines are yours is decided per voice, not per line. All lines in a convers
   - the current threshold;
   - the lines it is least sure about, which you can answer with "Me" or "Not me". Each answer teaches the model, and lines you've confirmed are never changed again.
 
+### Hearing the whole room
+- **Microphone mode:**
+  - **Voice:** the speech-recognition mic.
+  - **Room:** the camcorder mic, tuned for a whole room.
+  - **Standard.**
+  - **Raw**, where the phone supports it.
+- **Find the best microphone:** records a few seconds in each mode while someone talks across the room, then picks the mode where voices stand out most. On a test phone, Room mode recorded the same room 19 dB louder than Voice mode.
+- **Room boost (Off / Auto / Strong):** EchoMind's own gain stage. It lifts distant voices to the level speech recognition expects (about −24 dBFS) and never clips. The room's own noise is kept down.
+
+### Pinned dashboard and travel controls
+While EchoMind listens or works, its notification is a card. It shows:
+- status, phone temperature and battery;
+- talk today, conversations, the transcription backlog;
+- a talk-by-hour chart and progress;
+- buttons for Pause/Resume, Process now and Stop;
+- **travel mode** as Rest, Note places or Record only.
+
+It is silent and sits with your normal notifications, not in the silent section. If it's swiped away while EchoMind is working, it comes straight back.
+
+Widgets:
+- a new **Travel mode** widget: on/off and the three profiles;
+- a **Travel** tile for the Quick actions widget, which lights up while travel is on.
+
 ### Charts everywhere
 Shared chart pieces are used across the app: donuts, progress rings, stacked bars, sparklines, columns per hour and icon number chips.
 - **Today widget:** talk by hour, a language bar and task progress (switch them on or off in the widget settings).

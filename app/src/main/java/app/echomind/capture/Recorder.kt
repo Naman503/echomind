@@ -100,7 +100,10 @@ object Recorder {
     @SuppressLint("MissingPermission")
     private var agc: android.media.audiofx.AutomaticGainControl? = null
 
-    fun start(context: Context, dir: File, windowMs: Long, deviceId: Int, source: Int = MediaRecorder.AudioSource.VOICE_RECOGNITION, boost: Boolean = true): Boolean {
+    /** EchoMind's own gain stage (null = off); see [RoomGain]. */
+    private var roomGain: RoomGain? = null
+
+    fun start(context: Context, dir: File, windowMs: Long, deviceId: Int, source: Int = MediaRecorder.AudioSource.VOICE_RECOGNITION, boost: Boolean = true, gainMaxDb: Float? = 18f): Boolean {
         synchronized(lock) {
             if (running) return true
             dir.mkdirs()
@@ -137,6 +140,7 @@ object Recorder {
             if (boost && android.media.audiofx.AutomaticGainControl.isAvailable()) {
                 agc = runCatching { android.media.audiofx.AutomaticGainControl.create(record.audioSessionId)?.apply { enabled = true } }.getOrNull()
             }
+            roomGain = gainMaxDb?.let { RoomGain(maxGainDb = it) }
             device = dev?.let { AudioInputs.label(it) } ?: "Phone microphone"
             sessionId = record.audioSessionId
 
@@ -235,6 +239,8 @@ object Recorder {
                     continue
                 }
                 if (assistantSpeaking) java.util.Arrays.fill(buffer, 0, n, 0)
+                // Distant voices lifted to a level recognisers hear well (before it's written and metered).
+                else roomGain?.process(buffer, n)
                 var sum = 0.0
                 for (i in 0 until n) {
                     val s = buffer[i].toInt()

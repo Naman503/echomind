@@ -51,6 +51,10 @@ data class Settings(
     val languageMode: String = "switch",
     /** Automatic gain control on the microphone, so quiet or distant speech is heard. */
     val boostQuietSpeech: Boolean = true,
+    /** Which microphone mode records: recognition | room | standard | raw (see MicTest). */
+    val micMode: String = "recognition",
+    /** EchoMind's own gain for distant voices: off | auto | strong. */
+    val roomGain: String = "auto",
     /** Which open model the on-device "sherpa" engine uses. */
     val sherpaModel: String = "whisper-small",
     /** Enrolled "me" voice is used to label lines (needs the speaker pack). */

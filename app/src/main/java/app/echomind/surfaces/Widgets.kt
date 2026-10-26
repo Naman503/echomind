@@ -566,6 +566,7 @@ class QuickWidget : GlanceAppWidget() {
             Tile("note", R.drawable.ic_w_edit_note, "Note"), Tile("brief", R.drawable.ic_w_volume_up, "Brief me"), Tile("checkin", R.drawable.ic_w_record_voice_over, "Check-in"),
             Tile("listen", R.drawable.ic_w_play_arrow, "Listen"), Tile("pause", R.drawable.ic_w_pause, "Pause"), Tile("dashboard", R.drawable.ic_w_auto_awesome, "Dashboard"),
             Tile("calendar", R.drawable.ic_w_calendar_month, "Calendar"), Tile("health", R.drawable.ic_w_thermostat, "Health"), Tile("plan", R.drawable.ic_w_checklist, "Plan"),
+            Tile("travel", R.drawable.ic_w_flight, "Travel"),
         )
         const val DEFAULT = "ask,task,note,brief,checkin"
     }
@@ -573,7 +574,8 @@ class QuickWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val (wid, lk) = look(context, id)
         val keys = WidgetPrefs.get(context, wid, "tiles", DEFAULT).split(',')
-        provideContent { Themed(lk) { Content(context, lk, keys.mapNotNull { k -> ALL.firstOrNull { it.key == k } }, WidgetPrefs.bool(context, wid, "labels", true)) } }
+        val travel = App.graph.settings.value.travel
+        provideContent { Themed(lk) { Content(context, lk, keys.mapNotNull { k -> ALL.firstOrNull { it.key == k } }, WidgetPrefs.bool(context, wid, "labels", true), travel) } }
     }
 
     override suspend fun providePreview(context: Context, widgetCategory: Int) {
@@ -587,19 +589,22 @@ class QuickWidget : GlanceAppWidget() {
         "voice" -> openApp(context, "ask:voice")
         "listen" -> capture(context, CaptureService.ACTION_START)
         "pause" -> capture(context, CaptureService.ACTION_PAUSE, 30)
+        "travel" -> travelAction(context, app.echomind.notify.TravelReceiver.ACTION_TOGGLE)
         else -> openApp(context, key)
     }
 
     @Composable
-    private fun Content(context: Context, lk: Look, tiles: List<Tile>, labels: Boolean) {
+    private fun Content(context: Context, lk: Look, tiles: List<Tile>, labels: Boolean, travel: Boolean = false) {
         Frame(lk, null, padding = 8) {
             Row(GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                 tiles.forEach { t ->
                     Column(GlanceModifier.defaultWeight().fillMaxHeight().clickable(action(context, t.key)), horizontalAlignment = Alignment.CenterHorizontally, verticalAlignment = Alignment.CenterVertically) {
-                        Box(GlanceModifier.size(40.dp).cornerRadius(20.dp).background(GlanceTheme.colors.secondaryContainer), contentAlignment = Alignment.Center) {
-                            Icon(t.icon, GlanceTheme.colors.onSecondaryContainer, 22)
+                        // The travel tile lights up while travel mode is on.
+                        val on = t.key == "travel" && travel
+                        Box(GlanceModifier.size(40.dp).cornerRadius(20.dp).background(if (on) GlanceTheme.colors.tertiary else GlanceTheme.colors.secondaryContainer), contentAlignment = Alignment.Center) {
+                            Icon(t.icon, if (on) GlanceTheme.colors.onTertiary else GlanceTheme.colors.onSecondaryContainer, 22)
                         }
-                        if (labels) { Spacer(GlanceModifier.height(3.dp)); Small(t.label, GlanceTheme.colors.onSurface, 11) }
+                        if (labels) { Spacer(GlanceModifier.height(3.dp)); Small(if (on) "Travel on" else t.label, GlanceTheme.colors.onSurface, 11) }
                     }
                 }
             }
@@ -619,15 +624,71 @@ class DayWidgetReceiver : GlanceAppWidgetReceiver() { override val glanceAppWidg
 class AskWidgetReceiver : GlanceAppWidgetReceiver() { override val glanceAppWidget: GlanceAppWidget = AskWidget() }
 class QuickWidgetReceiver : GlanceAppWidgetReceiver() { override val glanceAppWidget: GlanceAppWidget = QuickWidget() }
 
+private fun travelAction(context: Context, action: String, profile: String? = null): Action =
+    androidx.glance.appwidget.action.actionSendBroadcast(Intent(context, app.echomind.notify.TravelReceiver::class.java).setAction(action).apply { profile?.let { putExtra(app.echomind.notify.TravelReceiver.EXTRA_PROFILE, it) } })
+
+// ── Travel ──
+
+/** Travel mode at a glance: on or off, and how it rests — tap a profile to start in it, or "I'm back". */
+class TravelWidget : GlanceAppWidget() {
+    override val sizeMode = SizeMode.Exact
+    data class T(val on: Boolean, val profile: String, val since: Long, val auto: Boolean)
+
+    override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val (_, lk) = look(context, id)
+        val s = App.graph.settings.value
+        val t = T(s.travel, s.travelProfile, s.travelSince, s.travelAuto)
+        provideContent { Themed(lk) { Content(context, lk, t) } }
+    }
+
+    override suspend fun providePreview(context: Context, widgetCategory: Int) {
+        provideContent { Themed(Look()) { Content(context, Look(), T(false, "rest", 0, true)) } }
+    }
+
+    private val profiles = listOf("rest" to "Rest", "places" to "Note places", "record" to "Record only")
+
+    @Composable
+    private fun Content(context: Context, lk: Look, t: T) {
+        Frame(lk, openApp(context, "travel")) {
+            Column(GlanceModifier.fillMaxSize()) {
+                Header(R.drawable.ic_w_flight, if (t.on) "Travel mode · On" else "Travel mode") {
+                    if (t.on) RoundButton(R.drawable.ic_w_stop, "I'm back", travelAction(context, app.echomind.notify.TravelReceiver.ACTION_OFF), primary = true, size = 34)
+                }
+                Spacer(GlanceModifier.height(4.dp))
+                Small(
+                    if (t.on) "${profiles.firstOrNull { it.first == t.profile }?.second ?: "Rest"} since ${Prompts.time(t.since)} · nothing is processed until you're back"
+                    else "Off${if (t.auto) " · turns on by itself away from your places" else ""}. Start it as:",
+                    size = 12, lines = 2,
+                )
+                Spacer(GlanceModifier.defaultWeight())
+                Row(GlanceModifier.fillMaxWidth()) {
+                    profiles.forEachIndexed { i, (k, label) ->
+                        val active = t.on && t.profile == k
+                        Box(
+                            GlanceModifier.defaultWeight().height(38.dp).cornerRadius(19.dp)
+                                .background(if (active) GlanceTheme.colors.tertiary else GlanceTheme.colors.secondaryContainer)
+                                .clickable(travelAction(context, app.echomind.notify.TravelReceiver.ACTION_ON, k)),
+                            contentAlignment = Alignment.Center,
+                        ) { Small(label, if (active) GlanceTheme.colors.onTertiary else GlanceTheme.colors.onSecondaryContainer, 12) }
+                        if (i < profiles.lastIndex) Spacer(GlanceModifier.width(6.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+class TravelWidgetReceiver : GlanceAppWidgetReceiver() { override val glanceAppWidget: GlanceAppWidget = TravelWidget() }
+
 /** Keeps the widgets current, and their previews in the widget picker. */
 object WidgetUpdater {
     val receivers = listOf(ListenWidgetReceiver::class, MicWidgetReceiver::class, EchoWidgetReceiver::class, AgendaWidgetReceiver::class,
-        NotesWidgetReceiver::class, DayWidgetReceiver::class, AskWidgetReceiver::class, QuickWidgetReceiver::class)
+        NotesWidgetReceiver::class, DayWidgetReceiver::class, AskWidgetReceiver::class, QuickWidgetReceiver::class, TravelWidgetReceiver::class)
 
     suspend fun updateAll(context: Context) {
         runCatching {
             ListenWidget().updateAll(context); MicWidget().updateAll(context); TasksWidget().updateAll(context); AgendaWidget().updateAll(context)
             NotesWidget().updateAll(context); DayWidget().updateAll(context); AskWidget().updateAll(context); QuickWidget().updateAll(context)
+            TravelWidget().updateAll(context)
         }
     }
 
@@ -646,6 +707,10 @@ object WidgetUpdater {
         }
         scope.launch {
             g.capture.state.map { it.mode }.distinctUntilChanged().collect { runCatching { ListenWidget().updateAll(context); MicWidget().updateAll(context) } }
+        }
+        // Travel mode on/off or a new profile: the travel widget and the quick travel tile follow.
+        scope.launch {
+            g.settings.flow.map { Triple(it.travel, it.travelProfile, it.travelSince) }.distinctUntilChanged().collect { runCatching { TravelWidget().updateAll(context); QuickWidget().updateAll(context) } }
         }
         // Processing and heat change often: the status widget follows at most every 20 s.
         scope.launch {

@@ -1,5 +1,6 @@
 package app.echomind.notify
 
+import android.widget.RemoteViews
 import android.Manifest
 import android.app.AlarmManager
 import android.app.Notification
@@ -38,6 +39,8 @@ class Notifier(private val context: Context) {
         nm.createNotificationChannels(
             listOf(
                 ch(CAPTURE, "Listening status", NotificationManager.IMPORTANCE_LOW, "Shown while EchoMind listens or works through recordings", silent = true),
+                // The pinned dashboard: default importance keeps it at the top of the shade; silent, never buzzes.
+                ch(DASH, "EchoMind dashboard", NotificationManager.IMPORTANCE_DEFAULT, "The pinned EchoMind card while it listens or works: status, today's numbers, travel mode", silent = true),
                 ch(REMINDERS, "Reminders", NotificationManager.IMPORTANCE_HIGH, "Tasks you asked to be reminded of"),
                 ch(SUGGESTIONS, "Suggestions to review", NotificationManager.IMPORTANCE_DEFAULT, "Tasks and reminders the AI found, waiting for your OK", silent = true),
                 ch(BRIEF, "Morning brief", NotificationManager.IMPORTANCE_DEFAULT, "Today's reminders and open loops"),
@@ -72,9 +75,80 @@ class Notifier(private val context: Context) {
         val sub: String? = null,
         /** Lines for the expanded notification: what's running, queue, phone, today. */
         val details: List<String> = emptyList(),
+        /** The dashboard: a few numbers (value, label), talk per hour today (6 AM →), travel state. Empty = plain notification. */
+        val tiles: List<Pair<String, String>> = emptyList(),
+        val hours: List<Float> = emptyList(),
+        val travel: Boolean = false,
     )
 
-    fun capture(s: Status): Notification {
+    fun capture(s: Status): Notification = if (s.tiles.isNotEmpty()) dashboard(s) else plain(s)
+
+    private fun travelAction(action: String, code: Int, profile: String? = null): PendingIntent = PendingIntent.getBroadcast(
+        context, code, Intent(context, TravelReceiver::class.java).setAction(action).apply { profile?.let { putExtra(TravelReceiver.EXTRA_PROFILE, it) } },
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
+    /**
+     * The pinned EchoMind card: status, today's numbers, talk by hour, progress, and buttons for
+     * listening, travel mode and processing. Draws its own dark card so it reads on any phone's
+     * notification shade. If it's swiped away while EchoMind works, it comes straight back.
+     */
+    private fun dashboard(s: Status): Notification {
+        fun button(label: String, intent: PendingIntent, on: Boolean = false) = RemoteViews(context.packageName, R.layout.notif_dash_button).apply {
+            setTextViewText(R.id.button, label)
+            setOnClickPendingIntent(R.id.button, intent)
+            if (on) { setInt(R.id.button, "setBackgroundResource", R.drawable.notif_btn_on_bg); setTextColor(R.id.button, 0xFF1B1B1F.toInt()) }
+        }
+        fun head(v: RemoteViews) {
+            v.setTextViewText(R.id.title, s.title)
+            v.setTextViewText(R.id.text, s.text)
+            v.setTextViewText(R.id.sub, s.sub.orEmpty())
+            v.setViewVisibility(R.id.dot, if (s.recording) android.view.View.VISIBLE else android.view.View.GONE)
+        }
+        val small = RemoteViews(context.packageName, R.layout.notif_dash_small).also(::head)
+        val big = RemoteViews(context.packageName, R.layout.notif_dash_big).also(::head)
+        s.tiles.take(4).forEach { (v, l) ->
+            big.addView(R.id.tiles, RemoteViews(context.packageName, R.layout.notif_dash_tile).apply { setTextViewText(R.id.value, v); setTextViewText(R.id.label, l) })
+        }
+        if (s.hours.any { it > 0 }) big.setImageViewBitmap(R.id.chart, app.echomind.surfaces.ChartBitmaps.bars(720, 68, s.hours, color = 0xFF8C96FF.toInt(), highlight = java.time.LocalTime.now().hour - 6, accent = 0xFFFFB066.toInt()))
+        else big.setViewVisibility(R.id.chart, android.view.View.GONE)
+        if (s.progress in 0..100) big.setProgressBar(R.id.progress, 100, s.progress, false) else big.setViewVisibility(R.id.progress, android.view.View.GONE)
+        // Row 1: listening; row 2: travel mode and processing.
+        when {
+            s.recording -> big.addView(R.id.buttons, button("Pause 30 min", serviceAction(CaptureService.ACTION_PAUSE, 11, CaptureService.EXTRA_MINUTES to 30L)))
+            s.paused -> big.addView(R.id.buttons, button("Resume", serviceAction(CaptureService.ACTION_RESUME, 13)))
+            else -> big.addView(R.id.buttons, button("Listen", serviceAction(CaptureService.ACTION_START, 16)))
+        }
+        big.addView(R.id.buttons, button("Process now", serviceAction(CaptureService.ACTION_PROCESS, 15)))
+        big.addView(R.id.buttons, button("Stop", serviceAction(CaptureService.ACTION_STOP, 14)))
+        if (s.travel) big.addView(R.id.buttons2, button("✈ Travel on · I'm back", travelAction(TravelReceiver.ACTION_OFF, 331), on = true))
+        else {
+            big.addView(R.id.buttons2, button("✈ Travel: rest", travelAction(TravelReceiver.ACTION_ON, 332, "rest")))
+            big.addView(R.id.buttons2, button("✈ Note places", travelAction(TravelReceiver.ACTION_ON, 333, "places")))
+            big.addView(R.id.buttons2, button("✈ Record only", travelAction(TravelReceiver.ACTION_ON, 334, "record")))
+        }
+        return NotificationCompat.Builder(context, DASH)
+            .setSmallIcon(if (s.recording) R.drawable.ic_stat_listen else R.drawable.ic_stat_idle)
+            .setContentTitle(s.title)
+            .setContentText(s.text)
+            .setSubText(s.sub)
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setCustomContentView(small)
+            .setCustomBigContentView(big)
+            .setOngoing(true)
+            // Not setSilent: that files it under "Silent" at the bottom. The channel itself makes no sound.
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .setContentIntent(open())
+            // Swiped away (Android 14+ allows it) while EchoMind is working: it's put back.
+            .setDeleteIntent(serviceAction(CaptureService.ACTION_REPOST, 17))
+            .build()
+    }
+
+    private fun plain(s: Status): Notification {
         val b = NotificationCompat.Builder(context, CAPTURE)
             .setSmallIcon(if (s.recording) R.drawable.ic_stat_listen else R.drawable.ic_stat_idle)
             .setContentTitle(s.title)
@@ -338,6 +412,7 @@ class Notifier(private val context: Context) {
 
     companion object {
         const val CAPTURE = "capture"
+        const val DASH = "dashboard"
         const val REMINDERS = "reminders"
         const val SUGGESTIONS = "suggestions"
         const val BRIEF = "brief"

@@ -59,6 +59,16 @@ class TravelReceiver : BroadcastReceiver() {
             when (intent.action) {
                 ACTION_OFF -> { app.echomind.telemetry.Usage.count("notification_action", mapOf("action" to "travel_off")); g.travel.disable() }
                 ACTION_NOT_TRAVELLING -> { app.echomind.telemetry.Usage.count("notification_action", mapOf("action" to "travel_not_travelling")); g.travel.disable(suppressHours = 12) }
+                // From the dashboard notification and widgets: start travel mode with a profile, or flip it.
+                ACTION_ON -> {
+                    intent.getStringExtra(EXTRA_PROFILE)?.let { p -> g.settings.update { it.copy(travelProfile = p) } }
+                    app.echomind.telemetry.Usage.count("notification_action", mapOf("action" to "travel_on"))
+                    g.travel.enable("manual")
+                }
+                ACTION_TOGGLE -> if (g.settings.value.travel) g.travel.disable() else {
+                    intent.getStringExtra(EXTRA_PROFILE)?.let { p -> g.settings.update { it.copy(travelProfile = p) } }
+                    g.travel.enable("manual")
+                }
             }
         }
     }
@@ -66,6 +76,9 @@ class TravelReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_OFF = "app.echomind.TRAVEL_OFF"
         const val ACTION_NOT_TRAVELLING = "app.echomind.TRAVEL_NOT"
+        const val ACTION_ON = "app.echomind.TRAVEL_ON"
+        const val ACTION_TOGGLE = "app.echomind.TRAVEL_TOGGLE"
+        const val EXTRA_PROFILE = "profile"
     }
 }
 

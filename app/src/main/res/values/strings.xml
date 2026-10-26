@@ -7,6 +7,7 @@
     <string name="widget_day_description">Focus, next event, tasks, talk, temperature</string>
     <string name="widget_ask_description">Ask anything you\'ve said — by text or voice</string>
     <string name="widget_quick_description">Your choice of shortcuts</string>
+    <string name="widget_travel_description">Travel mode on or off, and how it rests: rest, note places or record only</string>
     <string name="app_name">EchoMind</string>
     <string name="shortcut_ask">Ask</string>
     <string name="shortcut_listen">Start listening</string>
