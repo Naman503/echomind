@@ -130,11 +130,11 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 @Composable
-private fun SettingsPage(title: String, content: LazyListScope.() -> Unit) {
+private fun SettingsPage(title: String, state: androidx.compose.foundation.lazy.LazyListState? = null, content: LazyListScope.() -> Unit) {
     val nav = LocalNav.current
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         ScreenTopBar(title, onBack = { nav.back() })
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), content = content, state = app.echomind.ui.components.rememberKeptListState())
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), content = content, state = state ?: app.echomind.ui.components.rememberKeptListState())
     }
 }
 
@@ -151,7 +151,20 @@ fun SettingsScreen() {
     var query by rememberSaveable { mutableStateOf("") }
     app.echomind.telemetry.TrackSearch("settings", query)
     val index = remember { settingsIndex() }
-    SettingsPage("Settings") {
+    val list = app.echomind.ui.components.rememberKeptListState()
+    // A search hit that lives on this page (Theme & colours): clear the search and scroll to it.
+    var scrollTo by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(scrollTo, query) {
+        val key = scrollTo ?: return@LaunchedEffect
+        if (query.isNotEmpty()) return@LaunchedEffect
+        kotlinx.coroutines.delay(50)
+        // Settings is a short list (one item per group): step through until the item is laid out, then bring it to the top.
+        var i = 0
+        while (i < list.layoutInfo.totalItemsCount && list.layoutInfo.visibleItemsInfo.none { it.key == key }) { list.scrollToItem(i); i++ }
+        list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key }?.let { list.animateScrollToItem(it.index) }
+        scrollTo = null
+    }
+    SettingsPage("Settings", list) {
         item {
             OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true, shape = MaterialTheme.shapes.extraLarge,
                 leadingIcon = { Icon(Icons.Rounded.Search, null) }, placeholder = { Text("Search settings — e.g. quiet hours, voices, temperature") },
@@ -163,7 +176,7 @@ fun SettingsScreen() {
             if (hits.isEmpty()) item { Text("Nothing matches “$query”.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(Sp.l)) }
             else item {
                 app.echomind.ui.components.NavGroup {
-                    hits.take(30).forEach { e -> app.echomind.ui.components.NavRow(e.icon, e.title, e.where) { nav.go(e.route) } }
+                    hits.take(30).forEach { e -> app.echomind.ui.components.NavRow(e.icon, e.title, e.where) { if (e.route == app.echomind.ui.SettingsRoute) { query = ""; scrollTo = "appearance" } else nav.go(e.route) } }
                 }
             }
             return@SettingsPage
@@ -207,7 +220,7 @@ fun SettingsScreen() {
             row(Icons.Rounded.RecordVoiceOver, "Voice & read-aloud", "Voices, speed, earphones vs speaker, nudges") { nav.go(app.echomind.ui.ReadingRoute) }
             row(Icons.Rounded.Notifications, "Notifications", "Morning brief, evening recap, suggestions") { nav.go(NotificationsRoute) }
         }
-        item {
+        item(key = "appearance") {
             SectionHeader("Appearance & you")
             app.echomind.ui.components.NavGroup {
                 SettingRow("Theme", null, Icons.Rounded.Palette, trailing = {
@@ -218,13 +231,21 @@ fun SettingsScreen() {
                     }
                 })
                 SwitchRow("Wallpaper colours", "Use your wallpaper's colours (privacy colours never change)", s.dynamicColor) { v -> update { it.copy(dynamicColor = v) } }
-                SettingRow("Status notification", when (s.statusDetail) { "minimal" -> "Minimal"; "status" -> "Status and phone heat"; else -> "Dashboard: pinned card with today's numbers, travel mode and controls" }, Icons.Rounded.Notifications, trailing = {
-                    SingleChoiceSegmentedButtonRow {
+                // Title on top and the choice full-width below: three buttons beside the title left it one letter wide.
+                Column(Modifier.fillMaxWidth().padding(horizontal = Sp.l, vertical = Sp.s)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Notifications, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(Sp.m))
+                        Text("Status notification", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = Sp.s)) {
                         listOf("minimal" to "Min", "status" to "Status", "full" to "Dashboard").forEachIndexed { i, (k, l) ->
-                            SegmentedButton(s.statusDetail == k, { update { it.copy(statusDetail = k) } }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
+                            SegmentedButton(s.statusDetail == k, { update { it.copy(statusDetail = k) } }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(l, maxLines = 1) }
                         }
                     }
-                })
+                    Text(when (s.statusDetail) { "minimal" -> "Minimal: a quiet line while listening"; "status" -> "Status and phone heat"; else -> "Dashboard: pinned card with today's numbers, travel mode and controls" },
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                }
                 var name by remember { mutableStateOf(s.userName) }
                 OutlinedTextField(name, { name = it; update { st -> st.copy(userName = it) } }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = Sp.l, vertical = Sp.s))
             }
