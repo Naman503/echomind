@@ -65,7 +65,8 @@ class Speaker(
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
 
-    private val tts = TtsModels(models, threads)
+    @Volatile private var providerOverride: String? = null
+    private val tts = TtsModels(models, threads) { providerOverride ?: settings.value.kokoroProvider }
     private val am = context.getSystemService(AudioManager::class.java)
     private var job: Job? = null
     private var track: AudioTrack? = null
@@ -238,7 +239,7 @@ class Speaker(
                     val voice = listOf(if (lang == "hi") hi else en, if (lang == "hi") en else hi).firstOrNull { usable(it) && it!!.reads(lang) }
                         ?: (if (lang == "hi") hi else en)?.takeIf { usable(it) } ?: (if (lang == "hi") en else hi)?.takeIf { usable(it) }
                     if (voice?.engine == "system") { queue.send(Chunk(i, sentence, null, 0, lang, voice.id)); continue }
-                    val engine = voice?.let { tts.get(VoiceCatalog.packFor(it, models)) }
+                    val engine = voice?.let { tts.get(VoiceCatalog.packFor(it, models, s)) }
                     if (voice == null || engine == null) { queue.send(Chunk(i, sentence, null, 0, lang)); continue }
                     val modelSpeed = minOf(_state.value.speed, NATURAL_SPEED)
                     val audio = runCatching { synth(engine, voice, sentence, modelSpeed, lang) }.getOrNull()
@@ -306,6 +307,34 @@ class Speaker(
             if (runCatching { t.playbackParams = PlaybackParams().allowDefaults().setSpeed(x).setPitch(1f) }.isSuccess) return
             x -= 0.25f // above the device's time-stretch limit: use the highest it accepts
         }
+    }
+
+    /**
+     * Times both Kokoro models on this phone and saves the fastest listening speed each keeps up with,
+     * so "auto" can use full quality whenever it's smooth at your speed.
+     */
+    /** Per backend: (full, compressed) smooth-up-to speeds from the last [measureKokoro]. */
+    val lastProviderTimes = java.util.concurrent.ConcurrentHashMap<String, Pair<Float, Float>>()
+
+    suspend fun measureKokoro(): Pair<Float, Float> {
+        fun upTo(x: Double?) = x?.let { (it * NATURAL_SPEED).toFloat().coerceAtMost(MAX_SPEED) } ?: 0f
+        // Each backend in turn (some phones run Kokoro faster on XNNPACK); keep the fastest. NNAPI is left out:
+        // it's deprecated, and a driver crash there would take listening down with it.
+        var best: Triple<String, Float, Float>? = null
+        for (p in listOf("cpu", "xnnpack")) {
+            providerOverride = p
+            tts.release()
+            val full = upTo(if (models.isInstalled(VoiceCatalog.KOKORO_HQ)) runCatching { measure("kokoro-heart", VoiceCatalog.KOKORO_HQ) }.getOrNull() else null)
+            val small = upTo(if (models.isInstalled("kokoro-multi")) runCatching { measure("kokoro-heart", "kokoro-multi") }.getOrNull() else null)
+            Log.i(TAG, "kokoro on $p: full $full, compressed $small")
+            lastProviderTimes[p] = full to small
+            if (best == null || maxOf(full, small) > maxOf(best.second, best.third)) best = Triple(p, full, small)
+        }
+        providerOverride = null
+        tts.release()
+        val b = best!!
+        settings.update { it.copy(kokoroProvider = b.first, kokoroFullUpTo = b.second, kokoroSmallUpTo = b.third) }
+        return b.second to b.third
     }
 
     // ── Android's built-in voices, the fallback ──
@@ -383,10 +412,10 @@ class Speaker(
      * How much faster than real time [voiceId] speaks on this phone (audio seconds per
      * second of work). Above the listening speed means smooth playback.
      */
-    suspend fun measure(voiceId: String): Double? = withContext(Dispatchers.Default) {
+    suspend fun measure(voiceId: String, pack: String? = null): Double? = withContext(Dispatchers.Default) {
         val v = VoiceCatalog.get(voiceId) ?: return@withContext null
         if (v.engine == "system") return@withContext null
-        val engine = tts.get(VoiceCatalog.packFor(v, models)) ?: return@withContext null
+        val engine = tts.get(pack ?: VoiceCatalog.packFor(v, models, settings.value)) ?: return@withContext null
         val lang = if (v.reads("en")) "en" else "hi"
         val text = if (lang == "hi") "नमस्ते, आज आपके तीन काम बाकी हैं और शाम पाँच बजे एक मीटिंग है।" else "Good morning. You have three tasks today, and a meeting with Priya at five in the evening."
         synth(engine, v, "Warm up.", 1f, lang)

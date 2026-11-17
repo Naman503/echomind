@@ -1,6 +1,7 @@
 package app.echomind.ui.screens
 
 import android.content.Intent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,6 +20,12 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -164,7 +171,9 @@ fun ReadingScreen() {
                 OutlinedButton(onClick = {
                     test = "Measuring…"
                     scope.launch {
-                        val results = listOf(s.voiceEnglish, s.voiceHindi).distinct().mapNotNull { id -> VoiceCatalog.get(id)?.let { voice -> g.speaker.measure(id)?.let { voice.label to it } } }
+                        // Your voices, then the best voice of every other downloaded family, to compare.
+                        val others = VoiceCatalog.open.filter { VoiceCatalog.ready(it, g.models) }.groupBy { it.pack }.values.mapNotNull { vs -> vs.maxByOrNull { it.stars }?.id }
+                        val results = (listOf(s.voiceEnglish, s.voiceHindi) + others).distinct().mapNotNull { id -> VoiceCatalog.get(id)?.let { voice -> g.speaker.measure(id)?.let { "${voice.label} (${VoiceCatalog.engineName(voice.engine)})" to it } } }
                         test = if (results.isEmpty()) "Download an open voice first (phone voices are always smooth)."
                         else results.joinToString("\n") { (name, xx) ->
                             val smoothUpTo = xx * 1.5
@@ -179,7 +188,28 @@ fun ReadingScreen() {
     }
 }
 
-/** Every voice EchoMind can use, to try, download and choose. */
+/** A shelf in the voice list; each voice sits on exactly one. */
+internal enum class VoiceShelf(val title: String, val blurb: String) {
+    NATURAL("Most natural", "Sound like a real person — best for long listening"),
+    INDIAN("Indian accent", "English read the way it's spoken here"),
+    HINDI("Hindi voices", "Read Devanagari and Hindi words naturally"),
+    ACCENTS("British & other accents", "UK, Scottish and more"),
+    LIGHT("Fast & light", "Small downloads that keep up at 4–6×"),
+    PHONE("Phone voices", "Built into Android — no download, a little robotic");
+
+    companion object {
+        fun of(v: VoiceSpec, lang: String): VoiceShelf = when {
+            v.engine == "system" -> PHONE
+            v.stars >= 4 -> NATURAL
+            lang == "hi" -> if (v.engine == "kitten" || v.engine == "piper") LIGHT else HINDI
+            v.accent == "Indian" || v.accent == "South Asian" -> INDIAN
+            v.accent != "US" && v.accent != "Multilingual" -> ACCENTS
+            else -> LIGHT
+        }
+    }
+}
+
+/** Every voice EchoMind can use, on shelves by how they sound, to try, download and choose. */
 @Composable
 fun VoicesScreen(lang: String) {
     val g = App.graph
@@ -190,149 +220,185 @@ fun VoicesScreen(lang: String) {
     val models by g.models.states.collectAsStateWithLifecycle()
     var language by rememberSaveable { mutableStateOf(lang) }
     var gender by rememberSaveable { mutableStateOf("") }
-    var accent by rememberSaveable { mutableStateOf("") }
-    var source by rememberSaveable { mutableStateOf("all") }
+    var query by rememberSaveable { mutableStateOf("") }
     var onlyReady by rememberSaveable { mutableStateOf(false) }
+    var open by rememberSaveable { mutableStateOf(setOf(VoiceShelf.NATURAL.name, VoiceShelf.INDIAN.name, VoiceShelf.HINDI.name)) }
     var loadingSystem by remember { mutableStateOf(false) }
     var systemCount by remember { mutableStateOf(VoiceCatalog.system.size) }
     LaunchedEffect(Unit) { if (VoiceCatalog.system.isEmpty()) { loadingSystem = true; systemCount = SystemVoices.load(ctx).size; loadingSystem = false } }
     val chosen = if (language == "hi") s.voiceHindi else s.voiceEnglish
-    val accents = remember(language, systemCount) { VoiceCatalog.all.filter { it.reads(language) && it.engine != "system" }.map { it.accent }.distinct() }
-    val list = remember(language, gender, accent, source, onlyReady, systemCount, models) {
+    val searching = query.isNotBlank()
+    val shelves = remember(language, gender, query, onlyReady, systemCount, models) {
+        val q = query.trim().lowercase()
         VoiceCatalog.all.filter { v ->
-            v.reads(language) && (gender.isEmpty() || v.gender == gender) && (accent.isEmpty() || v.accent == accent) &&
-                (source == "all" || (source == "open") == (v.engine != "system")) &&
-                (!onlyReady || v.engine == "system" || g.models.isInstalled(v.pack))
-        }.sortedWith(compareBy({ it.engine == "system" }, { -it.stars }, { it.engine }, { it.label }))
+            v.reads(language) && (gender.isEmpty() || v.gender == gender) && (!onlyReady || VoiceCatalog.ready(v, g.models)) &&
+                (q.isEmpty() || listOf(v.label, v.accent, VoiceCatalog.engineName(v.engine), if (v.gender == "f") "female" else if (v.gender == "m") "male" else "").any { q in it.lowercase() })
+        }.sortedWith(compareBy({ it.id != "kokoro-heart" }, { -it.stars }, { it.engine }, { it.label })).groupBy { VoiceShelf.of(it, language) }.toSortedMap()
     }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         ScreenTopBar("Voices", onBack = { nav.back() })
-        LazyRow(contentPadding = PaddingValues(horizontal = Sp.gutter), horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
-            items(listOf("en" to "English", "hi" to "Hindi")) { (k, l) -> FilterChip(language == k, { language = k; accent = "" }, label = { Text(l) }) }
-            items(listOf("" to "Anyone", "f" to "Female", "m" to "Male")) { (k, l) -> FilterChip(gender == k, { gender = k }, label = { Text(l) }) }
-            item { FilterChip(onlyReady, { onlyReady = !onlyReady }, label = { Text("Ready to use") }) }
+        androidx.compose.material3.OutlinedTextField(
+            query, { query = it }, singleLine = true, placeholder = { Text("Search voices, accents…") },
+            leadingIcon = { Icon(androidx.compose.material.icons.Icons.Rounded.Search, null) },
+            trailingIcon = { if (searching) IconButton(onClick = { query = "" }) { Icon(androidx.compose.material.icons.Icons.Rounded.Close, "Clear") } },
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Sp.gutter),
+        )
+        LazyRow(contentPadding = PaddingValues(horizontal = Sp.gutter, vertical = Sp.s), horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
+            items(listOf("en" to "English", "hi" to "Hindi")) { (k, l) -> FilterChip(language == k, { language = k }, label = { Text(l) }) }
+            item { androidx.compose.material3.VerticalDivider(Modifier.height(32.dp).padding(horizontal = 2.dp)) }
+            items(listOf("f" to "Female", "m" to "Male")) { (k, l) -> FilterChip(gender == k, { gender = if (gender == k) "" else k }, label = { Text(l) }) }
+            item { FilterChip(onlyReady, { onlyReady = !onlyReady }, label = { Text("Downloaded") }) }
         }
-        LazyRow(contentPadding = PaddingValues(horizontal = Sp.gutter, vertical = Sp.xs), horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
-            items(listOf("all" to "All", "open" to "Open-source", "system" to "Phone voices")) { (k, l) -> FilterChip(source == k, { source = k }, label = { Text(l) }) }
-            items(accents) { a -> FilterChip(accent == a, { accent = if (accent == a) "" else a }, label = { Text(a) }) }
-        }
-        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(Sp.s), state = app.echomind.ui.components.rememberKeptListState()) {
-            item {
-                Text("${list.size} voices. Stars are how natural they sound. Open voices are downloaded once per pack (one pack can hold many voices) and run offline.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (gender.isEmpty() && accent.isEmpty() && source == "all" && !onlyReady) item {
-                SectionHeader("Best for you")
-                val picks = if (language == "hi") listOf(
-                    "supertonic-f1" to "Most natural, reads Hindi and English in one voice — great for Hinglish notes",
-                    "kokoro-hf-alpha" to "Warm Hindi voice; same pack as the best English voices",
-                    "piper-pratham" to "Small (21 MB) and very fast — good above 3× speed",
-                ) else listOf(
-                    "supertonic-f1" to "Most natural, and also reads Hindi — one voice for everything",
-                    "kokoro-heart" to "The most natural English voice of all",
-                    "piper-l2-svbi" to "Indian English, small and fast — good above 3× speed",
-                )
-                picks.mapNotNull { (id, why) -> VoiceCatalog.get(id)?.let { it to why } }.forEach { (v, why) ->
-                    Text("${v.label} — $why", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 2.dp))
+        LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(6.dp), state = app.echomind.ui.components.rememberKeptListState()) {
+            VoiceCatalog.get(chosen)?.let { cur ->
+                item(key = "current") {
+                    Text("IN USE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    VoiceRow(cur, true, language)
                 }
-                Text("Your phone runs all of these smoothly; use “Test voice speed” in Voice & reading to check fast listening.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
             }
-            items(list, key = { it.id }) { v -> VoiceRow(v, chosen == v.id, language) }
-            item {
-                SectionHeader("More voices from your phone")
-                if (loadingSystem) Row(verticalAlignment = Alignment.CenterVertically) { LoadingIndicator(); Spacer(Modifier.width(Sp.s)); Text("Looking for the phone's voices…") }
-                Text("Google's Speech Services include natural offline voices for English (India, US, UK) and Hindi — download more in Android's text-to-speech settings. " +
-                    "Any text-to-speech app you install appears here too. Microsoft's natural voices only exist online (in Edge); apps that bring them to Android send your text to Microsoft and are marked Online.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(horizontalArrangement = Arrangement.spacedBy(Sp.s), modifier = Modifier.padding(top = Sp.s)) {
-                    OutlinedButton(onClick = { runCatching { ctx.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) { Text("Phone voice settings") }
-                    TextButton(onClick = { loadingSystem = true; scope.launch { systemCount = SystemVoices.load(ctx).size; loadingSystem = false } }) { Text("Refresh") }
+            if (shelves.isEmpty()) item { Text("No voices match.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = Sp.l)) }
+            for ((shelf, voices) in shelves) {
+                val expanded = searching || shelf.name in open
+                item(key = "h-${shelf.name}") {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()
+                        .clickable { open = if (shelf.name in open) open - shelf.name else open + shelf.name }.padding(top = Sp.m, bottom = 2.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text("${shelf.title}  ·  ${voices.size}", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                            Text(shelf.blurb, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (!searching) Icon(if (expanded) androidx.compose.material.icons.Icons.Rounded.ExpandLess else androidx.compose.material.icons.Icons.Rounded.ExpandMore, if (expanded) "Collapse" else "Expand")
+                    }
                 }
+                if (expanded) items(voices, key = { "${shelf.name}-${it.id}" }) { v -> VoiceRow(v, chosen == v.id, language) }
+                if (expanded && shelf == VoiceShelf.PHONE) item(key = "phone-more") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Sp.s)) {
+                        OutlinedButton(onClick = { runCatching { ctx.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) { Text("Phone voice settings") }
+                        TextButton(onClick = { loadingSystem = true; scope.launch { systemCount = SystemVoices.load(ctx).size; loadingSystem = false } }) { Text("Refresh") }
+                    }
+                }
+            }
+            if (loadingSystem) item(key = "loading") { Row(verticalAlignment = Alignment.CenterVertically) { LoadingIndicator(); Spacer(Modifier.width(Sp.s)); Text("Looking for the phone's voices…") } }
+            item(key = "foot") {
+                Text("One download holds a whole family (all 28 Kokoro voices come together). Everything runs offline.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, modifier = Modifier.padding(top = Sp.l))
             }
         }
     }
 }
 
+/** One voice, compact: name and stars, what it is, and one main action. Less-used actions live in ⋮. */
 @Composable
 private fun VoiceRow(v: VoiceSpec, selected: Boolean, language: String) {
     val g = App.graph
     val models by g.models.states.collectAsStateWithLifecycle()
-    val pack = ModelCatalog.get(v.pack)
-    val st = models[v.pack]
-    val ready = v.engine == "system" || st?.installed == true || VoiceCatalog.ready(v, g.models)
-    EchoCard(color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceContainerLow, padding = PaddingValues(Sp.m)) {
+    // Kokoro voices download the full-quality model (the Mac's), unless the compressed one is already here.
+    val getPack = if (v.pack == "kokoro-multi" && models["kokoro-multi"]?.installed != true) VoiceCatalog.KOKORO_HQ else v.pack
+    val pack = ModelCatalog.get(getPack)
+    val st = models[getPack]
+    val ready = VoiceCatalog.ready(v, g.models)
+    val busy = st?.downloading == true || st?.extracting == true
+    var menu by remember { mutableStateOf(false) }
+    EchoCard(color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f) else MaterialTheme.colorScheme.surfaceContainerLow, padding = PaddingValues(horizontal = Sp.m, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(v.label, style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.width(Sp.s))
-                    Text("★".repeat(v.stars) + "☆".repeat(5 - v.stars), style = MaterialTheme.typography.labelSmall, color = LocalSemantic.current.warning)
+                    Text(v.label, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                    Spacer(Modifier.width(6.dp))
+                    Text("★".repeat(v.stars), style = MaterialTheme.typography.labelSmall, color = LocalSemantic.current.warning)
+                    if (v.id == "kokoro-heart") { Spacer(Modifier.width(6.dp)); Pill("Same as Mac") }
                 }
-                Text(listOfNotNull(VoiceCatalog.engineName(v.engine), v.accent, when (v.gender) { "f" -> "female"; "m" -> "male"; else -> null }, if (v.langs.size > 1) "English + Hindi" else null).joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (v.note.isNotBlank()) Text(v.note, style = MaterialTheme.typography.labelSmall, color = if (v.online) LocalSemantic.current.cloud else MaterialTheme.colorScheme.outline)
-                Text(when {
-                    v.engine == "system" -> "On your phone already"
-                    v.pack == "kokoro-multi" && g.models.isInstalled(VoiceCatalog.KOKORO_HQ) -> "✓ Full quality"
-                    st?.installed == true -> "✓ Downloaded"
-                    else -> "Pack not downloaded · ${pack?.let { Fmt.bytes(it.bytes) } ?: ""} · ${VoiceCatalog.open.count { it.pack == v.pack }} voice${if (VoiceCatalog.open.count { it.pack == v.pack } == 1) "" else "s"} in it"
-                }, style = MaterialTheme.typography.labelSmall, color = if (ready) LocalSemantic.current.positive else MaterialTheme.colorScheme.outline)
+                val meta = listOfNotNull(
+                    if (v.engine == "system") v.accent else VoiceCatalog.engineName(v.engine),
+                    v.accent.takeIf { v.engine != "system" && it != "Multilingual" },
+                    when (v.gender) { "f" -> "female"; "m" -> "male"; else -> null },
+                    if (v.langs.size > 1) "English + Hindi" else null,
+                    if (v.online) "online" else null,
+                ).joinToString(" · ")
+                Text(meta, style = MaterialTheme.typography.bodySmall, color = if (v.online) LocalSemantic.current.cloud else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
             if (ready) IconButton(onClick = { g.speaker.preview(v.id) }) { Icon(Icons.Rounded.PlayArrow, "Play a sample") }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(Sp.s), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
             when {
-                selected -> Pill("Your ${if (language == "hi") "Hindi" else "English"} voice")
-                ready -> Button(onClick = { g.scope.launch { g.settings.update { if (language == "hi") it.copy(voiceHindi = v.id) else it.copy(voiceEnglish = v.id) } } }) {
-                    Text("Use for ${if (language == "hi") "Hindi" else "English"}")
-                }
-                st?.downloading == true || st?.extracting == true -> TextButton(onClick = { g.models.cancel(v.pack) }) { Text("Cancel") }
-                pack != null -> OutlinedButton(onClick = { g.models.download(v.pack) }) { Text("Get · ${Fmt.bytes(pack.bytes)}") }
+                selected -> Icon(androidx.compose.material.icons.Icons.Rounded.CheckCircle, "In use", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = Sp.s))
+                ready -> androidx.compose.material3.FilledTonalButton(onClick = { g.scope.launch { g.settings.update { if (language == "hi") it.copy(voiceHindi = v.id) else it.copy(voiceEnglish = v.id) } } },
+                    contentPadding = PaddingValues(horizontal = 14.dp)) { Text("Use") }
+                busy -> TextButton(onClick = { g.models.cancel(getPack) }) { Text("Cancel") }
+                pack != null -> OutlinedButton(onClick = { g.models.download(getPack) }, contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Get · ${Fmt.bytes(pack.bytes)}") }
             }
-            // A voice that reads both languages can be set for the other one too.
-            if (ready && v.langs.size > 1) {
-                val other = if (language == "hi") "en" else "hi"
-                val otherChosen = if (other == "hi") g.settings.value.voiceHindi == v.id else g.settings.value.voiceEnglish == v.id
-                if (!otherChosen) TextButton(onClick = { g.scope.launch { g.settings.update { if (other == "hi") it.copy(voiceHindi = v.id) else it.copy(voiceEnglish = v.id) } } }) {
-                    Text("Also for ${if (other == "hi") "Hindi" else "English"}")
-                }
-            }
-            // A pack still read by your English or Hindi voice stays.
+            val other = if (language == "hi") "en" else "hi"
+            val canOther = ready && v.langs.size > 1 && (if (other == "hi") g.settings.value.voiceHindi else g.settings.value.voiceEnglish) != v.id
             val inUse = listOf(g.settings.value.voiceEnglish, g.settings.value.voiceHindi).any { VoiceCatalog.get(it)?.pack == v.pack }
-            if (st?.installed == true && !inUse) TextButton(onClick = { g.models.delete(v.pack) }) { Text("Delete pack", color = MaterialTheme.colorScheme.error) }
+            val canDelete = v.engine != "system" && models[v.pack]?.installed == true && !inUse
+            if (canOther || canDelete || v.note.isNotBlank()) androidx.compose.foundation.layout.Box {
+                IconButton(onClick = { menu = true }) { Icon(androidx.compose.material.icons.Icons.Rounded.MoreVert, "More") }
+                androidx.compose.material3.DropdownMenu(menu, { menu = false }) {
+                    if (canOther) androidx.compose.material3.DropdownMenuItem(text = { Text("Also use for ${if (other == "hi") "Hindi" else "English"}") }, onClick = {
+                        menu = false; g.scope.launch { g.settings.update { if (other == "hi") it.copy(voiceHindi = v.id) else it.copy(voiceEnglish = v.id) } }
+                    })
+                    if (canDelete) androidx.compose.material3.DropdownMenuItem(text = { Text("Delete ${ModelCatalog.get(v.pack)?.label ?: "pack"}", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; g.models.delete(v.pack) })
+                    if (v.note.isNotBlank()) androidx.compose.material3.DropdownMenuItem(text = { Text(v.note, style = MaterialTheme.typography.bodySmall) }, onClick = { menu = false }, enabled = false)
+                }
+            }
         }
-        if (st?.downloading == true || st?.extracting == true) {
-            LinearProgressIndicator(progress = { st.progress }, modifier = Modifier.fillMaxWidth().padding(top = Sp.s))
-            Text(if (st.extracting) "Unpacking…" else downloadLine(st, pack?.bytes ?: 0), style = MaterialTheme.typography.labelSmall)
+        if (busy) {
+            LinearProgressIndicator(progress = { st!!.progress }, modifier = Modifier.fillMaxWidth().padding(top = Sp.s))
+            Text(if (st!!.extracting) "Unpacking…" else downloadLine(st, pack?.bytes ?: 0), style = MaterialTheme.typography.labelSmall)
         }
     }
 }
 
-/** Offers the uncompressed Kokoro model: the same voices, as clear as on the Mac. */
+/** Offers the uncompressed Kokoro model (the Mac's), and picks between it and the compressed one by what this phone keeps up with. */
 @Composable
 private fun KokoroHq() {
     val g = App.graph
+    val scope = rememberCoroutineScope()
+    val s by g.settings.flow.collectAsStateWithLifecycle()
     val models by g.models.states.collectAsStateWithLifecycle()
     val hq = ModelCatalog.get(VoiceCatalog.KOKORO_HQ) ?: return
     val st = models[hq.id]
+    val full = st?.installed == true
     val small = models["kokoro-multi"]?.installed == true
-    EchoCard(color = if (st?.installed == true) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.tertiaryContainer) {
-        Text("Full-quality Kokoro", style = MaterialTheme.typography.titleSmall)
-        Text(
-            when {
-                st?.installed == true -> "On. Kokoro voices now use the uncompressed model, the same one the Mac app plays." + if (small) " The compressed pack isn't needed any more." else ""
-                else -> "The voices here use a compressed copy of Kokoro, which sounds slightly rough. The full model is the one the Mac app plays: clearer and smoother. ${Fmt.bytes(hq.bytes)}, over Wi-Fi."
-            },
-            style = MaterialTheme.typography.bodySmall,
-        )
+    var measuring by remember { mutableStateOf(false) }
+    fun measure() { if (!measuring) { measuring = true; scope.launch { runCatching { g.speaker.measureKokoro() }; measuring = false } } }
+    // Time both models once they're both here, so "auto" knows what keeps up.
+    LaunchedEffect(full, small) { if (full && small && s.kokoroFullUpTo == 0f) measure() }
+    EchoCard(color = if (full) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.tertiaryContainer) {
+        Text("Kokoro quality", style = MaterialTheme.typography.titleSmall)
+        if (!full) Text("The voices here use a compressed copy of Kokoro, which sounds slightly rough. The full model is the one the Mac app plays: clearer and smoother, but slower to generate. ${Fmt.bytes(hq.bytes)}, over Wi-Fi.",
+            style = MaterialTheme.typography.bodySmall)
+        if (full && small) {
+            fun upTo(v: Float) = if (v == 0f) "not measured" else "smooth up to ${x(v)}"
+            Text("Full quality (as on the Mac): ${if (measuring) "measuring…" else upTo(s.kokoroFullUpTo)}\nCompressed: ${if (measuring) "measuring…" else upTo(s.kokoroSmallUpTo)}" +
+                if (!measuring && g.speaker.lastProviderTimes.isNotEmpty()) "\nEngines: " + g.speaker.lastProviderTimes.entries.joinToString(" · ") { (k, v) -> "$k ${x(v.first)}/${x(v.second)}" } + " (using ${s.kokoroProvider})" else "",
+                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 4.dp))
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                listOf("auto" to "Auto", "full" to "Full", "compressed" to "Compressed").forEachIndexed { i, (k, l) ->
+                    SegmentedButton(s.kokoroQuality == k, { g.scope.launch { g.settings.update { it.copy(kokoroQuality = k) } } }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
+                }
+            }
+            val usingFull = VoiceCatalog.fullFor(s)
+            Text(
+                when {
+                    s.kokoroQuality == "auto" && usingFull && s.kokoroFullUpTo in 0.01f..s.readSpeed -> "Using full quality — on this phone it's also the faster one. Neither keeps up at your ${x(s.readSpeed)}, so there may be short pauses; Supertonic voices sound almost as natural and keep up better."
+                    s.kokoroQuality == "auto" && usingFull -> "Using full quality — it keeps up at your ${x(s.readSpeed)}."
+                    s.kokoroQuality == "auto" -> "Using compressed at your ${x(s.readSpeed)}: the full model can't generate that fast on this phone, so it would stutter. Slow down to ${x(s.kokoroFullUpTo)} or less for full quality."
+                    usingFull && s.kokoroFullUpTo in 0.01f..s.readSpeed -> "Full quality may pause between sentences at ${x(s.readSpeed)}."
+                    else -> ""
+                },
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp),
+            )
+        } else if (full) Text("Kokoro voices use the uncompressed model, the same one the Mac app plays.", style = MaterialTheme.typography.bodySmall)
         Row(horizontalArrangement = Arrangement.spacedBy(Sp.s), modifier = Modifier.padding(top = Sp.s)) {
             when {
                 st?.downloading == true || st?.extracting == true -> {
-                    Text(if (st.extracting) "Unpacking…" else "Downloading…", style = MaterialTheme.typography.labelMedium, modifier = Modifier.align(Alignment.CenterVertically))
+                    Column(Modifier.weight(1f).align(Alignment.CenterVertically)) {
+                        LinearProgressIndicator(progress = { st.progress }, modifier = Modifier.fillMaxWidth())
+                        Text(if (st.extracting) "Unpacking…" else downloadLine(st, hq.bytes), style = MaterialTheme.typography.labelSmall)
+                    }
                     TextButton(onClick = { g.models.cancel(hq.id) }) { Text("Cancel") }
                 }
-                st?.installed == true -> {
-                    if (small) TextButton(onClick = { g.models.delete("kokoro-multi") }) { Text("Delete compressed pack") }
+                full -> {
+                    if (small) TextButton(enabled = !measuring, onClick = { measure() }) { Text("Measure again") }
                     TextButton(onClick = { g.models.delete(hq.id) }) { Text("Remove full quality", color = MaterialTheme.colorScheme.error) }
                 }
                 else -> Button(onClick = { g.models.download(hq.id) }) { Text("Get · ${Fmt.bytes(hq.bytes)}") }

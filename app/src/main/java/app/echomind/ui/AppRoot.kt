@@ -161,6 +161,8 @@ fun AppRoot(pending: MutableState<String?>) {
             "map" -> { nav.tab(InsightsRoute); nav.go(MapRoute()) }
             "things" -> { nav.tab(LibraryRoute); nav.go(ThingsRoute) }
             "voice" -> nav.go(VoiceCheckRoute)
+            "reading" -> { nav.tab(TodayRoute); nav.go(SettingsRoute); nav.go(ReadingRoute) }
+            "voices" -> { nav.tab(TodayRoute); nav.go(SettingsRoute); nav.go(ReadingRoute); nav.go(VoicesRoute("en")) }
             else -> if (r.startsWith("checkin:")) { nav.tab(TodayRoute); nav.go(CheckInRoute(r.removePrefix("checkin:"))) }
             else if (r.startsWith("note:")) { nav.tab(LibraryRoute); r.removePrefix("note:").toLongOrNull()?.let { nav.go(NoteRoute(it)) } }
             else if (r.startsWith("conversation:")) { nav.tab(TodayRoute); r.removePrefix("conversation:").toLongOrNull()?.let { nav.go(ConversationRoute(it)) } } else nav.tab(TodayRoute)

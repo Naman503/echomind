@@ -139,11 +139,24 @@ object VoiceCatalog {
     }
 
     /** The pack a voice is read from: Kokoro voices use the full-quality pack once it's downloaded. */
-    fun packFor(v: VoiceSpec, models: ModelManager): String =
-        if (v.pack == "kokoro-multi" && models.isInstalled(KOKORO_HQ)) KOKORO_HQ else v.pack
+    fun packFor(v: VoiceSpec, models: ModelManager, s: app.echomind.core.Settings? = null): String {
+        if (v.pack != "kokoro-multi") return v.pack
+        val full = models.isInstalled(KOKORO_HQ)
+        val small = models.isInstalled(v.pack)
+        if (!full || !small || s == null) return if (full) KOKORO_HQ else v.pack
+        return if (fullFor(s)) KOKORO_HQ else v.pack
+    }
+
+    /** With both Kokoro models here: full quality unless it can't keep up with your listening speed. */
+    fun fullFor(s: app.echomind.core.Settings) = when (s.kokoroQuality) {
+        "full" -> true
+        "compressed" -> false
+        // Full quality when it keeps up, or when it's the faster of the two anyway (as on some phones).
+        else -> s.kokoroFullUpTo == 0f || s.kokoroFullUpTo >= s.readSpeed || s.kokoroFullUpTo >= s.kokoroSmallUpTo
+    }
 
     /** Whether [v] can be read now (its pack, or the full-quality Kokoro pack, is downloaded). */
-    fun ready(v: VoiceSpec?, models: ModelManager) = v != null && (v.engine == "system" || models.isInstalled(packFor(v, models)))
+    fun ready(v: VoiceSpec?, models: ModelManager) = v != null && (v.engine == "system" || models.isInstalled(v.pack) || (v.pack == "kokoro-multi" && models.isInstalled(KOKORO_HQ)))
 
     const val KOKORO_HQ = "kokoro-multi-hq"
 
@@ -205,7 +218,7 @@ object SystemVoices {
  * use. Files are found by pattern, so pack layouts can change between
  * releases without breaking the app.
  */
-class TtsModels(private val models: ModelManager, private val threads: () -> Int) {
+class TtsModels(private val models: ModelManager, private val threads: () -> Int, private val provider: () -> String = { "cpu" }) {
     private val loaded = HashMap<String, OfflineTts>()
 
     @Synchronized
@@ -226,6 +239,7 @@ class TtsModels(private val models: ModelManager, private val threads: () -> Int
                     lexicon = files.filter { it.name.startsWith("lexicon") && it.name.endsWith(".txt") }.joinToString(",") { it.absolutePath },
                 ),
                 numThreads = threads(),
+                provider = provider(),
             )
             pack.startsWith("supertonic") -> OfflineTtsModelConfig(
                 supertonic = OfflineTtsSupertonicModelConfig(

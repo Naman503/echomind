@@ -217,6 +217,13 @@ data class Settings(
     val voiceHindi: String = "kokoro-hf-alpha",
     /** 0.5…6× */
     val readSpeed: Float = 1.25f,
+    /** Which Kokoro model when both are downloaded: auto (full quality while it keeps up with your speed) | full | compressed. */
+    val kokoroQuality: String = "auto",
+    /** Fastest listening speed each Kokoro model keeps up with on this phone (measured; 0 = not yet). */
+    val kokoroFullUpTo: Float = 0f,
+    val kokoroSmallUpTo: Float = 0f,
+    /** The ONNX backend Kokoro runs fastest on here (cpu | xnnpack | nnapi), picked by measuring. */
+    val kokoroProvider: String = "cpu",
     /** Speak Ask answers automatically. */
     val autoReadAnswers: Boolean = false,
     /** Silence between sentences, ms. */
