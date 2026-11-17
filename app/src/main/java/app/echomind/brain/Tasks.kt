@@ -51,12 +51,16 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
         var added = 0
         for (f in found) {
             if (f.title.isBlank() || f.confidence < 0.35f) continue
+            // Found in conversation: checked against the words that were said (see strength()).
+            val strength = if (origin == "ai") strength(f.title, f.quote, f.owner, f.due?.hasTime == true, f.isReminder) else Strength.STRONG
+            if (strength == Strength.DROP) continue
             // Also catches the same task found twice in one conversation (two parts of a long one).
             if (known.any { sameTask(it, f.title) }) continue
             val confident = f.owner == "me" && f.confidence >= 0.85f && f.due != null
-            val review = origin != "voice" && s.reviewAiTasks && !(s.autoAcceptConfident && confident)
+            val review = (origin != "voice" && s.reviewAiTasks && !(s.autoAcceptConfident && confident)) || strength == Strength.WEAK
             // Without a review step, only clear commitments go on the list.
             if (!review && origin == "ai" && f.confidence < 0.5f) continue
+            // Weak ones wait quietly in Suggestions: never with a reminder until accepted.
             known.add(f.title)
             val remindAt = pickReminder(f.due, f.remind, f.isReminder || origin == "voice", f.owner == "me", s.smartReminders, now)
             val aiPicked = remindAt != null && remindAt == f.remind?.at && f.due?.hasTime != true
@@ -83,6 +87,24 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
         // Anonymous usage: how many tasks conversations produced (a count; never the tasks).
         if (added > 0) app.echomind.telemetry.Usage.count("tasks_found", mapOf("origin" to if (origin == "voice") "voice" else "ai"), added)
         return added
+    }
+
+    /**
+     * Once, for tasks made before the commitment check existed: open AI tasks that wouldn't pass it
+     * go back to Suggestions (and lose their reminder), where they can be accepted or dismissed.
+     * Nothing is deleted. Returns how many moved.
+     */
+    suspend fun recheckOld(): Int {
+        if (db.memory().kv("tasksRechecked") != null) return 0
+        var moved = 0
+        for (t in db.tasks().live().filter { it.status == "open" && it.origin == "ai" }) {
+            if (strength(t.title, t.quote, t.owner, t.remindAt != null, false) == Strength.STRONG) continue
+            reminders.cancel(t.id)
+            db.tasks().update(t.copy(status = "suggested", remindAt = null, updatedAt = System.currentTimeMillis()))
+            moved++
+        }
+        db.memory().putKv(app.echomind.data.Kv("tasksRechecked", "$moved", System.currentTimeMillis()))
+        return moved
     }
 
     /**
@@ -246,6 +268,40 @@ class Tasks(private val db: Db, private val settings: SettingsStore, private val
     companion object {
         /** What a small model writes when there is no value. */
         val PLACEHOLDERS = setOf("not specified", "none", "n/a", "na", "unknown", "not mentioned", "empty", "null", "-", "no date", "not said")
+
+        enum class Strength { STRONG, WEAK, DROP }
+
+        /** Words that make a line a commitment or a request, in English, Hinglish and Hindi. */
+        private val commitment = Regex(
+            "\\b(i'?ll|i will|i'?m going to|gonna|will do|have to|has to|had to|need to|needs to|must|should|let'?s|let me|remind|don'?t forget|make sure|please|can you|could you|by (tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|" +
+                "karna|karunga|karungi|karenge|kar dena|kar do|kar lena|kar lo|kar dunga|bhej|bhejna|bhejo|dena hai|lena hai|jana hai|jaana hai|hai karna|yaad dila|yaad rakh|bol dena|bata dena|call karna|milna hai|lana hai|le aana|dekh lena|check karna)\\b" +
+                "|करना|करूंगा|करूँगा|करेंगे|कर देना|कर दो|कर लेना|कर लो|कर दूंगा|भेज|देना है|लेना है|जाना है|याद दिला|याद रख|बोल देना|बता देना|कॉल करना|मिलना है|लाना है|ले आना|देख लेना",
+            RegexOption.IGNORE_CASE,
+        )
+
+        /** Titles a small model writes for chat that isn't a task ("Eat dinner", "Determine what is going on"). */
+        private val vague = Regex(
+            "^(determine|decide|find out|figure out|confirm|clarify|understand|think about|discuss|talk about|consider|explore|see|know|tell the person|ask the person|" +
+                "eat|have (lunch|dinner|breakfast|food|tea|coffee)|drink|sleep|rest|go home|go out|come|sit|wait|watch|relax|take rest|check what|check if)\\b",
+            RegexOption.IGNORE_CASE,
+        )
+
+        /**
+         * How sure a task found in conversation is to be real, from the words alone. DROP: chat a
+         * small model mistook for a task (a two-word quote, a vague everyday title with no time, a
+         * title the quote doesn't back up). STRONG: a clear commitment or request for you. Anything
+         * else is WEAK and waits in Suggestions rather than going straight on the list.
+         */
+        fun strength(title: String, quote: String?, owner: String, hasTime: Boolean, isReminder: Boolean): Strength {
+            val q = quote?.substringAfter(": ")?.trim().orEmpty()
+            val words = TextNorm.words(q)
+            if (words < 3 && !isReminder) return Strength.DROP
+            if (vague.containsMatchIn(title.trim()) && !hasTime && !isReminder) return Strength.DROP
+            val backed = TextNorm.keyTerms(title).toSet().intersect(TextNorm.keyTerms(q).toSet()).isNotEmpty()
+            if (!backed && !hasTime && !isReminder) return Strength.DROP
+            val committed = commitment.containsMatchIn(q) || isReminder
+            return if (committed && owner == "me" && (backed || hasTime)) Strength.STRONG else Strength.WEAK
+        }
         private val zone get() = java.time.ZoneId.systemDefault()
 
         /**

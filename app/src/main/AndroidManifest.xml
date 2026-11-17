@@ -133,6 +133,8 @@
         <receiver android:name=".notify.DailyReceiver" android:exported="false" />
         <receiver android:name=".notify.NudgeReceiver" android:exported="false" />
         <receiver android:name=".notify.TravelReceiver" android:exported="false" />
+        <!-- The on-device AI model, in its own process so a crash or memory kill never stops listening. -->
+        <service android:name=".ai.AiProcessService" android:process=":ai" android:exported="false" />
         <service
             android:name=".surfaces.TravelTile"
             android:exported="true"

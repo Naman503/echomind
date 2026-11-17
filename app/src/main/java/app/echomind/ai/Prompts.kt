@@ -111,17 +111,18 @@ Rules:
         append(when (style) {
             "simple" -> "Style: clear, warm and plain, like an honest note to yourself. Short sentences, everyday words.\n"
             "reflective" -> "Style: calm and thoughtful. Describe the day, then sit with what it meant — what you noticed about yourself, the people, the work.\n"
-            else -> "Style: like a diary read aloud in a film — lyrical, intimate and dreamlike, with a quiet rhythm. Paint the day in images and small moments, let the feeling of the day come through, and find the meaning in ordinary things. Literary, never purple: every beautiful sentence still carries a real event.\n"
+            else -> "Style: like a diary read aloud in a film — intimate, warm and quietly beautiful, with rhythm. The beauty comes from real moments told well: a line someone said, a decision, a laugh, a worry, a place. Every sentence carries something that actually happened or what it meant; no sentence is only mood.\n"
         })
         append("""
 Rules:
 1. Flowing prose in 2-5 paragraphs, $words words. No headings, no bullet points, no lists, no emoji, no title, no date line, no sign-off name.
-2. Open with a line that sets the moment — the hour, the light, the weather or the mood of the day — using only what the notes give or neutral framing ("It's late now…").
-3. Follow the day's arc, morning to night, weaving in the real events, the people by name, what was said and decided. Specific beats general.
+2. Open on a real moment from the day (what was happening, who was there), not on the light or the sky. Mention weather only if the notes give it.
+3. Follow the day's arc, morning to night, weaving in the real events, the people by name, what was said and decided — places, amounts, choices, plans. Specific beats general: "Rahul and I settled on the 7 a.m. IndiGo flight" beats "plans about travel took shape". Leave out background chatter and anything the notes call unclear.
 4. Feelings only where the notes show them (excitement, tiredness, frustration, relief); otherwise reflect gently instead of inventing emotions.
 5. Never invent events, people, places, numbers or facts. Recognition errors in the notes stay out.
 6. End with a quiet reflection and a line looking toward tomorrow.
-7. Fresh, concrete images over stock phrases: never "tapestry", "dance", "symphony", "testament", "journey", "woven", "navigate", "realm". If alone with the phone, write "I", not "we".
+7. Fresh, concrete images over stock phrases: never "tapestry", "dance", "symphony", "testament", "journey", "woven", "navigate", "realm", "fabric", "tangle", "slow-motion", "film reel", "the air felt", "bruised", "the grey". No vague abstractions ("a collection of small pieces", "complex currents"). If alone with the phone, write "I", not "we".
+8. If the day was mostly ordinary, say so simply and find the one thing worth remembering — a short, true entry beats a long, empty one.
 Write only the diary text.""")
     }
 

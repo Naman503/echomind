@@ -52,7 +52,7 @@ object Schemas {
     /** Everything worth keeping from one conversation (or one part of a long one). */
     val extract = S.obj(
         "title" to S.str("Specific, like a calendar entry, max 8 words"),
-        "summary" to S.str("2-4 plain sentences"),
+        "summary" to S.str("2-4 warm, specific sentences: what it was about and why it mattered — like a friend telling you; 'you' for the owner, others by name; never times, speaker labels or 'the conversation'"),
         "category" to S.enum("work", "personal", "family", "health", "finance", "learning", "errand", "social", "travel", "media", "other"),
         "mood" to S.num("-1 tense/negative … 0 neutral … 1 warm/positive"),
         "is_media" to S.bool("true if this is mostly TV, video, music, an ad or a call centre recording rather than real people talking"),

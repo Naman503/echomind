@@ -72,7 +72,7 @@ class Analyzer(private val db: Db, private val ai: Ai, private val settings: Set
 
     /** Splits lines so each part, with its prompt and answer, fits the model. */
     fun parts(lines: List<String>, llm: Llm, overheadTokens: Int, answerTokens: Int): List<List<String>> {
-        val local = llm as? LocalLlm
+        val local = llm as? app.echomind.ai.OnDevice
         val budget = if (local == null) llm.promptBudgetChars * 2 / 3 else (local.contextTokens.coerceAtLeast(4096) - overheadTokens - answerTokens - 250).coerceAtLeast(500)
         val cost = { s: String -> if (local == null) s.length else LocalLlm.estimateTokens(s) }
         val out = ArrayList<List<String>>()
@@ -118,8 +118,10 @@ class Analyzer(private val db: Db, private val ai: Ai, private val settings: Set
             // A blank answer is worth one more try; small models sometimes stop early.
             if (a.str("title").isNullOrBlank() && a.str("summary").isNullOrBlank()) a = runCatching { ai.json(req.copy(temperature = 0.5)) }.getOrDefault(a)
             val media = a["is_media"].let { (it as? JsonPrimitive)?.content == "true" }
+            // Fragments, crosstalk or a screen: nothing to look for tasks, facts or names in — skip those passes.
+            val noise = a.str("signal") == "noise"
             val merged = LinkedHashMap<String, kotlinx.serialization.json.JsonElement>(a)
-            if (!media) {
+            if (!media && !noise) {
                 // Only tasks that share words with this part, numbered as on the full list, so the model
                 // can report on them without copying unrelated ones into new titles.
                 val terms = TextNorm.keyTerms(text).toSet()

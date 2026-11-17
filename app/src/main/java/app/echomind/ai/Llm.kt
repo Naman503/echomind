@@ -39,4 +39,9 @@ interface Llm {
     fun stream(req: LlmRequest): Flow<String>
 }
 
+/** An on-device model: how many tokens its context holds right now (for sizing prompts). */
+interface OnDevice {
+    val contextTokens: Int
+}
+
 class LlmException(message: String, val retryable: Boolean = true, cause: Throwable? = null) : Exception(message, cause)

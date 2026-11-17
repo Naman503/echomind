@@ -13,6 +13,7 @@ import app.echomind.ai.Ai
 import app.echomind.ai.AnthropicLlm
 import app.echomind.ai.GeminiLlm
 import app.echomind.ai.LocalLlm
+import app.echomind.ai.AiProcess
 import app.echomind.ai.OpenAiLlm
 import app.echomind.brain.Actions
 import app.echomind.brain.Analyzer
@@ -108,8 +109,13 @@ class Graph(val app: Application) {
     )
 
     val localLlm = LocalLlm(app, models, scope, { settings.value.localModel }, { settings.value.localBackend }, { governor.threads() }, { settings.value.localContext })
+    /** The same model, run in the ":ai" process (see AiProcess): what the AI jobs use. */
+    val aiProcess: AiProcess = AiProcess(app) {
+        val id = LocalLlm.resolve(models, settings.value.localModel)
+        AiProcess.Cfg(id.orEmpty(), id?.let { models.path(it)?.absolutePath }.orEmpty(), settings.value.localBackend, governor.threads(), settings.value.localContext)
+    }
     val ai = Ai(
-        settings, secrets, localLlm,
+        settings, secrets, aiProcess, { localLlm.installedModel() },
         GeminiLlm(cloud, secrets) { settings.value.geminiModel },
         AnthropicLlm(cloud, secrets) { settings.value.anthropicModel },
         OpenAiLlm(cloud, secrets, { settings.value.openaiBaseUrl }) { settings.value.openaiModel },
@@ -151,7 +157,7 @@ class Graph(val app: Application) {
     }
     val capture = CaptureController(app, db, settings, scope, { brain }) { sounds }
     val travel: Travel = Travel(app, settings,
-        onStart = { keepRecording -> if (!keepRecording) capture.stop(); localLlm.release(); brain.poke() },
+        onStart = { keepRecording -> if (!keepRecording) capture.stop(); localLlm.release(); aiProcess.release(); brain.poke() },
         onStop = { wasListening ->
             if (wasListening) capture.start()
             brain.poke()
@@ -178,6 +184,8 @@ class Graph(val app: Application) {
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
+        // The ":ai" process only hosts the on-device model (AiProcessService): nothing else starts there.
+        if (android.os.Build.VERSION.SDK_INT >= 28 && getProcessName() != packageName) return
         graph = Graph(this)
         val g = graph
         g.notifier.ensureChannels()
@@ -194,6 +202,7 @@ class App : Application() {
             runCatching { retryStuck(g) }
             runCatching { g.travel.showOngoing(); g.travel.checkPlans() }
             runCatching { g.tasks.mergeDuplicates() }
+            runCatching { g.tasks.recheckOld() }
             logExitReasons()
         }
         app.echomind.surfaces.WidgetUpdater.start(this, g.scope)

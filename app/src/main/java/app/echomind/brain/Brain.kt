@@ -219,6 +219,12 @@ class Brain(
         if (!inNight) return false
         if (s.nightNeedsCharging && !governor.read(record = false).charging) return false
         val today = LocalDate.now()
+        // The day this night closes (after midnight, that's yesterday). Nothing said in it: the night stays quiet.
+        val closing = if (minute < 7 * 60) today.minusDays(1) else today
+        if (!journal.hadTalk(closing)) {
+            _state.value = _state.value.copy(phase = Phase.IDLE, detail = "", waitingReason = "Nothing was said today — no overnight work")
+            return false
+        }
         // Earlier days first (oldest unfinished), then today once its evening has come.
         val days = (3 downTo 1).map { today.minusDays(it.toLong()) } + if (minute >= s.nightReviewAt) listOf(today) else emptyList()
         for (d in days) {
@@ -303,6 +309,8 @@ class Brain(
             return true
         }
         if (nowMinute < s.eveningRecapAt) return false
+        // A silent day: no journal, no recap, no nightly extras.
+        if (!journal.hadTalk(today)) return false
         val e = db.days().get(today.toString())
         if (e?.generatedAt != null && e.memoryReviewedAt != null) return false
         if (!attemptAllowed(today)) return false
@@ -323,6 +331,7 @@ class Brain(
 
     suspend fun recap(day: LocalDate) {
         if (!settings.value.notifyEvening) return
+        if (!journal.hadTalk(day)) return
         val e = db.days().get(day.toString()) ?: return
         if (prefs.getString("recapSent", null) == day.toString()) return
         prefs.edit().putString("recapSent", day.toString()).apply()

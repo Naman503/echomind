@@ -31,7 +31,14 @@ class WatchdogWorker(context: Context, params: WorkerParameters) : CoroutineWork
         val s = g.settings.awaitLoaded()
         if (s.captureWanted && !s.isPaused() && !CaptureService.running) {
             val beat = g.capture.lastHeartbeat()
-            if (beat == 0L || System.currentTimeMillis() - beat > 5 * 60_000L) g.notifier.resumePrompt("Listening stopped in the background.")
+            if (beat == 0L || System.currentTimeMillis() - beat > 5 * 60_000L) {
+                // Say for how long: "since Thu 9:53 PM — about 3 days" makes a long gap obvious at a glance.
+                val since = if (beat > 0) {
+                    val h = (System.currentTimeMillis() - beat) / 3_600_000L
+                    " Not listening since ${app.echomind.ui.Fmt.dayTime(beat)}" + when { h >= 48 -> " — about ${h / 24} days."; h >= 2 -> " — about $h hours."; else -> "." }
+                } else ""
+                g.notifier.resumePrompt("Android stopped listening in the background.$since")
+            }
         }
         // Travel: planned trips and, about every 30 minutes, whether you're away.
         if (System.currentTimeMillis() - lastTravelCheck >= 25 * 60_000L) { lastTravelCheck = System.currentTimeMillis(); runCatching { g.travel.check() } }
@@ -120,7 +127,8 @@ class DailyWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
             )
         } else {
             if (g.db.audio().pendingCount().first() == 0 && g.db.conversations().readyCount().first() == 0) {
-                if (g.journal.nightly(today)) g.brain.recap(today)
+                // A silent day gets no journal and no recap.
+                if (g.journal.hadTalk(today) && g.journal.nightly(today)) g.brain.recap(today)
             } else if (!CaptureService.running) {
                 ProcessWorker.enqueue(applicationContext)
             }

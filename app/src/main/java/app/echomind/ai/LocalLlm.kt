@@ -37,18 +37,21 @@ import kotlinx.serialization.json.JsonObject
  */
 class LocalLlm(
     private val context: Context,
-    private val models: ModelManager,
     private val scope: CoroutineScope,
-    private val modelId: () -> String,
+    /** The model to run: its id and file, or null when none is downloaded. */
+    private val resolveModel: () -> Pair<String, java.io.File>?,
     private val backend: () -> String,
     private val threads: () -> Int,
     private val wantedContext: () -> Int = { 4096 },
-) : Llm {
+) : Llm, OnDevice {
+    constructor(context: Context, models: ModelManager, scope: CoroutineScope, modelId: () -> String, backend: () -> String, threads: () -> Int, wantedContext: () -> Int = { 4096 }) :
+        this(context, scope, { resolve(models, modelId())?.let { id -> id to models.path(id)!! } }, backend, threads, wantedContext)
+
     override val id = "local"
     override val local = true
 
     /** Context size the model actually loaded with; a model that refuses a bigger one runs at 4096. */
-    @Volatile var contextTokens: Int = 4096
+    @Volatile override var contextTokens: Int = 4096
         private set
     private var refusedContext = 0
 
@@ -64,11 +67,10 @@ class LocalLlm(
     private var loadedKey: String? = null
     private var idleJob: Job? = null
 
-    fun installedModel(): String? = listOf(modelId(), "gemma-4-e2b", "qwen3.5-2b", "qwen3.5-0.8b", "gemma-4-e4b").firstOrNull { models.isInstalled(it) }
+    fun installedModel(): String? = resolveModel()?.first
 
     private fun engine(): Engine {
-        val id = installedModel() ?: throw LlmException("No on-device AI model is downloaded. Get one in Settings → On-device models.", retryable = false)
-        val file = models.path(id)!!
+        val (id, file) = resolveModel() ?: throw LlmException("No on-device AI model is downloaded. Get one in Settings → On-device models.", retryable = false)
         val useGpu = backend() == "gpu"
         // A bigger context needs more memory; when the phone is short of it, load at 4K rather than be killed.
         val freeMb = runCatching {
@@ -256,6 +258,10 @@ class LocalLlm(
 
     companion object {
         private const val TAG = "EchoLocalLlm"
+
+        /** The model to use: the chosen one if downloaded, else the first downloaded of the known ones. */
+        fun resolve(models: ModelManager, chosen: String): String? =
+            listOf(chosen, "gemma-4-e2b", "qwen3.5-2b", "qwen3.5-0.8b", "gemma-4-e4b").firstOrNull { models.isInstalled(it) }
         const val IDLE_RELEASE_MS = 3 * 60_000L
         const val TIMEOUT_MS = 12 * 60_000L
 

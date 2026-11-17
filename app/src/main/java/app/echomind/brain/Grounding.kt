@@ -107,8 +107,19 @@ object Grounding {
         return out.toList()
     }
 
-    private val meta = Regex("(?i)^(conversation (occurred|took place|happened)|said at \\d|the (user|owner|speaker) (said|mentioned|talked)|transcript|recording|line l?\\d+)")
+    private val meta = Regex("(?i)^(conversation (occurred|took place|happened)|said at \\d|the (user|owner|speaker) (said|mentioned|talked)|transcript|recording|line l?\\d+|(speaker|s\\d+|someone|the user|me) (is|was|said|mentioned|asked)\\b|(mentioned|discussed|talked about|referred to)( a| the| some| specific)? (topic|something|things|it|specific)\\b)")
+    private val fragmentStarts = setOf("for", "that", "and", "but", "or", "so", "to", "of", "with", "which", "because", "around", "then", "also", "if")
+    private val refs = Regex("\\s*\\((?:L)?\\d+(?:\\s*[,–-]\\s*(?:L)?\\d+)*\\)|\\bL\\d+\\b")
 
-    /** Note points that describe the recording instead of the topic ("Conversation occurred at 12:01"). */
+    /** Note points that describe the recording instead of the topic ("Conversation occurred at 12:01", "Speaker is…"). */
     fun isMetaPoint(p: String): Boolean = meta.containsMatchIn(p.trim().trimStart('-', ' '))
+
+    /** A note point as it should be kept: line references ("(34)", "L12") removed; null when it's about the recording or says too little. */
+    fun cleanPoint(p: String): String? {
+        val t = refs.replace(p.trim().trimStart('-', '•', ' '), "").replace(Regex("\\s{2,}"), " ").trim().trimEnd(',', ';')
+        if (TextNorm.words(t) < 4 || isMetaPoint(t)) return null
+        // A clipped half-sentence ("for that would be around") isn't a point.
+        if (t.substringBefore(' ').lowercase() in fragmentStarts) return null
+        return t
+    }
 }

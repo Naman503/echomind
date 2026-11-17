@@ -12,7 +12,10 @@ import kotlinx.coroutines.flow.asStateFlow
 class Ai(
     private val settings: SettingsStore,
     private val secrets: Secrets,
-    val local: LocalLlm,
+    /** The on-device model: in production the one in the ":ai" process ([AiProcess]). */
+    val local: Llm,
+    /** Which on-device model is downloaded, if any. */
+    private val localModel: () -> String?,
     private val gemini: GeminiLlm,
     private val anthropic: AnthropicLlm,
     private val openai: OpenAiLlm,
@@ -40,7 +43,7 @@ class Ai(
     fun readiness(feature: Feature): String? {
         val id = settings.value.provider(feature)
         val info = Providers.get(id) ?: return "Unknown provider"
-        if (info.local) return if (local.installedModel() == null) "Download an on-device model (Settings → On-device models)" else null
+        if (info.local) return if (localModel() == null) "Download an on-device model (Settings → On-device models)" else null
         val key = info.keyName ?: return null
         if (id == "openai" && settings.value.openaiBaseUrl.contains("localhost")) return null
         return if (!secrets.has(key)) "Add your ${info.label} key (Settings → Providers)" else null

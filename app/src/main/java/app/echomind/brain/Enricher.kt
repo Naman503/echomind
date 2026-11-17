@@ -109,8 +109,10 @@ class Enricher(
             }.onFailure { Log.w(TAG, "merge failed", it) }
         }
         val media = outputs.count { it.bool("is_media") == true } * 2 > outputs.size
+        // Every part was background chatter: kept as "chatter", left out of the diary and the night's coaching.
+        val chatter = outputs.isNotEmpty() && outputs.all { it.str("signal") == "noise" }
         val moods = outputs.mapNotNull { it.dbl("mood") }
-        val category = if (media) "media" else outputs.groupingBy { it.str("category") ?: "other" }.eachCount().maxByOrNull { it.value }?.key
+        val category = if (media) "media" else if (chatter) "chatter" else outputs.groupingBy { it.str("category") ?: "other" }.eachCount().maxByOrNull { it.value }?.key
 
         // Speaker names the model recognised.
         for (o in outputs) for (s in o.objects("speakers")) {
@@ -120,7 +122,7 @@ class Enricher(
         }
 
         // Named things: from the focused passes, or one extra pass when the all-in-one extraction ran.
-        if (settings.value.extractThings && !media) runCatching {
+        if (settings.value.extractThings && !media && !chatter) runCatching {
             val thingOuts = if (outputs.any { it.containsKey("things") }) outputs else analyzer.thingsOnly(c, utts)
             things().record(c, utts, thingOuts)
         }.onFailure { Log.w(TAG, "things failed", it) }
@@ -174,7 +176,9 @@ class Enricher(
                 if (topic.isBlank()) null else Notes.Update(topic, list.flatMap { it.strings("points") }.distinct(), list.flatMap { sources(it) },
                     list.firstNotNullOfOrNull { it.str("folder")?.takeIf { f -> f.isNotBlank() } }, list.flatMap { it.strings("tags") })
             }
-            noteIds = notes.apply(updates, c.id, title.ifBlank { "a conversation" }, at)
+            // A few words or a fragment of overheard chat doesn't change a note.
+            val words = utts.sumOf { TextNorm.words(it.text) }
+            noteIds = if (words >= 60) notes.apply(updates, c.id, title.ifBlank { "a conversation" }, at) else emptyList()
         }
 
         val done = c.copy(

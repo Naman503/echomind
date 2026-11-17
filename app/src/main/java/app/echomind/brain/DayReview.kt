@@ -126,6 +126,13 @@ class DayReview(
         uncoached.firstOrNull()?.let { c ->
             _progress.value = Progress(day, "Coaching: ${c.title ?: Prompts.time(c.startAt)}", doneUnits, total)
             val utts = db.utterances().forConversation(c.id)
+            // Little of your own speech: nothing for the coach to work with, so no model run for it.
+            val myWords = utts.filter { it.speaker == "me" }.sumOf { TextNorm.words(it.text) }
+            if (myWords < 40 || c.category == "chatter" || c.category == "media") {
+                val base = analyses[c.id] ?: ConvAnalysis(stats = analyzer.stats(utts))
+                analyzer.save(c.id, base.copy(coachedAt = System.currentTimeMillis(), stats = base.stats ?: analyzer.stats(utts)))
+                return true
+            }
             val coach = runCatching { analyzer.coach(c, utts) }.onFailure { Log.w(TAG, "coach ${c.id} failed", it) }.getOrNull()
             val base = analyses[c.id] ?: ConvAnalysis(stats = analyzer.stats(utts))
             analyzer.save(c.id, base.copy(coach = coach ?: base.coach, coachedAt = System.currentTimeMillis(), stats = base.stats ?: analyzer.stats(utts)))

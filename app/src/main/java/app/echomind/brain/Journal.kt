@@ -197,7 +197,9 @@ class Journal(private val db: Db, private val ai: Ai, private val settings: Sett
      * The day's conversations as lines for the journal. On the phone, a busy day is first
      * condensed a few conversations at a time, so the journal prompt fits the model.
      */
-    private suspend fun happened(convs: List<app.echomind.data.Conversation>, local: Boolean): String {
+    private suspend fun happened(all: List<app.echomind.data.Conversation>, local: Boolean): String {
+        // Background chatter and TV stay out of the diary's material.
+        val convs = all.filter { it.category != "chatter" && it.category != "media" }
         fun line(c: app.echomind.data.Conversation, n: Int) = "- ${Prompts.time(c.startAt)} ${c.title}: ${c.summary.orEmpty().take(n)}\n"
         if (!local) return convs.take(60).joinToString("") { line(it, 600) }
         if (convs.size <= 6) return convs.joinToString("") { line(it, 320) }
@@ -214,6 +216,16 @@ class Journal(private val db: Db, private val ai: Ai, private val settings: Sett
     }
 
     /** The nightly pass for [d]: journal, then the memory review. */
+    /**
+     * Whether anything was said on [d]: a conversation that was read, or at least a handful of
+     * spoken lines. A silent day gets no overnight work at all (no model is loaded, no recap).
+     */
+    suspend fun hadTalk(d: LocalDate): Boolean {
+        val (from, to) = bounds(d)
+        if (db.conversations().inRangeOnce(from, to).any { (it.state == "done" || it.state == "ready" || it.state == "working") && !it.ignored }) return true
+        return db.utterances().range(from, to).count { it.speaker != "Song" && it.speaker != "EchoMind" && it.text.length > 3 } >= 10
+    }
+
     suspend fun nightly(d: LocalDate): Boolean {
         val wrote = write(d)
         val key = dayKey(d)

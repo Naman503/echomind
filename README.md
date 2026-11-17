@@ -126,6 +126,20 @@ Which lines are yours is decided per voice, not per line. All lines in a convers
   - the current threshold;
   - the lines it is least sure about, which you can answer with "Me" or "Not me". Each answer teaches the model, and lines you've confirmed are never changed again.
 
+### Staying reliable
+- **The AI runs in its own process.** The on-device model takes 1–2 GB. In its own process, a crash or Android reclaiming its memory ends only that AI job, which is tried again later. Listening carries on. The AI process sits below listening in Android's priority, so it is reclaimed first.
+- **Silent days stay silent at night.** If nothing was said that day, there is no overnight review, no journal, no recap notification and no nightly extras, and the model never loads.
+- **Less work at night.** Conversations where you barely spoke, background chatter and TV are not coached.
+- **Clear when listening stops.** If Android stops listening, the prompt says since when.
+
+### Tasks and notes you can trust
+- **Every task found in conversation is checked against the words that were said.**
+  - A clear commitment or request ("kal bhej dunga", "remind me", "करना है", "I'll send it") goes straight onto your list.
+  - Unclear ones wait in Suggestions.
+  - Chat is dropped: a two-word quote, "Eat dinner", or a title the quote doesn't back up.
+- **Notes** never take lines about the recording ("Conversation occurred at…"), line numbers or half-sentences. Short fragments of overheard chat don't change notes.
+- **Background chatter** is recognised as such. It gets a plain one-line description and no task, fact or name passes.
+
 ### Hearing the whole room
 - **Microphone mode:**
   - **Voice:** the speech-recognition mic.

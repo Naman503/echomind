@@ -23,6 +23,7 @@ object Deep {
     val understand = pick(
         "title", "summary", "category", "mood", "is_media", "key_points", "speakers",
         extra = listOf(
+            "signal" to S.enum("clear", "partial", "noise", description = "clear: a real conversation you can follow; partial: some parts make sense; noise: fragments, TV or overheard chatter with nothing to keep"),
             "topics" to S.arr(S.obj("name" to S.str("2-4 words, specific: 'Cab fare to Bel Road', 'Server setup'"), "detail" to S.str("one line: what was said about it"), "lines" to S.lines), "What was actually discussed, most important first, max 5"),
             "decisions" to S.arr(S.str(), "Things decided or agreed, one line each; empty if none"),
         ),
@@ -36,11 +37,16 @@ Rules:
 1. $ASR
 2. Speaker "me" is the phone's owner; S1, S2… are other voices; "Song" lines are lyrics; "EchoMind" is the assistant.
 3. Only what was said. Never invent people, topics or feelings. Do not reuse titles or topics from anything except this transcript.
-4. title: specific, like a calendar entry, max 8 words. summary: 2-4 plain sentences on what happened and what was said, naming who said it when it matters.
+4. title: specific, like a calendar entry, max 8 words ("Choosing between Air India and IndiGo", "Rahul's offer and the Mumbai move").
+   summary: 2-4 sentences that read well aloud, like a thoughtful friend telling the owner what happened and why it mattered. Address the owner as "you"; name other people when known. Lead with the heart of it (a decision, a plan, a worry, a laugh), then the concrete details — places, amounts, dates, who will do what.
+   Never write times, "S1"/"S2", "the user", "the speaker", "the conversation took place/covered", or a list of every topic. Never pad: if little happened, one honest sentence is right.
+   Good: "You and Rahul weighed flying IndiGo against Air India for the Mumbai trip and leaned towards IndiGo for the earlier slot. He'll send the fare options tonight."
+   Bad: "The conversation covered a wide range of topics including travel plans and flights. S1 then mentioned preferences."
 5. key_points: 2-6 short points in your own words (never copy line numbers or raw lines).
 6. topics: the real subjects, with one line each on what was said. decisions: only clear agreements or choices.
 7. mood: -1 tense … 0 neutral … 1 warm. Recognition noise is not tension; use 0 unless the words clearly show a mood.
-8. is_media: true only if it is mostly TV, video, music or an ad."""
+8. is_media: true only if it is mostly TV, video, music or an ad.
+9. signal: noise when the lines are mostly fragments that don't connect, crosstalk, or audio from a screen — then title it plainly ("Background chatter", "TV in the room"), one short sentence of summary, no topics, no key points. partial when only some parts can be followed: summarise only those."""
 
     // ── 2. Commitments ────────────────────────────────────────────
 
@@ -58,7 +64,8 @@ Rules:
 5. events: things happening at a set time (meetings, trips, appointments, birthdays), not to-dos.
 6. task_updates: only for the numbered existing tasks, and only with clear evidence they were done, progressed, stuck, moved or dropped. The existing tasks are reference only: never copy them as new tasks.
 7. open_questions: only questions or requests another person put to the owner that were left unanswered. Never the owner's own questions or thinking aloud.
-8. quote: the exact words from the transcript. Return empty lists when there is nothing — that is the right answer for most chat."""
+8. quote: the exact words from the transcript. Return empty lists when there is nothing — that is the right answer for most chat.
+9. These are NOT tasks: everyday chat ("khana kha lo", "chal raha hai", "kahan chalna?", "so jao"), wondering aloud, questions, opinions, plans someone else talks about, things already done, things on a screen. A task needs someone to clearly commit or ask: "kal invoice bhej dunga", "remind me at 6", "Priya ko call karna hai", "you have to send the deck by Friday". When in doubt, leave it out."""
 
     // ── 3. Knowledge ──────────────────────────────────────────────
 
@@ -166,5 +173,5 @@ Rules:
     /** For days with many conversations: a few lines per part of the day, so the journal fits. */
     val dayPart = S.obj("summary" to S.str("4-8 sentences covering everything important in these conversations"), "highlights" to S.arr(S.str()))
 
-    fun dayPartSystem(lang: String) = """You condense the summaries of a few conversations from one person's day into one short account, in $lang. Keep names, decisions, numbers and promises. Only what is in the input."""
+    fun dayPartSystem(lang: String) = """You condense the summaries of a few conversations from one person's day into one short account, in $lang. Keep names, places, decisions, numbers and promises — the concrete things. Skip background chatter and anything unclear. No times, no speaker labels. Only what is in the input."""
 }
