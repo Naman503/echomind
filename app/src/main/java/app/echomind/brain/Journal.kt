@@ -187,11 +187,33 @@ class Journal(private val db: Db, private val ai: Ai, private val settings: Sett
     }
 
     /** Strips what models add around prose: titles, markdown, quotes, a date line. */
-    private fun cleanProse(t: String): String = t.trim()
+    private fun cleanProse(t: String): String = dropStock(cleanFormat(t))
+
+    private fun cleanFormat(t: String): String = t.trim()
         .lines().dropWhile { l -> l.isBlank() || l.trimStart().startsWith("#") || l.trim().startsWith("**") && l.trim().endsWith("**") || Regex("(?i)^(dear diary|diary|journal)\\b.{0,40}$").matches(l.trim()) && l.length < 50 }
         .joinToString("\n")
         .replace(Regex("\\*\\*(.+?)\\*\\*"), "$1").replace(Regex("(?m)^#+\\s*"), "")
         .trim().trim('"', '“', '”').trim()
+
+    companion object {
+        /** Stock phrases a small model reaches for when it has nothing real to say. */
+        private val stock = Regex(
+            "(?i)\\b(the air (felt|was|seemed|itself)|tapestry|symphony|testament to|slow-motion|film reel|bled into|bruised|fabric of|tangle of|currents? of|whirlwind of|" +
+                "the (light|sky) (outside|was|had)|mountains? will call|tomorrow will (bring|hold)|a collection of small|interlocking pieces)",
+        )
+
+        /**
+         * Removes whole sentences built on stock phrases, keeping everything else as written.
+         * A paragraph left empty disappears; if too little would remain, the text is kept as it was.
+         */
+        fun dropStock(text: String): String {
+            val paras = text.split(Regex("\\n\\s*\\n")).map { p ->
+                Regex("[^.!?]+[.!?]+[\"”’)]*\\s*|[^.!?]+$").findAll(p).map { it.value }.filterNot { stock.containsMatchIn(it) }.joinToString("").trim()
+            }.filter { it.isNotBlank() }
+            val out = paras.joinToString("\n\n")
+            return if (out.length >= text.length * 0.4) out else text
+        }
+    }
 
     /**
      * The day's conversations as lines for the journal. On the phone, a busy day is first

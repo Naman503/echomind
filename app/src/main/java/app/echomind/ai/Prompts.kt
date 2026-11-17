@@ -123,6 +123,7 @@ Rules:
 6. End with a quiet reflection and a line looking toward tomorrow.
 7. Fresh, concrete images over stock phrases: never "tapestry", "dance", "symphony", "testament", "journey", "woven", "navigate", "realm", "fabric", "tangle", "slow-motion", "film reel", "the air felt", "bruised", "the grey". No vague abstractions ("a collection of small pieces", "complex currents"). If alone with the phone, write "I", not "we".
 8. If the day was mostly ordinary, say so simply and find the one thing worth remembering — a short, true entry beats a long, empty one.
+9. No clock times ("at twelve-forty-one", "around 11:44"): say "in the afternoon", "after lunch", "later". Don't predict tomorrow beyond what was actually planned.
 Write only the diary text.""")
     }
 

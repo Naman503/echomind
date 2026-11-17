@@ -43,3 +43,13 @@ class NotePointTest {
         assertEquals("Took a pill for the headache; it helped for a while", g.cleanPoint("Took a pill for the headache; it helped for a while L12"))
     }
 }
+
+class DiaryStockTest {
+    @Test fun stockSentencesGoRealOnesStay() {
+        val d = "We went over the cleanup and the two tracks. Mandir sent a group message.\n\nIt was a short trip, maybe two kilometers, and the air felt different there. We settled on the two-day mountain plan. Tomorrow, the mountains will call, and I will prepare for that."
+        val out = app.echomind.brain.Journal.dropStock(d)
+        org.junit.Assert.assertFalse(out, out.contains("air felt"))
+        org.junit.Assert.assertFalse(out, out.contains("mountains will call"))
+        org.junit.Assert.assertTrue(out, out.contains("Mandir sent a group message.") && out.contains("two-day mountain plan"))
+    }
+}
