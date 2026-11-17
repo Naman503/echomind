@@ -66,6 +66,27 @@
             </intent-filter>
         </activity>
 
+        <!-- "Read aloud" in any app: the text-selection menu and the Share sheet. -->
+        <activity
+            android:name=".surfaces.ReadAloudActivity"
+            android:exported="true"
+            android:label="Read aloud"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.EchoMind.Invisible">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".surfaces.StartListeningActivity"
             android:exported="true"

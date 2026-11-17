@@ -138,6 +138,15 @@ object VoiceCatalog {
         return VoiceSpec(id, name, "", "system", 0, setOf(if (name.startsWith("hi")) "hi" else "en"), "", engine, 3)
     }
 
+    /** The pack a voice is read from: Kokoro voices use the full-quality pack once it's downloaded. */
+    fun packFor(v: VoiceSpec, models: ModelManager): String =
+        if (v.pack == "kokoro-multi" && models.isInstalled(KOKORO_HQ)) KOKORO_HQ else v.pack
+
+    /** Whether [v] can be read now (its pack, or the full-quality Kokoro pack, is downloaded). */
+    fun ready(v: VoiceSpec?, models: ModelManager) = v != null && (v.engine == "system" || models.isInstalled(packFor(v, models)))
+
+    const val KOKORO_HQ = "kokoro-multi-hq"
+
     fun engineName(engine: String) = when (engine) {
         "supertonic" -> "Supertonic"; "kokoro" -> "Kokoro"; "kitten" -> "Kitten"; "piper" -> "Piper"; else -> "Phone"
     }

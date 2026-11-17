@@ -175,7 +175,13 @@ fun ThingScreen(id: Long) {
     var deleting by remember { mutableStateOf(false) }
     val t = e ?: return
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
-        ScreenTopBar(t.name, onBack = { nav.back() }) { IconButton(onClick = { deleting = true }) { Icon(Icons.Rounded.Delete, "Delete") } }
+        ScreenTopBar(t.name, onBack = { nav.back() }) {
+            app.echomind.ui.components.ListenButton("Read about ${t.name}") {
+                app.echomind.brain.Briefing.Script(t.name, listOfNotNull("${t.name}, ${(Things.Kind.of(t.kind)?.label ?: t.kind).lowercase()}.", t.detail?.takeIf { it.isNotBlank() }, t.summary.takeIf { it.isNotBlank() },
+                    "First mentioned ${Fmt.day(t.firstSeenAt)}, last ${Fmt.day(t.lastSeenAt)}."))
+            }
+            IconButton(onClick = { deleting = true }) { Icon(Icons.Rounded.Delete, "Delete") }
+        }
         LazyColumn(contentPadding = PaddingValues(start = Sp.gutter, end = Sp.gutter, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(Sp.m), state = app.echomind.ui.components.rememberKeptListState()) {
             item {
                 EchoCard {

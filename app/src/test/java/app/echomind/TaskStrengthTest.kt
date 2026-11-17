@@ -53,3 +53,12 @@ class DiaryStockTest {
         org.junit.Assert.assertTrue(out, out.contains("Mandir sent a group message.") && out.contains("two-day mountain plan"))
     }
 }
+
+class ReadAloudTest {
+    @Test fun splitsSharedTextIntoParagraphs() {
+        val p = app.echomind.surfaces.ReadAloudActivity.paragraphs("First line.\n\nSecond para\nthird line\n\n  ---  \n")
+        org.junit.Assert.assertEquals(listOf("First line.", "Second para", "third line"), p)
+        org.junit.Assert.assertTrue(app.echomind.surfaces.ReadAloudActivity.isBareLink(" https://example.com/a?b=c "))
+        org.junit.Assert.assertFalse(app.echomind.surfaces.ReadAloudActivity.isBareLink("read https://example.com"))
+    }
+}

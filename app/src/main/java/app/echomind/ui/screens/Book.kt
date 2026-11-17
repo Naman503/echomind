@@ -194,6 +194,7 @@ fun ChapterScreen(week: String) {
         ScreenTopBar(ch?.let { "Chapter ${chapters.indexOf(it) + 1}" } ?: "Chapter", onBack = { nav.back() }) {
             IconButton(onClick = { scope.launch { g.settings.update { it.copy(bookFontScale = (it.bookFontScale - 0.1f).coerceAtLeast(0.85f)) } } }) { Icon(Icons.Rounded.TextDecrease, "Smaller text") }
             IconButton(onClick = { scope.launch { g.settings.update { it.copy(bookFontScale = (it.bookFontScale + 0.1f).coerceAtMost(1.4f)) } } }) { Icon(Icons.Rounded.TextIncrease, "Larger text") }
+            ch?.let { c -> app.echomind.ui.components.ListenButton("Read this chapter") { app.echomind.brain.Briefing.Script(c.title, listOf(c.title + ".", c.epigraph) + c.text.split(Regex("\\n\\s*\\n")).map { it.trim() }) } }
             IconButton(enabled = !rewriting, onClick = { rewriting = true; scope.launch { runCatching { g.book.step(force = week) }; rewriting = false } }) { Icon(Icons.Rounded.Refresh, "Rewrite chapter") }
         }
         if (ch == null) { EmptyState("Not written yet", "This chapter is written once its week is over."); return }

@@ -94,7 +94,7 @@ private fun inUse(m: ModelSpec, s: app.echomind.core.Settings): Boolean = when (
     ModelSpec.Kind.VAD -> true
     ModelSpec.Kind.SPEAKER -> s.labelSpeakers
     ModelSpec.Kind.SOUND -> s.songs || s.ambient
-    ModelSpec.Kind.VOICE -> listOf(s.voiceEnglish, s.voiceHindi).any { VoiceCatalog.get(it)?.pack == m.id }
+    ModelSpec.Kind.VOICE -> listOf(s.voiceEnglish, s.voiceHindi).any { id -> VoiceCatalog.get(id)?.let { it.pack == m.id || (m.id == VoiceCatalog.KOKORO_HQ && it.pack == "kokoro-multi") } == true }
 }
 
 private val purpose = mapOf(

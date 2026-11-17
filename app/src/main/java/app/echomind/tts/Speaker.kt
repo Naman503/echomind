@@ -224,7 +224,7 @@ class Speaker(
         val pv = previewVoice?.let { VoiceCatalog.get(it) }
         val en = pv?.takeIf { it.reads("en") } ?: VoiceCatalog.get(s.voiceEnglish)
         val hi = pv?.takeIf { it.reads("hi") } ?: VoiceCatalog.get(s.voiceHindi)
-        fun usable(v: VoiceSpec?) = v != null && (v.engine == "system" || models.isInstalled(v.pack))
+        fun usable(v: VoiceSpec?) = VoiceCatalog.ready(v, models)
         if (s.readEngine == "system" || (!usable(en) && !usable(hi))) { playSystem(from); return@coroutineScope }
         _state.update { it.copy(engine = listOfNotNull(en, hi).joinToString(" + ") { VoiceCatalog.engineName(it.engine) }) }
 
@@ -238,7 +238,7 @@ class Speaker(
                     val voice = listOf(if (lang == "hi") hi else en, if (lang == "hi") en else hi).firstOrNull { usable(it) && it!!.reads(lang) }
                         ?: (if (lang == "hi") hi else en)?.takeIf { usable(it) } ?: (if (lang == "hi") en else hi)?.takeIf { usable(it) }
                     if (voice?.engine == "system") { queue.send(Chunk(i, sentence, null, 0, lang, voice.id)); continue }
-                    val engine = voice?.let { tts.get(it.pack) }
+                    val engine = voice?.let { tts.get(VoiceCatalog.packFor(it, models)) }
                     if (voice == null || engine == null) { queue.send(Chunk(i, sentence, null, 0, lang)); continue }
                     val modelSpeed = minOf(_state.value.speed, NATURAL_SPEED)
                     val audio = runCatching { synth(engine, voice, sentence, modelSpeed, lang) }.getOrNull()
@@ -386,7 +386,7 @@ class Speaker(
     suspend fun measure(voiceId: String): Double? = withContext(Dispatchers.Default) {
         val v = VoiceCatalog.get(voiceId) ?: return@withContext null
         if (v.engine == "system") return@withContext null
-        val engine = tts.get(v.pack) ?: return@withContext null
+        val engine = tts.get(VoiceCatalog.packFor(v, models)) ?: return@withContext null
         val lang = if (v.reads("en")) "en" else "hi"
         val text = if (lang == "hi") "नमस्ते, आज आपके तीन काम बाकी हैं और शाम पाँच बजे एक मीटिंग है।" else "Good morning. You have three tasks today, and a meeting with Priya at five in the evening."
         synth(engine, v, "Warm up.", 1f, lang)

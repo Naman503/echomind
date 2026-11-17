@@ -86,7 +86,7 @@ fun ReadingScreen() {
             }
             for ((lang, label) in listOf("en" to "English", "hi" to "Hindi")) item(key = "cur$lang") {
                 val v = VoiceCatalog.get(if (lang == "hi") s.voiceHindi else s.voiceEnglish)
-                val ready = v != null && (v.engine == "system" || g.models.isInstalled(v.pack))
+                val ready = VoiceCatalog.ready(v, g.models)
                 EchoCard(onClick = { nav.go(VoicesRoute(lang)) }) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -99,6 +99,7 @@ fun ReadingScreen() {
                     }
                 }
             }
+            if (VoiceCatalog.get(s.voiceEnglish)?.engine == "kokoro" || VoiceCatalog.get(s.voiceHindi)?.engine == "kokoro") item(key = "hq") { KokoroHq() }
             item {
                 SwitchRow("Use the phone's voices instead", "Android's text-to-speech for everything, even when open voices are downloaded", s.readEngine == "system") { on ->
                     update { it.copy(readEngine = if (on) "system" else "open") }
@@ -258,7 +259,7 @@ private fun VoiceRow(v: VoiceSpec, selected: Boolean, language: String) {
     val models by g.models.states.collectAsStateWithLifecycle()
     val pack = ModelCatalog.get(v.pack)
     val st = models[v.pack]
-    val ready = v.engine == "system" || st?.installed == true
+    val ready = v.engine == "system" || st?.installed == true || VoiceCatalog.ready(v, g.models)
     EchoCard(color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceContainerLow, padding = PaddingValues(Sp.m)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -272,9 +273,10 @@ private fun VoiceRow(v: VoiceSpec, selected: Boolean, language: String) {
                 if (v.note.isNotBlank()) Text(v.note, style = MaterialTheme.typography.labelSmall, color = if (v.online) LocalSemantic.current.cloud else MaterialTheme.colorScheme.outline)
                 Text(when {
                     v.engine == "system" -> "On your phone already"
+                    v.pack == "kokoro-multi" && g.models.isInstalled(VoiceCatalog.KOKORO_HQ) -> "✓ Full quality"
                     st?.installed == true -> "✓ Downloaded"
                     else -> "Pack not downloaded · ${pack?.let { Fmt.bytes(it.bytes) } ?: ""} · ${VoiceCatalog.open.count { it.pack == v.pack }} voice${if (VoiceCatalog.open.count { it.pack == v.pack } == 1) "" else "s"} in it"
-                }, style = MaterialTheme.typography.labelSmall, color = if (v.engine == "system" || st?.installed == true) LocalSemantic.current.positive else MaterialTheme.colorScheme.outline)
+                }, style = MaterialTheme.typography.labelSmall, color = if (ready) LocalSemantic.current.positive else MaterialTheme.colorScheme.outline)
             }
             if (ready) IconButton(onClick = { g.speaker.preview(v.id) }) { Icon(Icons.Rounded.PlayArrow, "Play a sample") }
         }
@@ -302,6 +304,39 @@ private fun VoiceRow(v: VoiceSpec, selected: Boolean, language: String) {
         if (st?.downloading == true || st?.extracting == true) {
             LinearProgressIndicator(progress = { st.progress }, modifier = Modifier.fillMaxWidth().padding(top = Sp.s))
             Text(if (st.extracting) "Unpacking…" else downloadLine(st, pack?.bytes ?: 0), style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+/** Offers the uncompressed Kokoro model: the same voices, as clear as on the Mac. */
+@Composable
+private fun KokoroHq() {
+    val g = App.graph
+    val models by g.models.states.collectAsStateWithLifecycle()
+    val hq = ModelCatalog.get(VoiceCatalog.KOKORO_HQ) ?: return
+    val st = models[hq.id]
+    val small = models["kokoro-multi"]?.installed == true
+    EchoCard(color = if (st?.installed == true) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.tertiaryContainer) {
+        Text("Full-quality Kokoro", style = MaterialTheme.typography.titleSmall)
+        Text(
+            when {
+                st?.installed == true -> "On. Kokoro voices now use the uncompressed model, the same one the Mac app plays." + if (small) " The compressed pack isn't needed any more." else ""
+                else -> "The voices here use a compressed copy of Kokoro, which sounds slightly rough. The full model is the one the Mac app plays: clearer and smoother. ${Fmt.bytes(hq.bytes)}, over Wi-Fi."
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(Sp.s), modifier = Modifier.padding(top = Sp.s)) {
+            when {
+                st?.downloading == true || st?.extracting == true -> {
+                    Text(if (st.extracting) "Unpacking…" else "Downloading…", style = MaterialTheme.typography.labelMedium, modifier = Modifier.align(Alignment.CenterVertically))
+                    TextButton(onClick = { g.models.cancel(hq.id) }) { Text("Cancel") }
+                }
+                st?.installed == true -> {
+                    if (small) TextButton(onClick = { g.models.delete("kokoro-multi") }) { Text("Delete compressed pack") }
+                    TextButton(onClick = { g.models.delete(hq.id) }) { Text("Remove full quality", color = MaterialTheme.colorScheme.error) }
+                }
+                else -> Button(onClick = { g.models.download(hq.id) }) { Text("Get · ${Fmt.bytes(hq.bytes)}") }
+            }
         }
     }
 }

@@ -82,6 +82,10 @@ object ModelCatalog {
             // v1.0, not v1.1: only v1.0 contains the Hindi voices.
             "$SHERPA/tts-models/kokoro-int8-multi-lang-v1_0.tar.bz2", 132_303_094,
             "The most natural open-source voices: warm English and Hindi readers.", archive = true, recommended = true),
+        ModelSpec("kokoro-multi-hq", "Kokoro voices · full quality", ModelSpec.Kind.VOICE,
+            // The same Kokoro v1.0 voices without int8 compression: the quality Earshot plays on the Mac.
+            "$SHERPA/tts-models/kokoro-multi-lang-v1_0.tar.bz2", 349_886_476,
+            "The same Kokoro voices uncompressed — clearer, smoother speech, as on the Mac. Used instead of the compressed pack once downloaded.", archive = true),
         ModelSpec("supertonic-3", "Supertonic 3 voices (English + Hindi)", ModelSpec.Kind.VOICE,
             "$SHERPA/tts-models/sherpa-onnx-supertonic-3-tts-int8-2026-05-11.tar.bz2", 128_774_318,
             "Very natural and fast: 10 voices (5 female, 5 male) that read both English and Hindi. OpenRAIL-M licence.", archive = true),
